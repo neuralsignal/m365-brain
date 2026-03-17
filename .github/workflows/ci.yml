@@ -19,13 +19,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    services:
-      azurite:
-        image: mcr.microsoft.com/azure-storage/azurite
-        ports:
-          - 10000:10000
-          - 10001:10001
-          - 10002:10002
     steps:
       - uses: actions/checkout@v4
       - uses: prefix-dev/setup-pixi@v0.8.8
@@ -33,5 +26,12 @@ jobs:
           cache: true
       - name: Run unit tests with coverage
         run: pixi run test-cov
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite \
+            -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite \
+            azurite --skipApiVersionCheck --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+          sleep 2
       - name: Run Azurite integration tests
         run: pixi run test-azurite
