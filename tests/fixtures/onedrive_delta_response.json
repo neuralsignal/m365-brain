@@ -1,0 +1,33 @@
+{
+  "value": [
+    {
+      "id": "file-1",
+      "name": "quarterly-report.docx",
+      "size": 45000,
+      "file": {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+      "parentReference": {"path": "/drive/root:/Documents/Reports"},
+      "lastModifiedDateTime": "2026-03-10T14:30:00Z",
+      "lastModifiedBy": {"user": {"displayName": "Alice Smith", "id": "user-1"}},
+      "webUrl": "https://onedrive.example.com/Documents/Reports/quarterly-report.docx",
+      "@microsoft.graph.downloadUrl": "https://download.example.com/file-1"
+    },
+    {
+      "id": "file-2",
+      "name": "budget.xlsx",
+      "size": 12000,
+      "file": {"mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+      "parentReference": {"path": "/drive/root:/Finance"},
+      "lastModifiedDateTime": "2026-03-11T09:15:00Z",
+      "lastModifiedBy": {"user": {"displayName": "Bob Jones", "id": "user-2"}},
+      "webUrl": "https://onedrive.example.com/Finance/budget.xlsx",
+      "@microsoft.graph.downloadUrl": "https://download.example.com/file-2"
+    },
+    {
+      "id": "folder-1",
+      "name": "Documents",
+      "folder": {"childCount": 5},
+      "parentReference": {"path": "/drive/root:"}
+    }
+  ],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/drive/root/delta?$deltatoken=onedrive-token-1"
+}

@@ -1,0 +1,39 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#chats",
+  "value": [
+    {
+      "id": "19:meeting_abc123@thread.v2",
+      "chatType": "oneOnOne",
+      "topic": null,
+      "members": [
+        {
+          "displayName": "Alice Johnson",
+          "userId": "user-001"
+        },
+        {
+          "displayName": "Bob Smith",
+          "userId": "user-002"
+        }
+      ]
+    },
+    {
+      "id": "19:group_xyz789@thread.v2",
+      "chatType": "group",
+      "topic": "Project Alpha",
+      "members": [
+        {
+          "displayName": "Alice Johnson",
+          "userId": "user-001"
+        },
+        {
+          "displayName": "Bob Smith",
+          "userId": "user-002"
+        },
+        {
+          "displayName": "Carol White",
+          "userId": "user-003"
+        }
+      ]
+    }
+  ]
+}

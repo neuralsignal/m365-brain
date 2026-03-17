@@ -1,0 +1,44 @@
+{
+  "value": [
+    {
+      "id": "msg-001",
+      "messageType": "message",
+      "createdDateTime": "2026-03-12T10:00:00Z",
+      "from": {
+        "user": {
+          "displayName": "Alice Johnson",
+          "id": "user-001"
+        }
+      },
+      "body": {
+        "contentType": "text",
+        "content": "Hey, have you seen the latest design mockups?"
+      }
+    },
+    {
+      "id": "msg-002",
+      "messageType": "message",
+      "createdDateTime": "2026-03-12T10:05:00Z",
+      "from": {
+        "user": {
+          "displayName": "Bob Smith",
+          "id": "user-002"
+        }
+      },
+      "body": {
+        "contentType": "html",
+        "content": "<p>Yes! They look <strong>great</strong>. I especially like the new dashboard layout.</p>"
+      }
+    },
+    {
+      "id": "msg-003",
+      "messageType": "systemEventMessage",
+      "createdDateTime": "2026-03-12T09:00:00Z",
+      "from": null,
+      "body": {
+        "contentType": "html",
+        "content": "<systemEventMessage/>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "value": [
+    {
+      "id": "site-1",
+      "displayName": "Engineering Hub",
+      "webUrl": "https://example.sharepoint.com/sites/engineering"
+    },
+    {
+      "id": "site-2",
+      "displayName": "Marketing",
+      "webUrl": "https://example.sharepoint.com/sites/marketing"
+    }
+  ]
+}

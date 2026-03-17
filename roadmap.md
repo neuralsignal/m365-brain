@@ -1,0 +1,134 @@
+# m365-extract Roadmap
+
+## Phase 1: Core Library + CLI (single-user, local storage) -- DONE
+
+`pip install m365-extract && m365-extract sync --once` works end-to-end against real Graph API.
+
+- Project scaffold: pyproject.toml, pixi.toml, config.yaml
+- config.py — frozen dataclass config loader, strict validation, env var expansion
+- graph_client.py — httpx + pagination + retry + rate limit + delta queries
+- auth/device_code.py — MSAL device code flow
+- state.py — sync state persistence (delta tokens, timestamps)
+- storage/base.py — StorageBackend protocol
+- storage/local.py — local filesystem implementation
+- markdown_writer.py — frontmatter builders + slugify/short_hash
+- converters/html_to_md.py — markdownify HTML→markdown
+- extractors: email (delta), calendar (calendarView), teams_chats (filter), teams_channels (delta)
+- cli.py — Click CLI with sync and auth commands
+- 79 unit tests with pytest-httpx mocks
+
+### Stopping Point 1: User Testing + Graph API Validation
+
+1. Test Graph API access via Graph Explorer
+2. Run CLI locally: `m365-extract auth login` then `m365-extract sync --once`
+3. Verify output in `./vault/`
+4. Verify incremental sync: run again, confirm only new items fetched
+
+---
+
+## Phase 2: File Extractors + Document Conversion
+
+**Goal**: OneDrive and SharePoint sync with obsidian-import conversion.
+
+**Implementation**:
+1. `converters/document.py` — obsidian-import wrapper with configurable backend selection (native, markitdown, docling)
+2. `extractors/onedrive.py` — delta sync, catalog-first, eager/on-demand convert
+3. `extractors/sharepoint.py` — auto-discover accessible sites via `/me/followedSites`, per-site delta sync
+4. Update config schema for conversion settings + eager convert patterns + backend selection
+
+**New dependencies**: `obsidian-import[markitdown,docling]`
+
+### Stopping Point 2: File Conversion Validation
+
+1. Test via Graph Explorer: `GET /me/drive/root/children`, `GET /me/followedSites`
+2. Run: `m365-extract sync --once --extractors onedrive,sharepoint`
+3. Verify DOCX/PPTX/PDF → markdown conversion quality
+4. Test large files for timeout/size limits
+
+---
+
+## Phase 3: Azure Blob Storage + Docker
+
+**Goal**: `docker run m365-extract` syncs to Azure Blob Storage.
+
+**Implementation**:
+1. `storage/azure_blob.py` — Azure Blob Storage backend with per-user prefix routing
+2. Dockerfile (python:3.12-slim, multi-stage, non-root user)
+3. `docker-compose.yaml` (service + Azurite emulator for local dev)
+4. Integration tests against Azurite
+
+**New dependencies**: `azure-storage-blob>=12.24,<13`
+
+### Stopping Point 3: Azure Resource Provisioning
+
+1. Create resource group: `az group create --name rg-m365-extract --location switzerlandnorth`
+2. Create storage account: `az storage account create --name stm365extract --resource-group rg-m365-extract --location switzerlandnorth --sku Standard_LRS --kind StorageV2`
+3. Create blob container: `az storage container create --name m365-vaults --account-name stm365extract`
+4. Test Docker build + Azure Blob: `docker build -t m365-extract . && docker run --env-file .env m365-extract sync --once`
+
+---
+
+## Phase 4: Multi-User Web Service
+
+**Goal**: Non-technical users visit a URL, authenticate via Entra, choose extractors, sync starts.
+
+**Implementation**:
+1. `auth/auth_code.py` — MSAL ConfidentialClientApplication, authorization code flow
+2. `auth/token_store.py` — SQLite + Fernet encryption for multi-user token storage
+3. `web/app.py` — FastAPI app factory
+4. `web/routes_auth.py` — `/auth/login`, `/auth/callback`
+5. `web/routes_admin.py` — `/admin/users`, `/admin/sync`
+6. `web/routes_health.py` — `/health`
+7. `web/middleware.py` — per-user access control (users can only access own data)
+8. `user_manager.py` — user CRUD, preference storage (which extractors enabled)
+9. `scheduler.py` — APScheduler for per-user sync jobs
+
+**New dependencies**: `fastapi`, `uvicorn`, `apscheduler`, `cryptography`
+
+### Stopping Point 4: Entra App Configuration for Web Mode
+
+1. Add client secret to Entra app (Certificates & secrets → New)
+2. Add redirect URI: `http://localhost:8000/auth/callback` (dev)
+3. Verify "Allow public client flows" still enabled
+4. Generate Fernet token encryption key
+5. Test multi-user locally: `m365-extract serve --config config.web.yaml`
+
+---
+
+## Phase 5: Webhooks + Deployment
+
+**Goal**: Near-real-time sync deployed to Azure App Service.
+
+**Implementation**:
+1. `web/routes_webhooks.py` — Graph change notification handler
+2. Subscription management (create, renew, validate)
+3. GitHub Actions CI/CD workflow (OIDC federated identity, ACR push, App Service deploy)
+
+### Stopping Point 5: Azure Deployment Infrastructure
+
+1. Create Container Registry (or reuse `acrsanoptis`)
+2. Create App Service Plan + Web App
+3. Configure App Service environment variables
+4. Update Entra app redirect URI to production URL
+5. Set up OIDC federated identity for GitHub Actions
+6. Test with 2-3 users
+
+---
+
+## Phase 6: Contacts + Directory
+
+**Prerequisites**: `Contacts.Read` and `User.Read.All` permissions granted in Entra admin center.
+
+1. `extractors/contacts.py` — personal contacts with delta sync
+2. `extractors/directory.py` — GAL full refresh
+
+---
+
+## Future: MCP Server for Claude Code
+
+Separate package: `m365-extract-mcp`
+
+- Tools: `search(query)`, `read(path)`, `list(prefix)`
+- Connects to Azure Blob Storage (or local filesystem)
+- Authenticates as the user, enforces data isolation
+- Allows Claude Code to search/grep the synced vault from any machine

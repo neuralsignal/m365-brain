@@ -1,0 +1,16 @@
+{
+  "value": [
+    {
+      "id": "sp-file-1",
+      "name": "project-plan.docx",
+      "size": 32000,
+      "file": {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+      "parentReference": {"path": "/drives/drive-1/root:/Shared/Plans"},
+      "lastModifiedDateTime": "2026-03-09T16:00:00Z",
+      "lastModifiedBy": {"user": {"displayName": "Carol Davis", "id": "user-3"}},
+      "webUrl": "https://example.sharepoint.com/sites/engineering/Shared/Plans/project-plan.docx",
+      "@microsoft.graph.downloadUrl": "https://download.example.com/sp-file-1"
+    }
+  ],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/drives/drive-1/root/delta?$deltatoken=sp-token-1"
+}

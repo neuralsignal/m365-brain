@@ -1,0 +1,12 @@
+.pixi/
+.hypothesis/
+__pycache__/
+tests/
+vault/
+state/
+*.pyc
+.env*
+infra/
+docker-compose*.yaml
+.pytest_cache/
+*.egg-info/

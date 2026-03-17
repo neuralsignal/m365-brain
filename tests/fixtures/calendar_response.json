@@ -1,0 +1,80 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(event)",
+  "value": [
+    {
+      "id": "AAMkAGI2EVT001=",
+      "subject": "Weekly Team Standup",
+      "start": {
+        "dateTime": "2026-03-12T09:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-03-12T09:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "location": {
+        "displayName": "Conference Room B"
+      },
+      "organizer": {
+        "emailAddress": {
+          "name": "Alice Johnson",
+          "address": "alice@example.com"
+        }
+      },
+      "attendees": [
+        {
+          "emailAddress": {
+            "name": "Bob Smith",
+            "address": "bob@example.com"
+          },
+          "status": {
+            "response": "accepted"
+          }
+        },
+        {
+          "emailAddress": {
+            "name": "Carol White",
+            "address": "carol@example.com"
+          },
+          "status": {
+            "response": "tentativelyAccepted"
+          }
+        }
+      ],
+      "body": {
+        "contentType": "html",
+        "content": "<html><body><p>Standard weekly standup. Please prepare updates.</p></body></html>"
+      },
+      "type": "occurrence",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAMkAGI2EVT001%3D"
+    },
+    {
+      "id": "AAMkAGI2EVT002=",
+      "subject": "1:1 with Manager",
+      "start": {
+        "dateTime": "2026-03-12T14:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-03-12T14:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "location": {
+        "displayName": ""
+      },
+      "organizer": {
+        "emailAddress": {
+          "name": "Manager Person",
+          "address": "manager@example.com"
+        }
+      },
+      "attendees": [],
+      "body": {
+        "contentType": "text",
+        "content": ""
+      },
+      "type": "singleInstance",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAMkAGI2EVT002%3D"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(message)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=abc123",
+  "value": [
+    {
+      "id": "AAMkAGI2THVSAAA=",
+      "subject": "Q1 Budget Review",
+      "bodyPreview": "Hi team, please review the attached Q1 budget...",
+      "body": {
+        "contentType": "html",
+        "content": "<html><body><p>Hi team,</p><p>Please review the attached Q1 budget spreadsheet and send comments by Friday.</p><p>Best,<br>Alice</p></body></html>"
+      },
+      "from": {
+        "emailAddress": {
+          "name": "Alice Johnson",
+          "address": "alice@example.com"
+        }
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "name": "Bob Smith",
+            "address": "bob@example.com"
+          }
+        },
+        {
+          "emailAddress": {
+            "name": "Carol White",
+            "address": "carol@example.com"
+          }
+        }
+      ],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-03-12T10:30:00Z",
+      "importance": "high",
+      "hasAttachments": true,
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAMkAGI2THVSAAA%3D",
+      "parentFolderId": "AAMkAGI2INBOX"
+    },
+    {
+      "id": "AAMkAGI2THVSAAB=",
+      "subject": "Lunch tomorrow?",
+      "bodyPreview": "Want to grab lunch tomorrow at noon?",
+      "body": {
+        "contentType": "text",
+        "content": "Want to grab lunch tomorrow at noon?\n\nCheers,\nDave"
+      },
+      "from": {
+        "emailAddress": {
+          "name": "Dave Brown",
+          "address": "dave@example.com"
+        }
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "name": "Test User",
+            "address": "testuser@example.com"
+          }
+        }
+      ],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-03-12T11:00:00Z",
+      "importance": "normal",
+      "hasAttachments": false,
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAMkAGI2THVSAAB%3D",
+      "parentFolderId": "AAMkAGI2INBOX"
+    }
+  ]
+}
