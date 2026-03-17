@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/neuralsignal/m365-extract/compare/v0.1.0...v0.2.0) (2026-03-17)
+
+
+### Features
+
+* initial release with full packaging infrastructure ([7ab5361](https://github.com/neuralsignal/m365-extract/commit/7ab5361201bbdfaa51d2b6333c4fc66de815be25))
+
+
+### Bug Fixes
+
+* disable --locked for setup-pixi in release lockfile update job ([4b8a5cc](https://github.com/neuralsignal/m365-extract/commit/4b8a5cccaab8d66f1ea28a0a749c9bfcc7f2066c))
+* use docker run with --skipApiVersionCheck for Azurite in CI ([470b82a](https://github.com/neuralsignal/m365-extract/commit/470b82ae980b632a73f8929e50dd74fce9856cd8))
+
 ## [0.1.0] - 2026-03-17
 
 ### Added
