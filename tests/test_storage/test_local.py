@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from m365_extract.storage.exceptions import PathTraversalError
 from m365_extract.storage.local import LocalBackend
 
 
@@ -61,3 +64,58 @@ class TestLocalBackend:
         base = tmp_path / "new" / "vault"
         LocalBackend(str(base))
         assert base.exists()
+
+
+class TestPathTraversalProtection:
+    """Verify that all LocalBackend operations reject path traversal attempts."""
+
+    TRAVERSAL_PATHS = [
+        "../../etc/passwd",
+        "../outside.md",
+        "emails/../../../etc/cron.d/malicious",
+        "/etc/passwd",
+    ]
+
+    def test_write_file_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        for malicious_path in self.TRAVERSAL_PATHS:
+            with pytest.raises(PathTraversalError, match="Path traversal detected"):
+                backend.write_file(malicious_path, "pwned")
+
+    def test_read_file_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        for malicious_path in self.TRAVERSAL_PATHS:
+            with pytest.raises(PathTraversalError, match="Path traversal detected"):
+                backend.read_file(malicious_path)
+
+    def test_file_exists_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        for malicious_path in self.TRAVERSAL_PATHS:
+            with pytest.raises(PathTraversalError, match="Path traversal detected"):
+                backend.file_exists(malicious_path)
+
+    def test_list_files_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        for malicious_path in self.TRAVERSAL_PATHS:
+            with pytest.raises(PathTraversalError, match="Path traversal detected"):
+                backend.list_files(malicious_path)
+
+    def test_delete_file_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        for malicious_path in self.TRAVERSAL_PATHS:
+            with pytest.raises(PathTraversalError, match="Path traversal detected"):
+                backend.delete_file(malicious_path)
+
+    def test_traversal_does_not_write_outside_base(self, tmp_path):
+        """Ensure no file is created outside the vault even on attempted traversal."""
+        backend = LocalBackend(str(tmp_path / "vault"))
+        target = tmp_path / "outside.md"
+        with pytest.raises(PathTraversalError):
+            backend.write_file("../outside.md", "pwned")
+        assert not target.exists()
+
+    def test_legitimate_nested_paths_still_work(self, tmp_path):
+        """Paths that look suspicious but resolve within base should work."""
+        backend = LocalBackend(str(tmp_path / "vault"))
+        backend.write_file("emails/2026/03/subject.md", "content")
+        assert backend.read_file("emails/2026/03/subject.md") == "content"
