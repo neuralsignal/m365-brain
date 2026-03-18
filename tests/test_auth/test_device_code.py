@@ -118,9 +118,7 @@ class TestDeviceCodeAuth:
         assert cache_path.exists()
 
     @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
-    def test_cache_file_has_restricted_permissions(
-        self, mock_app_cls, auth_config, tmp_path
-    ):
+    def test_cache_file_has_restricted_permissions(self, mock_app_cls, auth_config, tmp_path):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
         mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
