@@ -18,9 +18,7 @@ class LocalBackend:
         """Resolve a relative path and verify it stays within the base directory."""
         full = (self._base / path).resolve()
         if not full.is_relative_to(self._base):
-            raise PathTraversalError(
-                f"Path traversal detected: {path!r} resolves outside base directory"
-            )
+            raise PathTraversalError(f"Path traversal detected: {path!r} resolves outside base directory")
         return full
 
     def write_file(self, path: str, content: str) -> None:
