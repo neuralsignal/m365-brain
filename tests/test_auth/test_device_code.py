@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -114,3 +116,22 @@ class TestDeviceCodeAuth:
 
         cache_path = tmp_path / "token_cache.json"
         assert cache_path.exists()
+
+    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    def test_cache_file_has_restricted_permissions(
+        self, mock_app_cls, auth_config, tmp_path
+    ):
+        mock_app = MagicMock()
+        mock_app_cls.return_value = mock_app
+        mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
+        mock_app.acquire_token_silent.return_value = {"access_token": "token"}
+
+        auth = DeviceCodeAuth(auth_config)
+        auth._cache.has_state_changed = True
+        auth._cache.serialize = MagicMock(return_value='{"cached": true}')
+
+        auth.get_token()
+
+        cache_path = tmp_path / "token_cache.json"
+        file_mode = os.stat(cache_path).st_mode
+        assert stat.S_IMODE(file_mode) == 0o600

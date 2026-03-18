@@ -6,6 +6,7 @@ Acquires, caches, and refreshes Graph API tokens using a public client applicati
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -74,6 +75,7 @@ class DeviceCodeAuth:
             cache_path = Path(self._config.token_cache_path)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(self._cache.serialize(), encoding="utf-8")
+            os.chmod(cache_path, 0o600)
 
     def _extract_token(self, result: dict) -> str:
         if "access_token" in result:
