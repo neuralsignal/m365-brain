@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/neuralsignal/m365-extract/compare/v0.2.0...v0.2.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* add path traversal protection to LocalBackend ([3e8a1f3](https://github.com/neuralsignal/m365-extract/commit/3e8a1f3e5b411c0f38dc1a50883cf1c247e14d26))
+* add path traversal protection to LocalBackend ([d670501](https://github.com/neuralsignal/m365-extract/commit/d670501165e05ee09bb8368630c568eec199e61c)), closes [#3](https://github.com/neuralsignal/m365-extract/issues/3)
+* auto-fix CI failures (attempt 1) ([eae79af](https://github.com/neuralsignal/m365-extract/commit/eae79af2b87ce3132df17790dcceecaeb697dcd8))
+* format local.py to pass ruff format check ([68102b5](https://github.com/neuralsignal/m365-extract/commit/68102b556c6773f17d388a2ae2097b7375652caf))
+* set restrictive permissions (0600) on MSAL token cache file ([ae73ff0](https://github.com/neuralsignal/m365-extract/commit/ae73ff0e535e2eef775f1a1431f0c40894eb6248))
+* set restrictive permissions (0600) on MSAL token cache file ([a41314a](https://github.com/neuralsignal/m365-extract/commit/a41314ab018c9418ac357d45a095f2d89e0df115)), closes [#4](https://github.com/neuralsignal/m365-extract/issues/4)
+
 ## [0.2.0](https://github.com/neuralsignal/m365-extract/compare/v0.1.0...v0.2.0) (2026-03-17)
 
 
