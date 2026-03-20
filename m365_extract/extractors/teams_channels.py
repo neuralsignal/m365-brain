@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import TeamsChannelsExtractorConfig
-from m365_extract.converters.html_to_md import html_to_markdown
+from m365_extract.extractors._message_helpers import extract_content, extract_sender
 from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import (
     build_teams_channel_frontmatter,
@@ -124,9 +124,9 @@ def _process_channel(
     body_parts.append("## Messages\n")
 
     for msg in messages:
-        sender = _extract_sender(msg)
+        sender = extract_sender(msg)
         created = msg.get("createdDateTime", "")
-        content = _extract_content(msg)
+        content = extract_content(msg)
         msg_type = msg.get("messageType", "")
 
         if msg_type == "systemEventMessage":
@@ -149,27 +149,3 @@ def _process_channel(
     storage.write_file(file_path, content_str)
     log.debug("teams_channels.wrote", team=team_name, channel=channel_name, messages=len(messages))
     return True
-
-
-def _extract_sender(msg: dict) -> str:
-    from_field = msg.get("from")
-    if not from_field:
-        return ""
-    user = from_field.get("user")
-    if user:
-        return user.get("displayName", "")
-    app = from_field.get("application")
-    if app:
-        return app.get("displayName", "Bot")
-    return ""
-
-
-def _extract_content(msg: dict) -> str:
-    body = msg.get("body", {})
-    content_type = body.get("contentType", "text")
-    content = body.get("content", "")
-    if not content:
-        return ""
-    if content_type == "html":
-        return html_to_markdown(content)
-    return content
