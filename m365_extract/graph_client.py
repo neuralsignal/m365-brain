@@ -52,21 +52,26 @@ class GraphClient:
             "Accept": "application/json",
         }
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> dict:
-        """Execute a GET request against Graph API. Returns the JSON response.
+    def _execute_with_retry(
+        self,
+        url: str,
+        log_ref: str,
+        params: dict[str, Any] | None,
+        extract: Callable[[httpx.Response], Any],
+    ) -> Any:
+        """Execute a GET request with retry, backoff, and token-refresh logic.
 
         Handles 401 (token refresh via provider), 429 (rate limit), and transient errors.
+        The extract callable determines what to return from a successful response.
         """
-        # httpx base_url prepends to all URLs. Absolute URLs from @odata.nextLink
-        # and @odata.deltaLink must have the base prefix stripped to avoid double-prepend.
-        url = path
-        if url.startswith("https://"):
-            url = url.removeprefix(GRAPH_BASE_URL)
+        request_url = url
+        if request_url.startswith("https://"):
+            request_url = request_url.removeprefix(GRAPH_BASE_URL)
 
         for attempt in range(self._max_retries + 1):
             try:
                 response = self._client.get(
-                    url,
+                    request_url,
                     headers=self._headers(),
                     params=params,
                 )
@@ -84,18 +89,15 @@ class GraphClient:
                 continue
 
             if response.status_code == 200:
-                return response.json()
+                return extract(response)
 
             if response.status_code == 401:
                 if attempt == 0:
                     log.info("graph.token_expired, refreshing")
-                    # Force token refresh by calling provider again on next iteration.
-                    # _headers() calls token_provider() each time, so the next
-                    # iteration will get a fresh token automatically.
                     continue
                 log.error(
                     "graph.401_after_retry",
-                    path=path,
+                    path=log_ref,
                     body=response.text[:500],
                 )
                 response.raise_for_status()
@@ -105,7 +107,7 @@ class GraphClient:
                     log.error(
                         "graph.max_retries_exceeded",
                         status=response.status_code,
-                        path=path,
+                        path=log_ref,
                     )
                     response.raise_for_status()
 
@@ -127,91 +129,34 @@ class GraphClient:
             log.error(
                 "graph.request_failed",
                 status=response.status_code,
-                path=path,
+                path=log_ref,
                 body=response.text[:500],
             )
             response.raise_for_status()
 
-        msg = f"Graph API request failed after {self._max_retries} retries: {path}"
+        msg = f"Graph API request failed after {self._max_retries} retries: {log_ref}"
         raise RuntimeError(msg)
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> dict:
+        """Execute a GET request against Graph API. Returns the JSON response."""
+        return self._execute_with_retry(
+            url=path,
+            log_ref=path,
+            params=params,
+            extract=lambda r: r.json(),
+        )
 
     def get_bytes(self, url: str) -> bytes:
         """Download binary content from a URL. Returns the raw response bytes.
 
-        Uses the same retry/auth logic as get() but returns response.content
-        instead of .json(). Used for downloading files via @microsoft.graph.downloadUrl.
+        Used for downloading files via @microsoft.graph.downloadUrl.
         """
-        request_url = url
-        if request_url.startswith("https://"):
-            request_url = request_url.removeprefix(GRAPH_BASE_URL)
-
-        for attempt in range(self._max_retries + 1):
-            try:
-                response = self._client.get(
-                    request_url,
-                    headers=self._headers(),
-                )
-            except httpx.TransportError as exc:
-                if attempt == self._max_retries:
-                    raise
-                wait = self._backoff_base_seconds * (2**attempt)
-                log.warning(
-                    "graph.transport_error",
-                    error=str(exc),
-                    attempt=attempt + 1,
-                    wait_seconds=wait,
-                )
-                time.sleep(wait)
-                continue
-
-            if response.status_code == 200:
-                return response.content
-
-            if response.status_code == 401:
-                if attempt == 0:
-                    log.info("graph.token_expired, refreshing")
-                    continue
-                log.error(
-                    "graph.401_after_retry",
-                    url=url,
-                    body=response.text[:500],
-                )
-                response.raise_for_status()
-
-            if response.status_code in RETRYABLE_STATUS_CODES:
-                if attempt == self._max_retries:
-                    log.error(
-                        "graph.max_retries_exceeded",
-                        status=response.status_code,
-                        url=url,
-                    )
-                    response.raise_for_status()
-
-                if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After", "5")
-                    wait = float(retry_after)
-                else:
-                    wait = self._backoff_base_seconds * (2**attempt)
-
-                log.warning(
-                    "graph.retryable_error",
-                    status=response.status_code,
-                    attempt=attempt + 1,
-                    wait_seconds=wait,
-                )
-                time.sleep(wait)
-                continue
-
-            log.error(
-                "graph.request_failed",
-                status=response.status_code,
-                url=url,
-                body=response.text[:500],
-            )
-            response.raise_for_status()
-
-        msg = f"Graph API download failed after {self._max_retries} retries: {url}"
-        raise RuntimeError(msg)
+        return self._execute_with_retry(
+            url=url,
+            log_ref=url,
+            params=None,
+            extract=lambda r: r.content,
+        )
 
     def get_paginated(
         self,
