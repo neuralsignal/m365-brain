@@ -1018,8 +1018,8 @@ packages:
   requires_python: '>=3.8'
 - pypi: ./
   name: m365-extract
-  version: 0.2.1
-  sha256: ec2ea6738a8de08161090b35849fb54e9d43e5558274f366fed200818c930806
+  version: 0.2.2
+  sha256: 1fbbf0b49a875dffaeddf00535e39bfb9123a9d78fa38c2ed2874b58e4f67b9d
   requires_dist:
   - msal>=1.34,<2
   - httpx>=0.28,<1
