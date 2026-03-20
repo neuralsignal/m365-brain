@@ -117,8 +117,12 @@ def _process_chat(
             existing_fm, _ = loads_markdown(existing_content)
             if existing_fm.get("last_message_time") == last_msg_time:
                 return False
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning(
+                "teams_chats.existing_file_parse_failed",
+                file_path=file_path,
+                error=str(exc),
+            )
 
     fm = build_teams_chat_frontmatter(
         title=title,
