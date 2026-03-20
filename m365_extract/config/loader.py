@@ -1,4 +1,4 @@
-"""Strict config loader. Validates every key against the schema, fails fast on missing or mistyped values."""
+"""Config loader. Validates every key against the schema, fails fast on missing or mistyped values."""
 
 from __future__ import annotations
 
@@ -7,144 +7,13 @@ import os
 import re
 import sys
 import types
-from dataclasses import dataclass, fields
+from dataclasses import fields
 from pathlib import Path
 from typing import Union, get_args, get_origin, get_type_hints
 
 import yaml
 
-# ---------------------------------------------------------------------------
-# Schema -- one frozen dataclass per config section
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class AuthConfig:
-    client_id: str
-    tenant_id: str
-    scopes: list[str]
-    token_cache_path: str
-
-
-@dataclass(frozen=True)
-class ServiceConfig:
-    mode: str
-    log_level: str
-
-
-@dataclass(frozen=True)
-class LocalStorageConfig:
-    base_path: str
-
-
-@dataclass(frozen=True)
-class AzureBlobStorageConfig:
-    connection_string: str
-    container_name: str
-    prefix: str
-
-
-@dataclass(frozen=True)
-class StorageConfig:
-    backend: str
-    local: LocalStorageConfig | None
-    azure_blob: AzureBlobStorageConfig | None
-
-
-@dataclass(frozen=True)
-class GraphConfig:
-    max_retries: int
-    backoff_base_ms: int
-    timeout_seconds: int
-    max_pages: int
-
-
-@dataclass(frozen=True)
-class StateConfig:
-    state_file_path: str
-
-
-@dataclass(frozen=True)
-class EmailExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    folders: list[str]
-    lookback_days: int
-    max_items_per_sync: int
-
-
-@dataclass(frozen=True)
-class CalendarExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    lookback_days: int
-
-
-@dataclass(frozen=True)
-class TeamsChatsExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    max_messages_per_chat: int
-
-
-@dataclass(frozen=True)
-class TeamsChannelsExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-
-
-@dataclass(frozen=True)
-class OneDriveExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    eager_convert_patterns: list[str]
-    convertible_extensions: list[str]
-    max_file_size_mb: int
-
-
-@dataclass(frozen=True)
-class SharePointExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    eager_convert_patterns: list[str]
-    convertible_extensions: list[str]
-    max_file_size_mb: int
-
-
-@dataclass(frozen=True)
-class ContactsExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-
-
-@dataclass(frozen=True)
-class DirectoryExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-
-
-@dataclass(frozen=True)
-class ExtractorsConfig:
-    email: EmailExtractorConfig
-    calendar: CalendarExtractorConfig
-    teams_chats: TeamsChatsExtractorConfig
-    teams_channels: TeamsChannelsExtractorConfig
-    onedrive: OneDriveExtractorConfig
-    sharepoint: SharePointExtractorConfig
-    contacts: ContactsExtractorConfig
-    directory: DirectoryExtractorConfig
-
-
-@dataclass(frozen=True)
-class Config:
-    auth: AuthConfig
-    service: ServiceConfig
-    storage: StorageConfig
-    graph: GraphConfig
-    state: StateConfig
-    extractors: ExtractorsConfig
-    converters: dict
-
+from m365_extract.config.schema import Config
 
 # ---------------------------------------------------------------------------
 # Environment variable expansion
