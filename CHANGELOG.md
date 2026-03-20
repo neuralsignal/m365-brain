@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2](https://github.com/neuralsignal/m365-extract/compare/v0.2.1...v0.2.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* log warning instead of silently swallowing exceptions in teams_chats.py ([#15](https://github.com/neuralsignal/m365-extract/issues/15)) ([2792534](https://github.com/neuralsignal/m365-extract/commit/279253433bdd725ecc811dad75dc0b6804bb66b4))
+* replace bare RuntimeError with GraphApiError in graph_client.py ([#17](https://github.com/neuralsignal/m365-extract/issues/17)) ([f64cb90](https://github.com/neuralsignal/m365-extract/commit/f64cb901491b4a8f096dc6e5a840355744bf6448))
+* resolve merge conflicts with main ([deb79e8](https://github.com/neuralsignal/m365-extract/commit/deb79e82b41ee1185b8ffd72ec0adc9a1c350d53))
+
 ## [0.2.1](https://github.com/neuralsignal/m365-extract/compare/v0.2.0...v0.2.1) (2026-03-18)
 
 
