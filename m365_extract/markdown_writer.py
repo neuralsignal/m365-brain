@@ -36,12 +36,6 @@ def now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def write_markdown(path: str, metadata: dict, body: str) -> None:
-    """Write a markdown file with YAML frontmatter via a storage backend path."""
-    post = frontmatter.Post(body, **metadata)
-    return frontmatter.dumps(post)
-
-
 def dumps_markdown(metadata: dict, body: str) -> str:
     """Serialize metadata + body to a frontmatter markdown string."""
     post = frontmatter.Post(body, **metadata)
