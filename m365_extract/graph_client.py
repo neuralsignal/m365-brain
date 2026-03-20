@@ -17,6 +17,12 @@ from m365_extract.config import GraphConfig
 log = structlog.get_logger()
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+
+
+class GraphApiError(Exception):
+    """Raised when a Graph API request fails after exhausting retries."""
+
+
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -133,7 +139,7 @@ class GraphClient:
             response.raise_for_status()
 
         msg = f"Graph API request failed after {self._max_retries} retries: {path}"
-        raise RuntimeError(msg)
+        raise GraphApiError(msg)
 
     def get_bytes(self, url: str) -> bytes:
         """Download binary content from a URL. Returns the raw response bytes.
@@ -211,7 +217,7 @@ class GraphClient:
             response.raise_for_status()
 
         msg = f"Graph API download failed after {self._max_retries} retries: {url}"
-        raise RuntimeError(msg)
+        raise GraphApiError(msg)
 
     def get_paginated(
         self,
