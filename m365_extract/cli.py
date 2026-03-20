@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import click
@@ -18,11 +19,12 @@ from dotenv import find_dotenv, load_dotenv
 
 from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.auth.token_provider import make_cli_token_provider
-from m365_extract.config import load_config
+from m365_extract.config import Config, load_config
 from m365_extract.extractors import calendar, email, onedrive, sharepoint, teams_channels, teams_chats
 from m365_extract.graph_client import GraphClient
 from m365_extract.state import SyncState
 from m365_extract.storage import create_storage
+from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
 
@@ -100,7 +102,9 @@ def sync(ctx: click.Context, once: bool, continuous: bool, extractor_names: str 
         _run_continuous(config, token_provider, storage, sync_state, names)
 
 
-def _run_extractors(config, token_provider, storage, sync_state, names):
+def _run_extractors(
+    config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
+) -> None:
     """Run enabled extractors once."""
     with GraphClient(config.graph, token_provider) as client:
         for ext_name in names:
@@ -130,7 +134,9 @@ def _run_extractors(config, token_provider, storage, sync_state, names):
                 click.echo(f"  {ext_name}: FAILED - {exc}")
 
 
-def _run_continuous(config, token_provider, storage, sync_state, names):
+def _run_continuous(
+    config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
+) -> None:
     """Run extractors continuously on their configured intervals."""
     click.echo("Running in continuous mode. Press Ctrl+C to stop.")
 
