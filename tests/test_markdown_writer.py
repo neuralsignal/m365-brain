@@ -7,6 +7,8 @@ from hypothesis import strategies as st
 
 from m365_extract.markdown_writer import (
     build_calendar_frontmatter,
+    build_contact_frontmatter,
+    build_directory_user_frontmatter,
     build_email_frontmatter,
     build_onedrive_frontmatter,
     build_sharepoint_frontmatter,
@@ -231,3 +233,123 @@ class TestBuildTeamsChannelFrontmatter:
         assert fm["title"] == "Engineering / General"
         assert fm["team"] == "Engineering"
         assert fm["channel"] == "General"
+
+
+class TestBuildContactFrontmatter:
+    def test_basic_contact(self):
+        fm = build_contact_frontmatter(
+            display_name="Jane Smith",
+            contact_id="contact-123",
+            email_addresses=["jane@contoso.com"],
+            phones=["+1-555-0100"],
+            company="Contoso Ltd",
+            job_title="VP Engineering",
+            department="Engineering",
+            categories=["VIP"],
+        )
+        assert fm["title"] == "Jane Smith"
+        assert fm["type"] == "contact"
+        assert "contact" in fm["tags"]
+        assert "vip" in fm["tags"]
+        assert fm["email"] == ["jane@contoso.com"]
+        assert fm["phone"] == ["+1-555-0100"]
+        assert fm["company"] == "Contoso Ltd"
+        assert fm["job_title"] == "VP Engineering"
+        assert fm["department"] == "Engineering"
+        assert fm["source"]["service"] == "people"
+        assert fm["source"]["extractor"] == "m365-extract/contacts/1.0"
+        assert fm["permalink"].startswith("contact-jane-smith-")
+
+    def test_empty_optional_fields_omitted(self):
+        fm = build_contact_frontmatter(
+            display_name="Minimal Contact",
+            contact_id="contact-min",
+            email_addresses=[],
+            phones=[],
+            company="",
+            job_title="",
+            department="",
+            categories=[],
+        )
+        assert "email" not in fm
+        assert "phone" not in fm
+        assert "company" not in fm
+        assert "job_title" not in fm
+        assert "department" not in fm
+
+    def test_multiple_categories_as_tags(self):
+        fm = build_contact_frontmatter(
+            display_name="Tagged Contact",
+            contact_id="contact-tags",
+            email_addresses=[],
+            phones=[],
+            company="",
+            job_title="",
+            department="",
+            categories=["VIP", "Engineering Team"],
+        )
+        assert "vip" in fm["tags"]
+        assert "engineering-team" in fm["tags"]
+
+
+class TestBuildDirectoryUserFrontmatter:
+    def test_basic_user(self):
+        fm = build_directory_user_frontmatter(
+            display_name="Jane Smith",
+            user_id="user-123",
+            email="jane@contoso.com",
+            upn="jane@contoso.com",
+            job_title="VP Engineering",
+            department="Engineering",
+            office="Building 1",
+            city="Seattle",
+            manager_link="[[directory-john-doe-abc123]]",
+            direct_reports_links=["[[directory-alice-wong-def456]]"],
+        )
+        assert fm["title"] == "Jane Smith"
+        assert fm["type"] == "directory_user"
+        assert "directory" in fm["tags"]
+        assert "engineering" in fm["tags"]
+        assert fm["email"] == "jane@contoso.com"
+        assert fm["upn"] == "jane@contoso.com"
+        assert fm["job_title"] == "VP Engineering"
+        assert fm["manager"] == "[[directory-john-doe-abc123]]"
+        assert fm["direct_reports"] == ["[[directory-alice-wong-def456]]"]
+        assert fm["source"]["service"] == "directory"
+        assert fm["source"]["extractor"] == "m365-extract/directory/1.0"
+        assert fm["permalink"].startswith("directory-jane-smith-")
+
+    def test_empty_optional_fields_omitted(self):
+        fm = build_directory_user_frontmatter(
+            display_name="Minimal User",
+            user_id="user-min",
+            email="min@contoso.com",
+            upn="min@contoso.com",
+            job_title="",
+            department="",
+            office="",
+            city="",
+            manager_link="",
+            direct_reports_links=[],
+        )
+        assert "job_title" not in fm
+        assert "department" not in fm
+        assert "office" not in fm
+        assert "city" not in fm
+        assert "manager" not in fm
+        assert "direct_reports" not in fm
+
+    def test_department_as_tag(self):
+        fm = build_directory_user_frontmatter(
+            display_name="Dept User",
+            user_id="user-dept",
+            email="dept@contoso.com",
+            upn="dept@contoso.com",
+            job_title="",
+            department="Product Design",
+            office="",
+            city="",
+            manager_link="",
+            direct_reports_links=[],
+        )
+        assert "product-design" in fm["tags"]

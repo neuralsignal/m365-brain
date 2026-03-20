@@ -9,6 +9,9 @@ auth:
     - "ChannelMessage.Read.All"
     - "Files.Read.All"
     - "Sites.Read.All"
+    - "Contacts.Read"
+    - "User.Read.All"
+    - "Directory.Read.All"
     - "offline_access"
   token_cache_path: "./state/token_cache.json"
 
@@ -63,9 +66,14 @@ extractors:
   contacts:
     enabled: false
     poll_interval_minutes: 1440
+    max_items_per_sync: 500
+    include_contact_folders: false
   directory:
     enabled: false
     poll_interval_minutes: 10080
+    include_manager_chain: true
+    include_direct_reports: true
+    only_active_users: true
 
 converters:
   backends:

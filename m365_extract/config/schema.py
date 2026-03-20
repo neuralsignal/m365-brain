@@ -102,12 +102,17 @@ class SharePointExtractorConfig:
 class ContactsExtractorConfig:
     enabled: bool
     poll_interval_minutes: int
+    max_items_per_sync: int
+    include_contact_folders: bool
 
 
 @dataclass(frozen=True)
 class DirectoryExtractorConfig:
     enabled: bool
     poll_interval_minutes: int
+    include_manager_chain: bool
+    include_direct_reports: bool
+    only_active_users: bool
 
 
 @dataclass(frozen=True)
