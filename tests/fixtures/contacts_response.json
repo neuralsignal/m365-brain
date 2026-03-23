@@ -1,0 +1,54 @@
+{
+  "value": [
+    {
+      "id": "contact-001",
+      "displayName": "Jane Smith",
+      "givenName": "Jane",
+      "surname": "Smith",
+      "emailAddresses": [
+        {"address": "jane@contoso.com", "name": "Jane Smith"}
+      ],
+      "businessPhones": ["+1-555-0100"],
+      "mobilePhone": "+1-555-0101",
+      "companyName": "Contoso Ltd",
+      "jobTitle": "VP Engineering",
+      "department": "Engineering",
+      "officeLocation": "Building 1",
+      "businessAddress": {
+        "street": "123 Main St",
+        "city": "Seattle",
+        "state": "WA",
+        "postalCode": "98101",
+        "countryOrRegion": "US"
+      },
+      "personalNotes": "Met at conference 2025.",
+      "birthday": "1985-06-15T00:00:00Z",
+      "categories": ["VIP", "Engineering"],
+      "createdDateTime": "2026-01-15T08:00:00Z",
+      "lastModifiedDateTime": "2026-03-10T14:30:00Z"
+    },
+    {
+      "id": "contact-002",
+      "displayName": "Bob Chen",
+      "givenName": "Bob",
+      "surname": "Chen",
+      "emailAddresses": [
+        {"address": "bob@example.com", "name": "Bob Chen"},
+        {"address": "bob.chen@contoso.com", "name": "Bob Chen"}
+      ],
+      "businessPhones": [],
+      "mobilePhone": null,
+      "companyName": "",
+      "jobTitle": "Software Engineer",
+      "department": "Engineering",
+      "officeLocation": null,
+      "businessAddress": {},
+      "personalNotes": "",
+      "birthday": null,
+      "categories": [],
+      "createdDateTime": "2026-02-01T10:00:00Z",
+      "lastModifiedDateTime": "2026-03-01T12:00:00Z"
+    }
+  ],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/contacts/delta?$deltatoken=contacts-token-1"
+}

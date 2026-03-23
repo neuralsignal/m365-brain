@@ -1,0 +1,43 @@
+{
+  "value": [
+    {
+      "id": "user-001",
+      "displayName": "Jane Smith",
+      "givenName": "Jane",
+      "surname": "Smith",
+      "mail": "jane@contoso.com",
+      "userPrincipalName": "jane@contoso.com",
+      "jobTitle": "VP Engineering",
+      "department": "Engineering",
+      "officeLocation": "Building 1, Floor 3",
+      "companyName": "Contoso",
+      "businessPhones": ["+1-555-0100"],
+      "mobilePhone": null,
+      "city": "Seattle",
+      "state": "WA",
+      "country": "US",
+      "accountEnabled": true,
+      "createdDateTime": "2024-06-01T08:00:00Z"
+    },
+    {
+      "id": "user-002",
+      "displayName": "Bob Chen",
+      "givenName": "Bob",
+      "surname": "Chen",
+      "mail": "bob@contoso.com",
+      "userPrincipalName": "bob@contoso.com",
+      "jobTitle": "Software Engineer",
+      "department": "Engineering",
+      "officeLocation": "Building 1, Floor 2",
+      "companyName": "Contoso",
+      "businessPhones": [],
+      "mobilePhone": "+1-555-0200",
+      "city": "Seattle",
+      "state": "WA",
+      "country": "US",
+      "accountEnabled": true,
+      "createdDateTime": "2025-01-10T10:00:00Z"
+    }
+  ],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=users-token-1"
+}

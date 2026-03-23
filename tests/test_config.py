@@ -69,9 +69,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -159,9 +164,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -238,9 +248,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -312,9 +327,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -390,9 +410,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -467,9 +492,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -543,9 +573,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -621,9 +656,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"
@@ -697,9 +737,14 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
+                max_items_per_sync: 500
+                include_contact_folders: false
               directory:
                 enabled: false
                 poll_interval_minutes: 10080
+                include_manager_chain: true
+                include_direct_reports: true
+                only_active_users: true
             converters:
               backends:
                 pdf: "markitdown"

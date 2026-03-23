@@ -20,7 +20,16 @@ from dotenv import find_dotenv, load_dotenv
 from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.auth.token_provider import make_cli_token_provider
 from m365_extract.config import Config, load_config
-from m365_extract.extractors import calendar, email, onedrive, sharepoint, teams_channels, teams_chats
+from m365_extract.extractors import (
+    calendar,
+    contacts,
+    directory,
+    email,
+    onedrive,
+    sharepoint,
+    teams_channels,
+    teams_chats,
+)
 from m365_extract.graph_client import GraphClient
 from m365_extract.state import SyncState
 from m365_extract.storage import create_storage
@@ -35,6 +44,8 @@ _EXTRACTORS = {
     "teams_channels": (teams_channels, lambda cfg: cfg.extractors.teams_channels, False),
     "onedrive": (onedrive, lambda cfg: cfg.extractors.onedrive, True),
     "sharepoint": (sharepoint, lambda cfg: cfg.extractors.sharepoint, True),
+    "contacts": (contacts, lambda cfg: cfg.extractors.contacts, False),
+    "directory": (directory, lambda cfg: cfg.extractors.directory, False),
 }
 
 

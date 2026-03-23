@@ -180,10 +180,15 @@ def full_config(tmp_path):
             contacts=ContactsExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=1440,
+                max_items_per_sync=500,
+                include_contact_folders=False,
             ),
             directory=DirectoryExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=10080,
+                include_manager_chain=True,
+                include_direct_reports=True,
+                only_active_users=True,
             ),
         ),
         converters={
