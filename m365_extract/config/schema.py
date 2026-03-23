@@ -11,6 +11,7 @@ class AuthConfig:
     tenant_id: str
     scopes: list[str]
     token_cache_path: str
+    client_secret: str | None
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,16 @@ class ExtractorsConfig:
 
 
 @dataclass(frozen=True)
+class WebConfig:
+    host: str
+    port: int
+    secret_key: str
+    fernet_key: str
+    db_path: str
+    session_timeout_minutes: int
+
+
+@dataclass(frozen=True)
 class Config:
     auth: AuthConfig
     service: ServiceConfig
@@ -136,3 +147,4 @@ class Config:
     state: StateConfig
     extractors: ExtractorsConfig
     converters: dict
+    web: WebConfig | None

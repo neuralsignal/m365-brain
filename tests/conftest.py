@@ -120,6 +120,7 @@ def full_config(tmp_path):
             tenant_id="test-tenant-id",
             scopes=["User.Read", "Mail.Read"],
             token_cache_path=str(tmp_path / "token_cache.json"),
+            client_secret=None,
         ),
         service=ServiceConfig(
             mode="cli",
@@ -195,4 +196,5 @@ def full_config(tmp_path):
             "backends": {"pdf": "markitdown", "docx": "markitdown", "default": "native"},
             "extraction": {"timeout_seconds": 30, "max_file_size_mb": 100, "xlsx_max_rows_per_sheet": 500},
         },
+        web=None,
     )

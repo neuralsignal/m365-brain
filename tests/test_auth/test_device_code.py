@@ -19,6 +19,7 @@ def auth_config(tmp_path):
         tenant_id="test-tenant-id",
         scopes=["User.Read", "Mail.Read", "offline_access"],
         token_cache_path=str(tmp_path / "token_cache.json"),
+        client_secret=None,
     )
 
 

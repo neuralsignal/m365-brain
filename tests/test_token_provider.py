@@ -14,6 +14,7 @@ def _auth_config() -> AuthConfig:
         tenant_id="test-tenant-id",
         scopes=["User.Read"],
         token_cache_path="/tmp/test_cache.json",
+        client_secret=None,
     )
 
 

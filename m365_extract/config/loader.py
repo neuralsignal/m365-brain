@@ -158,7 +158,7 @@ def _fail(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-_PATH_KEYS = frozenset({"base_path", "state_file_path", "token_cache_path"})
+_PATH_KEYS = frozenset({"base_path", "db_path", "state_file_path", "token_cache_path"})
 
 
 def _resolve_paths(data: object, config_dir: Path) -> object:
