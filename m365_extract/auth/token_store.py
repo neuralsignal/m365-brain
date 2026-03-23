@@ -18,9 +18,9 @@ log = structlog.get_logger()
 class TokenStore:
     """SQLite-backed encrypted token store for multi-user OAuth tokens."""
 
-    def __init__(self, db_path: str, fernet_key: str) -> None:
+    def __init__(self, db_path: str, fernet_key: str, check_same_thread: bool) -> None:
         self._fernet = Fernet(fernet_key.encode())
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
             """

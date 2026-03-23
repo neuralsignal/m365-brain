@@ -12,7 +12,7 @@ from m365_extract.user_manager import UserManager, UserRecord
 @pytest.fixture()
 def manager(tmp_path):
     db_path = str(tmp_path / "users.db")
-    return UserManager(db_path=db_path)
+    return UserManager(db_path=db_path, check_same_thread=True)
 
 
 class TestCreateAndGet:
@@ -104,7 +104,7 @@ class TestWalMode:
         import sqlite3
 
         db_path = str(tmp_path / "users.db")
-        UserManager(db_path=db_path)
+        UserManager(db_path=db_path, check_same_thread=True)
         conn = sqlite3.connect(db_path)
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         conn.close()
@@ -122,7 +122,7 @@ class TestPropertyBased:
 
         with tempfile.TemporaryDirectory() as td:
             db_path = f"{td}/prop_users.db"
-            m = UserManager(db_path=db_path)
+            m = UserManager(db_path=db_path, check_same_thread=True)
             user = m.create_user(user_id=user_id, display_name=display_name, email=email)
             retrieved = m.get_user(user_id)
             assert retrieved.user_id == user.user_id

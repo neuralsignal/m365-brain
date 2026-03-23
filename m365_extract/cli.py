@@ -80,6 +80,19 @@ def login(ctx: click.Context) -> None:
 
 
 @main.command()
+@click.pass_context
+def serve(ctx: click.Context) -> None:
+    """Start the web server (multi-user mode)."""
+    import uvicorn
+
+    from m365_extract.web.app import create_app
+
+    config = load_config(ctx.obj["config_path"])
+    app = create_app(config)
+    uvicorn.run(app, host=config.web.host, port=config.web.port)
+
+
+@main.command()
 @click.option("--once", is_flag=True, help="Run all enabled extractors once and exit")
 @click.option("--continuous", is_flag=True, help="Run extractors on their configured intervals")
 @click.option("--extractors", "extractor_names", type=str, help="Comma-separated list of extractors to run")

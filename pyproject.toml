@@ -39,6 +39,7 @@ web = [
     "uvicorn>=0.34,<1",
     "apscheduler>=3.10,<4",
     "cryptography>=46,<47",
+    "itsdangerous>=2.2,<3",
 ]
 azure = [
     "azure-storage-blob>=12.24,<13",
@@ -71,6 +72,9 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 ignore = ["E501", "SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+"m365_extract/web/routes_*.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

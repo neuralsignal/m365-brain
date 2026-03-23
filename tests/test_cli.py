@@ -9,6 +9,7 @@ import click.testing
 import pytest
 
 from m365_extract.cli import _EXTRACTORS, main
+from m365_extract.config import WebConfig
 
 
 @pytest.fixture()
@@ -307,3 +308,30 @@ class TestAuthLogin:
             assert result.exit_code == 0
             assert "42" in result.output
             assert "Authenticated successfully" in result.output
+
+
+class TestServeCommand:
+    def test_serve_calls_uvicorn(self, runner, config_file, full_config):
+        with (
+            _patch_cli("load_config") as mock_load,
+            patch("uvicorn.run") as mock_uvicorn_run,
+            patch("m365_extract.web.app.create_app") as mock_create_app,
+        ):
+            web_config = WebConfig(
+                host="0.0.0.0",
+                port=8000,
+                secret_key="test-secret",
+                fernet_key="test-fernet",
+                db_path="/tmp/web.db",
+                session_timeout_minutes=60,
+            )
+            config_with_web = replace(full_config, web=web_config)
+            mock_load.return_value = config_with_web
+            mock_app = MagicMock()
+            mock_create_app.return_value = mock_app
+
+            result = runner.invoke(main, ["--config", config_file, "serve"])
+
+            assert result.exit_code == 0
+            mock_create_app.assert_called_once_with(config_with_web)
+            mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=8000)

@@ -25,8 +25,8 @@ class UserRecord:
 class UserManager:
     """SQLite-backed user manager for multi-user sync scheduling."""
 
-    def __init__(self, db_path: str) -> None:
-        self._conn = sqlite3.connect(db_path)
+    def __init__(self, db_path: str, check_same_thread: bool) -> None:
+        self._conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
             """

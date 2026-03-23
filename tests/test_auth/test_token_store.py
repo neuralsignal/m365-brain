@@ -21,7 +21,7 @@ def fernet_key():
 @pytest.fixture()
 def store(tmp_path, fernet_key):
     db_path = str(tmp_path / "tokens.db")
-    return TokenStore(db_path=db_path, fernet_key=fernet_key)
+    return TokenStore(db_path=db_path, fernet_key=fernet_key, check_same_thread=True)
 
 
 class TestStoreAndRetrieve:
@@ -61,7 +61,7 @@ class TestStoreAndRetrieve:
 class TestEncryptionAtRest:
     def test_raw_db_does_not_contain_plaintext_token(self, tmp_path, fernet_key):
         db_path = str(tmp_path / "tokens.db")
-        s = TokenStore(db_path=db_path, fernet_key=fernet_key)
+        s = TokenStore(db_path=db_path, fernet_key=fernet_key, check_same_thread=True)
         secret_token = "super-secret-access-token-value"
         s.store_tokens("user-1", {"access_token": secret_token})
 
@@ -70,11 +70,11 @@ class TestEncryptionAtRest:
 
     def test_wrong_key_cannot_decrypt(self, tmp_path, fernet_key):
         db_path = str(tmp_path / "tokens.db")
-        s1 = TokenStore(db_path=db_path, fernet_key=fernet_key)
+        s1 = TokenStore(db_path=db_path, fernet_key=fernet_key, check_same_thread=True)
         s1.store_tokens("user-1", {"access_token": "secret"})
 
         wrong_key = Fernet.generate_key().decode()
-        s2 = TokenStore(db_path=db_path, fernet_key=wrong_key)
+        s2 = TokenStore(db_path=db_path, fernet_key=wrong_key, check_same_thread=True)
         with pytest.raises(cryptography.fernet.InvalidToken):
             s2.get_tokens("user-1")
 
@@ -82,7 +82,7 @@ class TestEncryptionAtRest:
 class TestWalMode:
     def test_db_uses_wal_journal_mode(self, tmp_path, fernet_key):
         db_path = str(tmp_path / "tokens.db")
-        TokenStore(db_path=db_path, fernet_key=fernet_key)
+        TokenStore(db_path=db_path, fernet_key=fernet_key, check_same_thread=True)
         conn = sqlite3.connect(db_path)
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         conn.close()
@@ -105,6 +105,6 @@ class TestPropertyBased:
         with tempfile.TemporaryDirectory() as td:
             fernet_key = Fernet.generate_key().decode()
             db_path = f"{td}/prop_tokens.db"
-            s = TokenStore(db_path=db_path, fernet_key=fernet_key)
+            s = TokenStore(db_path=db_path, fernet_key=fernet_key, check_same_thread=True)  # noqa: E501
             s.store_tokens(user_id, token_dict)
             assert s.get_tokens(user_id) == token_dict
