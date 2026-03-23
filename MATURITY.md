@@ -1,77 +1,38 @@
 # m365-extract Maturity Assessment
 
-_2026-03-17 — Phase 3 complete_
+_2026-03-23 — v0.2.2 (Phases 1-3 + 6 complete)_
 
 ## Current State
 
-25 source modules, 6 extractors, 2 storage backends, 149 tests, Bicep IaC, Docker, Azurite dev workflow. Phases 1-3 of the roadmap are implemented.
+31 source modules, 8 extractors, 2 storage backends, 247 tests (23 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 82%+. Phases 1-3 and 6 of the roadmap are implemented.
 
 ### What's Implemented
 
 | Area | Status | Detail |
 |------|--------|--------|
-| Core library | Done | Graph client, auth (device code), state, config, markdown writer |
-| Extractors | 6/8 | email, calendar, teams_chats, teams_channels, onedrive, sharepoint |
+| Core library | Done | Graph client, auth (device code), state, config package, markdown writer |
+| Extractors | 8/8 | email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
 | Storage | Done | Local + Azure Blob backends, factory dispatch, StorageBackend protocol |
 | Document conversion | Done | obsidian-import pass-through config, deferred import |
 | CLI | Done | `auth login`, `sync --once`, `sync --continuous`, `--extractors` filter |
-| Config | Done | Frozen dataclasses, env var expansion, Optional field support |
+| Config | Done | Config package (loader.py + schema.py), frozen dataclasses, env var expansion |
 | Azure IaC | Done | Bicep templates (main.bicep), dev/prod parameter files |
 | Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, pixi tasks |
-| Tests | 149 pass | Unit + mock + Azurite integration (9 skip when no Azurite) |
+| Tests | 247 pass | Unit + mock + Azurite integration (9 skip when no Azurite) |
+| CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
+| Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
+| Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
+| Coverage | Done | pytest-cov, 82%+ threshold in CI |
+| Packaging | Done | PyPI publish workflow (OIDC on tag), release-please auto-versioning |
 | Dev scripts | 3 | dev-setup.sh, deploy-infra.sh, teardown-dev.sh |
 
-### What's Missing (Roadmap Phases 4-6)
+### What's Missing (Roadmap Phases 4-5)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
 | Phase 4 | Multi-user web service (FastAPI, auth code flow, token store, scheduler) | Not started |
-| Phase 5 | Webhooks + Azure App Service deployment + CI/CD | Not started |
-| Phase 6 | Contacts + directory extractors | Not started |
+| Phase 5 | Webhooks + Azure App Service deployment | Not started (CI/CD portion complete) |
 | Future | MCP server integration | Not started |
-
-## Gap Analysis vs. Reference Repos
-
-Compared against obsidian-import (18 GH Actions workflows, MkDocs, PyPI, CHANGELOG) and excel-model (15 workflows, 191 tests, MkDocs, PyPI).
-
-### Critical Gaps
-
-| Dimension | m365-extract | Reference repos | Priority |
-|-----------|-------------|-----------------|----------|
-| GitHub Actions CI | None | ci.yml (lint + test on push/PR) | **P0** |
-| Linting (ruff) | None | ruff (E,F,W,I,UP,B,SIM) in pyproject.toml | **P0** |
-| Pre-commit hooks | None | ruff + ruff-format + pixi-lock | **P0** |
-| README.md | None | 200+ lines (install, quickstart, architecture) | **P0** |
-| CLAUDE.md | None | 10+ KB (engineering standards, build/test, agent context) | **P0** |
-| CHANGELOG.md | None | Semantic versioning entries per release | **P1** |
-
-### Medium Gaps
-
-| Dimension | m365-extract | Reference repos | Priority |
-|-----------|-------------|-----------------|----------|
-| pixi tasks (lint/fmt) | 2 (test, test-azurite) | 7+ (lint, format, format-check, test-cov, docs-build, docs-serve) | **P1** |
-| MkDocs docs site | None | Material theme, API ref via mkdocstrings, GitHub Pages deploy | **P1** |
-| Coverage tracking | None | pytest-cov, 80% threshold | **P1** |
-| PyPI publish workflow | None | OIDC auto-publish on tag | **P2** |
-| Auto-tag workflow | None | Reads version from pyproject.toml, creates git tag | **P2** |
-
-### Low Gaps (Automation Polish)
-
-| Dimension | m365-extract | Reference repos | Priority |
-|-----------|-------------|-----------------|----------|
-| Agent workflows | None | 8 Claude agent workflows (code-quality, coverage, security, dep-audit, docs-freshness, issue-triage, PR-review, PR-autofix) | **P3** |
-| Property-based tests | hypothesis in deps, unused | hypothesis used on pure functions | **P3** |
-| py.typed marker | None | None (gap in reference repos too) | **P3** |
-| mypy config | None | None (gap in reference repos too) | **P3** |
-
-### Where m365-extract is Ahead
-
-| Dimension | m365-extract | Reference repos |
-|-----------|-------------|-----------------|
-| Docker | Dockerfile + docker-compose.dev.yaml | None |
-| IaC (Bicep) | Storage Account + params per env | None |
-| Dev scripts | dev-setup.sh, deploy-infra.sh, teardown-dev.sh | None |
-| Multi-backend storage | Local + Azure Blob + factory | Single backend |
 
 ## Architecture Quality
 
@@ -81,32 +42,61 @@ The codebase follows the workspace engineering principles well:
 - **Fail fast**: `SystemExit(1)` with clear messages on config errors
 - **Modular**: Each extractor is a standalone module; storage backends are pluggable via protocol
 - **Frozen dataclasses**: Config immutability enforced at the type level
+- **Config package split**: `config.py` refactored into `config/` package (loader.py + schema.py) to stay under the 300-line limit
+- **Shared helpers**: `_message_helpers.py` extracted for Teams extractors, `_execute_with_retry` extracted for retry logic in graph_client.py
 - **Deferred imports**: Optional deps (azure-storage-blob, obsidian-import) imported at call time
 - **Token provider abstraction**: GraphClient decoupled from auth flow
 - **Delta sync**: Incremental sync via Graph API delta tokens, state persisted in JSON
+- **Custom exceptions**: `GraphApiError` used instead of bare `RuntimeError`
+- **Path traversal protection**: LocalBackend validates paths to prevent directory escape
+- **Restrictive permissions**: MSAL token cache set to 0600
 
-## Implementation Plan
+## Where m365-extract is Ahead of Reference Repos
 
-### Tier 1 — Foundational Hygiene
+| Dimension | m365-extract | Reference repos |
+|-----------|-------------|-----------------|
+| Docker | Dockerfile + docker-compose.dev.yaml | None |
+| IaC (Bicep) | Storage Account + params per env | None |
+| Dev scripts | dev-setup.sh, deploy-infra.sh, teardown-dev.sh | None |
+| Multi-backend storage | Local + Azure Blob + factory | Single backend |
+| Dark factory automation | Full autonomous agent loop (8 scan/fix workflows) | None |
 
-1. **ruff config** in pyproject.toml (E,F,W,I,UP,B,SIM; line-length 120; target py312)
-2. **Pre-commit config** (ruff + ruff-format + pixi-lock)
-3. **pixi tasks** (lint, format, format-check, test-cov)
-4. **CI workflow** (ci.yml: lint + test on push/PR via setup-pixi)
-5. **README.md** (install, quickstart, config, architecture, dev workflow)
-6. **CLAUDE.md** (engineering context for agents)
-7. **CHANGELOG.md** (Phase 1-3 entries)
+## Dark Factory Activity
 
-### Tier 2 — Professional Packaging
+Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits across 4 releases (0.1.0 → 0.2.0 → 0.2.1 → 0.2.2):
 
-8. **MkDocs** site with Material theme + mkdocstrings API reference
-9. **Docs deploy workflow** (GitHub Pages on push to main)
-10. **Coverage threshold** (80% via pytest-cov in CI)
-11. **Auto-tag workflow** (version from pyproject.toml)
-12. **Publish workflow** (PyPI via OIDC on tag)
+### Infrastructure Built
 
-### Tier 3 — Automation
+- 18 GitHub Actions workflows: CI, release-please, docs-deploy, publish, and 8 dark factory agent workflows (code-quality, test-coverage, security-scan, dep-audit, docs-freshness, issue-triage, PR-review, PR-autofix)
+- ruff linting + pre-commit hooks
+- MkDocs + Material docs site with GitHub Pages deploy
+- CLAUDE.md, README.md, CHANGELOG.md, LICENSE
+- pytest-cov with 82%+ coverage threshold
+- pixi tasks: lint, format, format-check, test, test-cov, test-azurite, docs-build, docs-serve
 
-13. **Claude agent workflows** (code-quality, test-coverage, security-scan, dep-audit)
-14. **PR auto-review + auto-fix** (claude-code-action)
-15. **Docs freshness check** (weekly)
+### Code Quality Improvements
+
+- `config.py` split into `config/` package (loader.py + schema.py) to meet 300-line limit (#10)
+- Shared `_message_helpers.py` extracted for Teams extractors (#12)
+- Shared `_execute_with_retry` extracted for retry logic (#14)
+- Dead `write_markdown` function removed (#13)
+- Type hints added to `_run_extractors` and `_run_continuous` (#11)
+- Bare `RuntimeError` replaced with `GraphApiError` (#17)
+- Silent exception swallowing fixed in teams_chats.py (#15)
+
+### Security Fixes
+
+- Path traversal protection added to LocalBackend (#3)
+- Restrictive permissions (0600) on MSAL token cache (#4)
+- Cryptography pin widened for CVE-2026-26007 (#35)
+
+### Test Coverage Expansion
+
+- CLI tests (#28), token_provider tests (#27), base extractor tests (#29), message helpers tests (#30)
+- Test count: 158 → 247 (56% increase)
+- Test files: 18 → 23
+
+### New Extractors
+
+- Contacts extractor (Phase 6)
+- Directory extractor (Phase 6)

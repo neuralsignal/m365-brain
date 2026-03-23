@@ -95,14 +95,20 @@
 
 ---
 
-## Phase 5: Webhooks + Deployment
+## Phase 5: Webhooks + Deployment -- PARTIAL
 
 **Goal**: Near-real-time sync deployed to Azure App Service.
 
-**Implementation**:
+**Status**: CI/CD infrastructure is complete (18 GitHub Actions workflows including CI, release-please, publish, docs-deploy, and 8 dark factory agent workflows). Remaining: Azure App Service deployment and Graph webhooks.
+
+**Done**:
+- GitHub Actions CI/CD workflows (lint, test, coverage, release-please, PyPI publish, docs deploy)
+- Dark factory agent workflows (code-quality, test-coverage, security-scan, dep-audit, docs-freshness, issue-triage, PR-review, PR-autofix)
+
+**Remaining**:
 1. `web/routes_webhooks.py` — Graph change notification handler
 2. Subscription management (create, renew, validate)
-3. GitHub Actions CI/CD workflow (OIDC federated identity, ACR push, App Service deploy)
+3. Azure App Service deployment (ACR push, OIDC federated identity)
 
 ### Stopping Point 5: Azure Deployment Infrastructure
 
@@ -115,12 +121,30 @@
 
 ---
 
-## Phase 6: Contacts + Directory
+## Phase 6: Contacts + Directory -- DONE
 
 **Prerequisites**: `Contacts.Read` and `User.Read.All` permissions granted in Entra admin center.
 
-1. `extractors/contacts.py` — personal contacts with delta sync
-2. `extractors/directory.py` — GAL full refresh
+1. `extractors/contacts.py` — personal contacts with delta sync ✓
+2. `extractors/directory.py` — GAL full refresh ✓
+
+Implemented and merged in v0.3.0-pending (commit `4666ef0`).
+
+---
+
+## Bonus: Dark Factory Infrastructure -- DONE
+
+_Completed 2026-03-17 to 2026-03-23 by autonomous Claude agents._
+
+Not part of the original roadmap. The dark factory loop (scan → triage → implement → review → merge) was set up during the initial extraction and has been running autonomously since. Results:
+
+- 50+ commits, 4 releases (0.1.0 → 0.2.2)
+- 18 GitHub Actions workflows
+- ruff + pre-commit, MkDocs + Material, pytest-cov 82%+, release-please
+- CLAUDE.md, README.md, CHANGELOG.md, LICENSE
+- Config package split, shared helpers extraction, dead code removal
+- Path traversal protection, token cache hardening, CVE fix
+- Test count: 158 → 247 across 23 test files
 
 ---
 
