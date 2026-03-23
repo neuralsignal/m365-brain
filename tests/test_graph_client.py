@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient, _extract_graph_error
+from m365_extract.graph_client import GRAPH_BASE_URL, GraphApiError, GraphClient, _extract_graph_error
 
 
 @pytest.fixture()
@@ -107,7 +106,7 @@ class TestGet:
                 url=f"{GRAPH_BASE_URL}/me",
                 status_code=500,
             )
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GraphApiError, match="HTTP 500"):
             client.get("/me")
 
     def test_404_raises_immediately(self, httpx_mock: HTTPXMock, client):
@@ -115,7 +114,7 @@ class TestGet:
             url=f"{GRAPH_BASE_URL}/me",
             status_code=404,
         )
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GraphApiError, match="HTTP 404"):
             client.get("/me")
 
 
@@ -155,7 +154,7 @@ class TestGetBytes:
                 url=f"{GRAPH_BASE_URL}/me/drive/content",
                 status_code=500,
             )
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GraphApiError, match="HTTP 500"):
             client.get_bytes("/me/drive/content")
 
 
@@ -337,7 +336,7 @@ class TestExtractGraphError:
         )
 
         c = GraphClient(graph_config, lambda: "test-token")
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GraphApiError, match="HTTP 401"):
             c.get("/me")
         c.close()
 
@@ -356,5 +355,64 @@ class TestExtractGraphError:
             status_code=404,
             text=pii_body,
         )
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GraphApiError, match="ResourceNotFound"):
             client.get("/me/messages/123")
+
+
+class TestFriendlyErrors:
+    """Tests for actionable error hints on known Graph error codes."""
+
+    def test_403_insufficient_privileges_includes_hint(self, httpx_mock: HTTPXMock, client):
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "Authorization_RequestDenied",
+                    "message": "Insufficient privileges to complete the operation.",
+                }
+            }
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            status_code=403,
+            text=body,
+        )
+        with pytest.raises(GraphApiError, match="Hint:.*Entra.*API permissions") as exc_info:
+            client.get("/me/messages")
+        assert "Authorization_RequestDenied" in str(exc_info.value)
+
+    def test_401_invalid_token_includes_hint(self, httpx_mock: HTTPXMock, graph_config):
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "InvalidAuthenticationToken",
+                    "message": "Access token has expired.",
+                }
+            }
+        )
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", status_code=401)
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", status_code=401, text=body)
+
+        c = GraphClient(graph_config, lambda: "expired-token")
+        with pytest.raises(GraphApiError, match="Hint:.*auth login") as exc_info:
+            c.get("/me")
+        assert "InvalidAuthenticationToken" in str(exc_info.value)
+        c.close()
+
+    def test_unknown_error_code_has_no_hint(self, httpx_mock: HTTPXMock, client):
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "SomeNewError",
+                    "message": "Something unexpected.",
+                }
+            }
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me",
+            status_code=400,
+            text=body,
+        )
+        with pytest.raises(GraphApiError) as exc_info:
+            client.get("/me")
+        assert "Hint:" not in str(exc_info.value)
+        assert "SomeNewError" in str(exc_info.value)

@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from m365_extract.auth.token_store import TokenStore
 from m365_extract.config import Config
 from m365_extract.user_manager import UserManager
-from m365_extract.web.exceptions import SyncError, UserNotFoundError, WebConfigError
+from m365_extract.web.exceptions import AccessDeniedError, SyncError, UserNotFoundError, WebConfigError
 from m365_extract.web.routes_admin import router as admin_router
 from m365_extract.web.routes_auth import router as auth_router
 from m365_extract.web.routes_health import router as health_router
@@ -65,5 +65,9 @@ def create_app(config: Config) -> FastAPI:
     @app.exception_handler(SyncError)
     async def sync_error_handler(request: Request, exc: SyncError) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+    @app.exception_handler(AccessDeniedError)
+    async def access_denied_handler(request: Request, exc: AccessDeniedError) -> JSONResponse:
+        return JSONResponse({"error": str(exc)}, status_code=403)
 
     return app

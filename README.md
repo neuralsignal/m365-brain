@@ -81,6 +81,7 @@ auth:
     - "Sites.Read.All"
     - "offline_access"
   token_cache_path: "./state/token_cache.json"
+  client_secret: null  # Required for web mode; null for CLI device code flow
 
 service:
   mode: "cli"           # "cli" or "web"
@@ -287,7 +288,8 @@ m365-extract/
     storage/           # Storage backend interface + implementations
     web/               # FastAPI web service (optional)
     cli.py             # Click CLI entry point
-    config.py          # Frozen dataclass config loader with env var expansion
+    sync.py            # Public sync API (extractors runner, used by CLI + web)
+    config/            # Frozen dataclass config loader with env var expansion
     graph_client.py    # httpx-based Graph API client with retry + pagination
     markdown_writer.py # Markdown + YAML frontmatter serialization
     state.py           # JSON-backed sync state (delta tokens, timestamps)
@@ -327,6 +329,9 @@ graph LR
 | `ChannelMessage.Read.All` | Teams channels extractor |
 | `Files.Read.All` | OneDrive + SharePoint extractors |
 | `Sites.Read.All` | SharePoint extractor |
+| `Contacts.Read` | Contacts extractor |
+| `User.Read.All` | Directory extractor |
+| `Directory.Read.All` | Directory extractor (manager chain, direct reports) |
 | `offline_access` | Persistent token refresh |
 
 All scopes use delegated (user) permissions via the device code flow. No application-level permissions are required.

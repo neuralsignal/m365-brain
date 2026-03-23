@@ -14,3 +14,4 @@ vault/
 *.db
 .env
 .env.*
+!.env.example

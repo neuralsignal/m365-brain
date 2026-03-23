@@ -28,6 +28,29 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 _ERROR_MESSAGE_MAX_LENGTH = 200
 
+# Maps Graph error codes to actionable CLI hints.
+_ERROR_HINTS: dict[str, str] = {
+    "Authorization_RequestDenied": (
+        "The app lacks the required permission. "
+        "Go to Entra > App registrations > API permissions and grant the missing scope, then re-consent."
+    ),
+    "InsufficientPrivileges": (
+        "Admin consent is required for this permission. "
+        "Ask your tenant admin to grant consent in Entra > App registrations > API permissions."
+    ),
+    "InvalidAuthenticationToken": (
+        "The access token is invalid or expired. Run: m365-extract --config config.yaml auth login"
+    ),
+    "OrganizationFromTenantGuidNotFound": (
+        "The tenant ID in your config does not match a valid Entra tenant. Check MSAL_TENANT_ID in .env."
+    ),
+    "AuthenticationError": (
+        "Authentication failed. Verify MSAL_CLIENT_ID and MSAL_TENANT_ID in .env, "
+        "then run: m365-extract --config config.yaml auth login"
+    ),
+    "ErrorAccessDenied": ("Access denied for this resource. The signed-in user may lack the required role or license."),
+}
+
 
 def _extract_graph_error(body: str) -> tuple[str, str]:
     """Extract error code and message from a Graph API error response.
@@ -47,6 +70,15 @@ def _extract_graph_error(body: str) -> tuple[str, str]:
         return code, message
     except (json.JSONDecodeError, KeyError, TypeError):
         return "unknown", "non-json response"
+
+
+def _friendly_error(status: int, error_code: str, error_message: str, path: str) -> str:
+    """Build a human-readable error message with an actionable hint if available."""
+    hint = _ERROR_HINTS.get(error_code, "")
+    parts = [f"Graph API error on {path}: HTTP {status} — {error_code}: {error_message}"]
+    if hint:
+        parts.append(f"  Hint: {hint}")
+    return "\n".join(parts)
 
 
 class GraphClient:
@@ -131,16 +163,17 @@ class GraphClient:
                     error_code=error_code,
                     error_message=error_message,
                 )
-                response.raise_for_status()
+                raise GraphApiError(_friendly_error(401, error_code, error_message, log_ref))
 
             if response.status_code in RETRYABLE_STATUS_CODES:
                 if attempt == self._max_retries:
+                    error_code, error_message = _extract_graph_error(response.text)
                     log.error(
                         "graph.max_retries_exceeded",
                         status=response.status_code,
                         path=log_ref,
                     )
-                    response.raise_for_status()
+                    raise GraphApiError(_friendly_error(response.status_code, error_code, error_message, log_ref))
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After", "5")
@@ -165,7 +198,7 @@ class GraphClient:
                 error_code=error_code,
                 error_message=error_message,
             )
-            response.raise_for_status()
+            raise GraphApiError(_friendly_error(response.status_code, error_code, error_message, log_ref))
 
         msg = f"Graph API request failed after {self._max_retries} retries: {log_ref}"
         raise GraphApiError(msg)

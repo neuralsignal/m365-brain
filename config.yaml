@@ -14,6 +14,7 @@ auth:
     - "Directory.Read.All"
     - "offline_access"
   token_cache_path: "./state/token_cache.json"
+  client_secret: null
 
 service:
   mode: "cli"

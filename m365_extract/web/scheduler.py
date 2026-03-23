@@ -5,16 +5,17 @@ Uses APScheduler's BackgroundScheduler (sync) to periodically run extractors for
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import structlog
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from m365_extract.auth.token_provider import make_web_token_provider
-from m365_extract.cli import _run_extractors
 from m365_extract.config import Config
 from m365_extract.state import SyncState
 from m365_extract.storage import create_storage
+from m365_extract.sync import run_extractors
 
 if TYPE_CHECKING:
     from m365_extract.auth.token_store import TokenStore
@@ -68,6 +69,15 @@ class SyncScheduler:
         except Exception:
             log.warning("scheduler.job_not_found", user_id=user_id)
 
+    def _user_scoped_storage(self, user_id: str):
+        """Create a storage backend with a user-scoped base path for data isolation."""
+        storage_config = self._config.storage
+        if storage_config.local is not None:
+            user_base = f"{storage_config.local.base_path}/{user_id}"
+            user_local = replace(storage_config.local, base_path=user_base)
+            storage_config = replace(storage_config, local=user_local)
+        return create_storage(storage_config)
+
     def _sync_user(self, user_id: str) -> None:
         """Run extractors for a single user."""
         log.info("scheduler.sync_start", user_id=user_id)
@@ -77,10 +87,10 @@ class SyncScheduler:
                 user_id=user_id,
                 auth_config=self._config.auth,
             )
-            storage = create_storage(self._config.storage)
+            storage = self._user_scoped_storage(user_id)
             sync_state = SyncState(self._config.state.state_file_path)
             names = list(self._config.extractors.__dataclass_fields__.keys())
-            _run_extractors(self._config, token_provider, storage, sync_state, names)
+            run_extractors(self._config, token_provider, storage, sync_state, names)
             log.info("scheduler.sync_done", user_id=user_id)
         except Exception as exc:
             log.error("scheduler.sync_failed", user_id=user_id, error=str(exc))

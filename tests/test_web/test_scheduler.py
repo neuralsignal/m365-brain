@@ -103,7 +103,7 @@ class TestSyncScheduler:
                 user_manager=mock_user_manager,
             )
 
-    @patch("m365_extract.web.scheduler._run_extractors")
+    @patch("m365_extract.web.scheduler.run_extractors")
     @patch("m365_extract.web.scheduler.make_web_token_provider")
     @patch("m365_extract.web.scheduler.create_storage")
     @patch("m365_extract.web.scheduler.SyncState")
@@ -128,3 +128,30 @@ class TestSyncScheduler:
 
         mock_provider.assert_called_once()
         mock_run.assert_called_once()
+
+    @patch("m365_extract.web.scheduler.run_extractors")
+    @patch("m365_extract.web.scheduler.make_web_token_provider")
+    @patch("m365_extract.web.scheduler.create_storage")
+    @patch("m365_extract.web.scheduler.SyncState")
+    def test_sync_user_creates_user_scoped_storage(
+        self,
+        mock_state_cls,
+        mock_create_storage,
+        mock_provider,
+        mock_run,
+        full_web_config,
+        mock_token_store,
+        mock_user_manager,
+    ):
+        mock_user_manager.list_users.return_value = []
+
+        scheduler = SyncScheduler(
+            config=full_web_config,
+            token_store=mock_token_store,
+            user_manager=mock_user_manager,
+        )
+        scheduler._sync_user("user-abc")
+
+        called_config = mock_create_storage.call_args[0][0]
+        assert called_config.local is not None
+        assert called_config.local.base_path.endswith("/user-abc")

@@ -99,11 +99,17 @@
 
 **Goal**: Near-real-time sync deployed to Azure App Service.
 
-**Status**: CI/CD infrastructure is complete (18 GitHub Actions workflows including CI, release-please, publish, docs-deploy, and 8 dark factory agent workflows). Remaining: Azure App Service deployment and Graph webhooks.
+**Status**: CI/CD infrastructure is complete (18 GitHub Actions workflows including CI, release-please, publish, docs-deploy, and 8 dark factory agent workflows). Web mode hardened with per-user storage isolation, access control, and token expiry fix. Remaining: Azure App Service deployment and Graph webhooks.
 
 **Done**:
 - GitHub Actions CI/CD workflows (lint, test, coverage, release-please, PyPI publish, docs deploy)
 - Dark factory agent workflows (code-quality, test-coverage, security-scan, dep-audit, docs-freshness, issue-triage, PR-review, PR-autofix)
+- `sync.py` — public sync API extracted from CLI layer (web + CLI both import from here)
+- `web/middleware.py` — per-user access control (session user must match URL user_id, returns 403)
+- Per-user storage isolation — web mode writes to `vault/{user_id}/` instead of shared `vault/`
+- `expires_at` token computation in auth callback — prevents unnecessary refresh on every request
+- `config.yaml` — `client_secret: null` for CLI mode compatibility
+- `.env.example` — template for environment variables
 
 **Remaining**:
 1. `web/routes_webhooks.py` — Graph change notification handler

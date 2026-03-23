@@ -17,3 +17,7 @@ class UserNotFoundError(Exception):
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
         super().__init__(f"User '{user_id}' not found")
+
+
+class AccessDeniedError(Exception):
+    """Raised when a user tries to access another user's resources."""

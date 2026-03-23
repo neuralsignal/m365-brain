@@ -6,17 +6,19 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 
 | Path | Purpose |
 |------|---------|
-| `m365_extract/` | Source package (20 modules) |
-| `m365_extract/auth/` | MSAL device code auth, token provider |
-| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once/--continuous`) |
-| `m365_extract/config.py` | Frozen dataclass config loader with env var expansion |
+| `m365_extract/` | Source package |
+| `m365_extract/auth/` | MSAL device code + auth code flow, token provider, token store |
+| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once/--continuous`, `serve`) |
+| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + web) |
+| `m365_extract/config/` | Frozen dataclass config loader with env var expansion |
 | `m365_extract/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
-| `m365_extract/extractors/` | 6 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint |
+| `m365_extract/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
 | `m365_extract/graph_client.py` | Microsoft Graph API client (httpx, pagination, retry, rate limiting) |
 | `m365_extract/markdown_writer.py` | Markdown frontmatter builders + slugify |
 | `m365_extract/state.py` | Sync state persistence (delta tokens) |
 | `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
-| `tests/` | 18 test files, 158 tests (pytest + hypothesis) |
+| `m365_extract/web/` | FastAPI web service (auth, sync, admin, scheduler, middleware) |
+| `tests/` | 322 tests (pytest + hypothesis) |
 | `infra/` | Bicep IaC (main.bicep, params.dev.bicepparam, params.prod.bicepparam) |
 | `scripts/` | Dev setup, deploy, teardown scripts |
 | `vault/` | Local sync output directory (emails, calendar, onedrive, sharepoint, teams-chats) |

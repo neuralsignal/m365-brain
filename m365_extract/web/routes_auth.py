@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 
 import structlog
 from fastapi import APIRouter, Depends, Request
@@ -60,10 +61,12 @@ def callback(
     display_name = claims.get("name", "")
     email = claims.get("preferred_username", "")
 
+    expires_in = result.get("expires_in", 3600)
     tokens_to_store = {
         "access_token": result["access_token"],
         "refresh_token": result.get("refresh_token", ""),
-        "expires_in": result.get("expires_in", 3600),
+        "expires_in": expires_in,
+        "expires_at": time.time() + expires_in,
     }
 
     token_store.store_tokens(user_id, tokens_to_store)

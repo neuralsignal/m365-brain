@@ -90,6 +90,39 @@ class TestCallback:
         assert "Invalid OAuth state" in response.json()["error"]
 
 
+class TestCallbackExpiresAt:
+    @patch("m365_extract.web.routes_auth.AuthCodeAuth")
+    @patch("m365_extract.web.routes_auth.time")
+    def test_callback_stores_expires_at(self, mock_time, mock_auth_cls, client, mock_token_store, mock_user_manager):
+        """Verify that the auth callback computes and stores expires_at from expires_in."""
+        mock_time.time.return_value = 1000.0
+        mock_auth = MagicMock()
+        mock_auth_cls.return_value = mock_auth
+        mock_auth.acquire_token_by_code.return_value = {
+            "access_token": "at-123",
+            "refresh_token": "rt-456",
+            "expires_in": 3600,
+            "id_token_claims": {
+                "oid": "user-oid",
+                "name": "Test User",
+                "preferred_username": "test@example.com",
+            },
+        }
+        mock_user_manager.get_user.return_value = None
+
+        with client:
+            mock_auth.get_auth_url.return_value = "https://example.com"
+            client.get("/auth/login", follow_redirects=False)
+            state = mock_auth.get_auth_url.call_args[1]["state"]
+            client.get(f"/auth/callback?code=auth-code&state={state}")
+
+        stored = mock_token_store.store_tokens.call_args[0][1]
+        assert stored["expires_at"] == 4600.0
+        assert stored["access_token"] == "at-123"
+        assert stored["refresh_token"] == "rt-456"
+        assert stored["expires_in"] == 3600
+
+
 class TestLogout:
     def test_logout_clears_session(self, client):
         response = client.post("/auth/logout")

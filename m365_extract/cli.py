@@ -2,15 +2,19 @@
 
 Commands:
   m365-extract auth login       — Authenticate via device code flow
+  m365-extract auth status      — Show cached token info
   m365-extract sync --once      — Run all enabled extractors once
   m365-extract sync --continuous — Run extractors on their configured intervals
+  m365-extract sync --dry-run   — Validate auth + scopes without writing files
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
@@ -20,33 +24,13 @@ from dotenv import find_dotenv, load_dotenv
 from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.auth.token_provider import make_cli_token_provider
 from m365_extract.config import Config, load_config
-from m365_extract.extractors import (
-    calendar,
-    contacts,
-    directory,
-    email,
-    onedrive,
-    sharepoint,
-    teams_channels,
-    teams_chats,
-)
 from m365_extract.graph_client import GraphClient
 from m365_extract.state import SyncState
 from m365_extract.storage import create_storage
 from m365_extract.storage.base import StorageBackend
+from m365_extract.sync import EXTRACTORS, run_extractors
 
 log = structlog.get_logger()
-
-_EXTRACTORS = {
-    "email": (email, lambda cfg: cfg.extractors.email, False),
-    "calendar": (calendar, lambda cfg: cfg.extractors.calendar, False),
-    "teams_chats": (teams_chats, lambda cfg: cfg.extractors.teams_chats, False),
-    "teams_channels": (teams_channels, lambda cfg: cfg.extractors.teams_channels, False),
-    "onedrive": (onedrive, lambda cfg: cfg.extractors.onedrive, True),
-    "sharepoint": (sharepoint, lambda cfg: cfg.extractors.sharepoint, True),
-    "contacts": (contacts, lambda cfg: cfg.extractors.contacts, False),
-    "directory": (directory, lambda cfg: cfg.extractors.directory, False),
-}
 
 
 @click.group()
@@ -79,6 +63,53 @@ def login(ctx: click.Context) -> None:
     click.echo(f"Authenticated successfully. Token length: {len(token)}")
 
 
+@auth.command()
+@click.pass_context
+def status(ctx: click.Context) -> None:
+    """Show cached authentication status."""
+    config = load_config(ctx.obj["config_path"])
+    cache_path = Path(config.auth.token_cache_path)
+
+    if not cache_path.exists():
+        click.echo("No cached token found. Run: m365-extract --config config.yaml auth login")
+        raise SystemExit(1)
+
+    cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+
+    accounts = cache_data.get("Account", {})
+    if not accounts:
+        click.echo("Token cache exists but contains no accounts. Run auth login to re-authenticate.")
+        raise SystemExit(1)
+
+    access_tokens = cache_data.get("AccessToken", {})
+
+    click.echo("Cached authentication:")
+    for _key, account in accounts.items():
+        username = account.get("username", "unknown")
+        realm = account.get("realm", "unknown")
+        click.echo(f"  Account:  {username}")
+        click.echo(f"  Tenant:   {realm}")
+
+    if access_tokens:
+        for _key, token_entry in access_tokens.items():
+            target = token_entry.get("target", "")
+            expires_on = token_entry.get("expires_on")
+            if expires_on:
+                exp_dt = datetime.fromtimestamp(int(expires_on), tz=UTC)
+                now = datetime.now(tz=UTC)
+                if exp_dt > now:
+                    delta = exp_dt - now
+                    minutes = int(delta.total_seconds() // 60)
+                    click.echo(f"  Token:    valid (expires in {minutes}m)")
+                else:
+                    click.echo("  Token:    expired (will auto-refresh on next sync)")
+            scopes = target.split() if target else []
+            if scopes:
+                click.echo(f"  Scopes:   {', '.join(sorted(scopes))}")
+    else:
+        click.echo("  Token:    no access tokens cached (will re-acquire on next sync)")
+
+
 @main.command()
 @click.pass_context
 def serve(ctx: click.Context) -> None:
@@ -95,12 +126,13 @@ def serve(ctx: click.Context) -> None:
 @main.command()
 @click.option("--once", is_flag=True, help="Run all enabled extractors once and exit")
 @click.option("--continuous", is_flag=True, help="Run extractors on their configured intervals")
+@click.option("--dry-run", is_flag=True, help="Validate auth and probe each extractor without writing files")
 @click.option("--extractors", "extractor_names", type=str, help="Comma-separated list of extractors to run")
 @click.pass_context
-def sync(ctx: click.Context, once: bool, continuous: bool, extractor_names: str | None) -> None:
+def sync(ctx: click.Context, once: bool, continuous: bool, dry_run: bool, extractor_names: str | None) -> None:
     """Sync Microsoft 365 data."""
-    if not once and not continuous:
-        raise click.UsageError("Specify either --once or --continuous")
+    if not once and not continuous and not dry_run:
+        raise click.UsageError("Specify --once, --continuous, or --dry-run")
 
     config = load_config(ctx.obj["config_path"])
 
@@ -111,51 +143,90 @@ def sync(ctx: click.Context, once: bool, continuous: bool, extractor_names: str 
     )
 
     token_provider = make_cli_token_provider(config.auth)
-    storage = create_storage(config.storage)
-    sync_state = SyncState(config.state.state_file_path)
 
     # Determine which extractors to run
     if extractor_names:
         names = [n.strip() for n in extractor_names.split(",")]
     else:
-        names = list(_EXTRACTORS.keys())
+        names = list(EXTRACTORS.keys())
+
+    if dry_run:
+        _dry_run(config, token_provider, names)
+        return
+
+    storage = create_storage(config.storage)
+    sync_state = SyncState(config.state.state_file_path)
 
     if once:
-        _run_extractors(config, token_provider, storage, sync_state, names)
+        run_extractors(config, token_provider, storage, sync_state, names)
     elif continuous:
         _run_continuous(config, token_provider, storage, sync_state, names)
 
 
-def _run_extractors(
-    config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
-) -> None:
-    """Run enabled extractors once."""
+# Maps extractor names to a lightweight Graph probe endpoint.
+# Each returns a small payload to confirm the scope is granted.
+_DRY_RUN_PROBES: dict[str, str] = {
+    "email": "/me/mailFolders/Inbox/messages?$top=1&$select=id,subject",
+    "calendar": "/me/calendarView?$top=1&$select=id,subject&startDateTime=2020-01-01T00:00:00Z&endDateTime=2099-12-31T00:00:00Z",
+    "teams_chats": "/me/chats?$top=1&$select=id,topic",
+    "teams_channels": "/me/joinedTeams?$top=1&$select=id,displayName",
+    "onedrive": "/me/drive/root/children?$top=1&$select=id,name",
+    "sharepoint": "/me/followedSites?$top=1&$select=id,displayName",
+    "contacts": "/me/contacts?$top=1&$select=id,displayName",
+    "directory": "/users?$top=1&$select=id,displayName",
+}
+
+
+def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]) -> None:
+    """Validate auth and probe each extractor's endpoint without writing files."""
+    from m365_extract.graph_client import GraphApiError
+
+    click.echo("Dry run: validating authentication and extractor permissions...\n")
+
+    # Step 1: Validate token by calling /me
     with GraphClient(config.graph, token_provider) as client:
+        try:
+            me = client.get("/me?$select=displayName,userPrincipalName")
+            display_name = me.get("displayName", "unknown")
+            upn = me.get("userPrincipalName", "unknown")
+            click.echo(f"  Auth:     OK (signed in as {display_name} <{upn}>)")
+        except GraphApiError as exc:
+            click.echo(f"  Auth:     FAILED — {exc}")
+            raise SystemExit(1) from exc
+
+        # Step 2: Probe each enabled extractor
+        passed = 0
+        failed = 0
         for ext_name in names:
-            if ext_name not in _EXTRACTORS:
-                log.warning("cli.unknown_extractor", name=ext_name)
+            if ext_name not in EXTRACTORS:
+                click.echo(f"  {ext_name:16s} UNKNOWN (not a valid extractor)")
+                failed += 1
                 continue
 
-            module, config_getter, needs_converters = _EXTRACTORS[ext_name]
+            _, config_getter, _ = EXTRACTORS[ext_name]
             ext_config = config_getter(config)
 
             if not ext_config.enabled:
-                log.info("cli.extractor_disabled", name=ext_name)
+                click.echo(f"  {ext_name:16s} skipped (disabled)")
                 continue
 
-            log.info("cli.running_extractor", name=ext_name)
-            state = sync_state.load(ext_name)
+            probe_path = _DRY_RUN_PROBES.get(ext_name)
+            if probe_path is None:
+                click.echo(f"  {ext_name:16s} skipped (no probe configured)")
+                continue
 
             try:
-                if needs_converters:
-                    updated_state, count = module.run(client, storage, state, ext_config, config.converters)
-                else:
-                    updated_state, count = module.run(client, storage, state, ext_config)
-                sync_state.save(ext_name, updated_state)
-                click.echo(f"  {ext_name}: {count} items written")
-            except Exception as exc:
-                log.error("cli.extractor_failed", name=ext_name, error=str(exc))
-                click.echo(f"  {ext_name}: FAILED - {exc}")
+                data = client.get(probe_path)
+                item_count = len(data.get("value", []))
+                click.echo(f"  {ext_name:16s} OK ({item_count} item(s) in probe)")
+                passed += 1
+            except GraphApiError as exc:
+                click.echo(f"  {ext_name:16s} FAILED — {exc}")
+                failed += 1
+
+    click.echo(f"\nDry run complete: {passed} passed, {failed} failed")
+    if failed > 0:
+        raise SystemExit(1)
 
 
 def _run_continuous(
@@ -173,10 +244,10 @@ def _run_continuous(
 
             with GraphClient(config.graph, token_provider) as client:
                 for ext_name in names:
-                    if ext_name not in _EXTRACTORS:
+                    if ext_name not in EXTRACTORS:
                         continue
 
-                    module, config_getter, needs_converters = _EXTRACTORS[ext_name]
+                    module, config_getter, needs_converters = EXTRACTORS[ext_name]
                     ext_config = config_getter(config)
 
                     if not ext_config.enabled:
