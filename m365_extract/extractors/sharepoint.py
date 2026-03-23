@@ -18,8 +18,9 @@ from m365_extract.extractors._file_helpers import (
     handle_removed_item,
     process_drive_item,
 )
+from m365_extract.frontmatter import build_sharepoint_frontmatter
 from m365_extract.graph_client import GraphClient
-from m365_extract.markdown_writer import build_sharepoint_frontmatter, slugify
+from m365_extract.markdown_writer import slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()

@@ -1019,7 +1019,7 @@ packages:
 - pypi: ./
   name: m365-extract
   version: 0.2.2
-  sha256: 1fbbf0b49a875dffaeddf00535e39bfb9123a9d78fa38c2ed2874b58e4f67b9d
+  sha256: 52067af6516f6bad87e580a159fe52345d90b7d3dbbdaf7c62c25b214944ced6
   requires_dist:
   - msal>=1.34,<2
   - httpx>=0.28,<1
@@ -1032,9 +1032,9 @@ packages:
   - fastapi>=0.115,<1 ; extra == 'web'
   - uvicorn>=0.34,<1 ; extra == 'web'
   - apscheduler>=3.10,<4 ; extra == 'web'
-  - cryptography>=44,<45 ; extra == 'web'
+  - cryptography>=46,<47 ; extra == 'web'
   - azure-storage-blob>=12.24,<13 ; extra == 'azure'
-  - obsidian-import[markitdown,docling]>=1.0.1 ; extra == 'convert'
+  - obsidian-import[markitdown,docling]>=1.0.1,<2 ; extra == 'convert'
   - m365-extract[web,azure,convert] ; extra == 'all'
   - pytest>=8.0,<9 ; extra == 'dev'
   - hypothesis>=6.100,<7 ; extra == 'dev'

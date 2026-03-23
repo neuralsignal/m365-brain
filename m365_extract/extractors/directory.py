@@ -11,13 +11,9 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import DirectoryExtractorConfig
+from m365_extract.frontmatter import build_directory_user_frontmatter
 from m365_extract.graph_client import GraphClient
-from m365_extract.markdown_writer import (
-    build_directory_user_frontmatter,
-    dumps_markdown,
-    short_hash,
-    slugify,
-)
+from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()

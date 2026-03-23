@@ -19,7 +19,7 @@ structlog = ">=25.0, <26"
 click = ">=8.1, <9"
 python-dotenv = ">=1.0, <2"
 m365-extract = {path = ".", editable = true, extras = ["azure"]}
-obsidian-import = {version = ">=1.0.1", extras = ["markitdown"]}
+obsidian-import = {version = ">=1.0.1,<2", extras = ["markitdown"]}
 pytest = ">=8.0, <9"
 hypothesis = ">=6.100, <7"
 pytest-httpx = ">=0.35, <1"

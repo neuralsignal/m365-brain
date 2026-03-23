@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient
+from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient, _extract_graph_error
 
 
 @pytest.fixture()
@@ -273,3 +275,86 @@ class TestGetDelta:
         )
         assert len(items) == 2
         assert delta_link == "https://graph.microsoft.com/delta?token=final"
+
+
+class TestExtractGraphError:
+    """Tests for _extract_graph_error helper that sanitizes PII from error responses."""
+
+    def test_parses_standard_graph_error_json(self):
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "InvalidAuthenticationToken",
+                    "message": "Access token has expired or is not yet valid.",
+                }
+            }
+        )
+        code, message = _extract_graph_error(body)
+        assert code == "InvalidAuthenticationToken"
+        assert message == "Access token has expired or is not yet valid."
+
+    def test_truncates_long_message(self):
+        body = json.dumps(
+            {
+                "error": {
+                    "code": "BadRequest",
+                    "message": "x" * 600,
+                }
+            }
+        )
+        code, message = _extract_graph_error(body)
+        assert code == "BadRequest"
+        assert len(message) <= 200
+
+    def test_non_json_body_returns_unknown(self):
+        body = "<html>Internal Server Error with user@company.com PII data</html>"
+        code, message = _extract_graph_error(body)
+        assert code == "unknown"
+        assert message == "non-json response"
+
+    def test_missing_error_key_returns_unknown(self):
+        body = json.dumps({"status": "failed", "detail": "user pii@example.com"})
+        code, message = _extract_graph_error(body)
+        assert code == "unknown"
+        assert message == "non-json response"
+
+    def test_pii_in_body_not_leaked_to_log(self, httpx_mock: HTTPXMock, graph_config):
+        """A 401 with PII in the body must not leak PII into structured logs."""
+        pii_body = json.dumps(
+            {
+                "error": {
+                    "code": "Unauthorized",
+                    "message": "Token for user john.doe@company.com is invalid.",
+                }
+            }
+        )
+        # Return 401 twice to trigger the log path (attempt 0 retries silently, attempt 1 logs)
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", status_code=401)
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me",
+            status_code=401,
+            text=pii_body,
+        )
+
+        c = GraphClient(graph_config, lambda: "test-token")
+        with pytest.raises(httpx.HTTPStatusError):
+            c.get("/me")
+        c.close()
+
+    def test_404_with_pii_body_logs_sanitized(self, httpx_mock: HTTPXMock, client):
+        """Non-retryable errors with PII in body should log error_code, not raw body."""
+        pii_body = json.dumps(
+            {
+                "error": {
+                    "code": "ResourceNotFound",
+                    "message": "User john.doe@secret.com not found in directory.",
+                }
+            }
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages/123",
+            status_code=404,
+            text=pii_body,
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            client.get("/me/messages/123")

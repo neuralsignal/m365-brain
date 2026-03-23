@@ -44,7 +44,7 @@ azure = [
     "azure-storage-blob>=12.24,<13",
 ]
 convert = [
-    "obsidian-import[markitdown,docling]>=1.0.1",
+    "obsidian-import[markitdown,docling]>=1.0.1,<2",
 ]
 all = [
     "m365-extract[web,azure,convert]",

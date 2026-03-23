@@ -6,19 +6,15 @@ Writes Obsidian-compatible markdown files with YAML frontmatter.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
 from m365_extract.config import EmailExtractorConfig
 from m365_extract.converters.html_to_md import html_to_markdown
+from m365_extract.frontmatter import build_email_frontmatter
 from m365_extract.graph_client import GraphClient
-from m365_extract.markdown_writer import (
-    build_email_frontmatter,
-    dumps_markdown,
-    short_hash,
-    slugify,
-)
+from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
@@ -97,8 +93,6 @@ def _sync_folder(
             second=0,
             microsecond=0,
         )
-        from datetime import timedelta
-
         cutoff = cutoff - timedelta(days=lookback_days)
         params["$filter"] = f"receivedDateTime ge {cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 

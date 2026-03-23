@@ -5,6 +5,7 @@ Accepts a token_provider callable instead of coupling to a specific auth module.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -24,6 +25,28 @@ class GraphApiError(Exception):
 
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+_ERROR_MESSAGE_MAX_LENGTH = 200
+
+
+def _extract_graph_error(body: str) -> tuple[str, str]:
+    """Extract error code and message from a Graph API error response.
+
+    Parses the standard ``{"error": {"code": "...", "message": "..."}}``
+    envelope. Returns ``("unknown", "non-json response")`` if the body
+    is not valid JSON or lacks the expected structure.
+
+    The message is truncated to ``_ERROR_MESSAGE_MAX_LENGTH`` characters
+    to prevent PII leakage through verbose error descriptions.
+    """
+    try:
+        data = json.loads(body)
+        error = data["error"]
+        code = error["code"]
+        message = error["message"][:_ERROR_MESSAGE_MAX_LENGTH]
+        return code, message
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return "unknown", "non-json response"
 
 
 class GraphClient:
@@ -101,10 +124,12 @@ class GraphClient:
                 if attempt == 0:
                     log.info("graph.token_expired, refreshing")
                     continue
+                error_code, error_message = _extract_graph_error(response.text)
                 log.error(
                     "graph.401_after_retry",
                     path=log_ref,
-                    body=response.text[:500],
+                    error_code=error_code,
+                    error_message=error_message,
                 )
                 response.raise_for_status()
 
@@ -132,11 +157,13 @@ class GraphClient:
                 time.sleep(wait)
                 continue
 
+            error_code, error_message = _extract_graph_error(response.text)
             log.error(
                 "graph.request_failed",
                 status=response.status_code,
                 path=log_ref,
-                body=response.text[:500],
+                error_code=error_code,
+                error_message=error_message,
             )
             response.raise_for_status()
 

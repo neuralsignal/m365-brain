@@ -5,7 +5,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.markdown_writer import (
+from m365_extract.frontmatter import (
     build_calendar_frontmatter,
     build_contact_frontmatter,
     build_directory_user_frontmatter,
@@ -14,6 +14,8 @@ from m365_extract.markdown_writer import (
     build_sharepoint_frontmatter,
     build_teams_channel_frontmatter,
     build_teams_chat_frontmatter,
+)
+from m365_extract.markdown_writer import (
     dumps_markdown,
     loads_markdown,
     short_hash,

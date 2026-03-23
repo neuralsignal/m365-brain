@@ -11,13 +11,9 @@ import structlog
 
 from m365_extract.config import CalendarExtractorConfig
 from m365_extract.converters.html_to_md import html_to_markdown
+from m365_extract.frontmatter import build_calendar_frontmatter
 from m365_extract.graph_client import GraphClient
-from m365_extract.markdown_writer import (
-    build_calendar_frontmatter,
-    dumps_markdown,
-    short_hash,
-    slugify,
-)
+from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
