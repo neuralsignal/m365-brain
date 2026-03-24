@@ -55,12 +55,16 @@ All extractors tested against real Microsoft Graph API with a live Entra app reg
 | Contacts delta endpoint rejects `$select`/`$top` | Removed unsupported params from contacts extractor | Live validation session |
 | Null `from` field in email crashes `_write_email` | Added `or {}` guard pattern | Live validation session |
 
-### What's Missing (Roadmap Phase 5)
+### What's Missing (Roadmap Phase 5B–5F)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| Phase 5 | Graph webhooks (change notifications) | Not started — requires public HTTPS endpoint |
-| Phase 5 | Azure App Service deployment | Not started |
+| Phase 5A | Local web service testing | Done (2026-03-24) — OAuth2 login, user creation, health endpoint verified |
+| Phase 5B | Reflex admin dashboard MVP | Not started — scaffold `web-ui/`, Entra login, extractor toggle, sync trigger |
+| Phase 5C | Sync visibility + per-user scheduling | Not started — sync history table/UI, persistent status, WebSocket updates |
+| Phase 5D | Security + RBAC | Not started — admin vs user roles, rate limiting, audit logging |
+| Phase 5E | Azure deployment | Not started — Dockerized Reflex app, Bicep IaC, managed identity |
+| Phase 5F | Graph webhooks | Not started — deferred, polling sufficient for current scale |
 | Future | MCP server integration | Not started |
 
 ### Entra App Registration Permissions
@@ -176,8 +180,12 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 
 ### Hardening Roadmap
 
-**Phase 5A (local testing)**: Entra app config, environment setup, verify full login → sync flow, fix integration bugs.
+**Phase 5A (local testing)**: Done. Entra app configured, OAuth2 login verified, callback error handling fixed.
 
-**Phase 5B (security hardening)**: Admin endpoint auth (API key or Entra role check), per-user sync state, persistent `_last_sync`, rate limiting (SlowAPI), audit logging.
+**Phase 5B (Reflex dashboard MVP)**: Scaffold `web-ui/` Reflex project, Entra OAuth2 via Reflex state + MSAL, dashboard with extractor toggles + sync trigger, admin user list.
 
-**Phase 5C (deployment)**: Bicep IaC for App Service + ACR + Key Vault, managed identity, OIDC federated identity for GitHub Actions, production redirect URIs, CORS, health probes.
+**Phase 5C (sync visibility)**: Sync history SQLite table + UI, per-user scheduling, persistent `_last_sync`, real-time WebSocket updates.
+
+**Phase 5D (security + RBAC)**: Admin vs user roles, admin-only routes, rate limiting, audit logging, session timeouts.
+
+**Phase 5E (deployment)**: Dockerized Reflex app, Bicep IaC for App Service + ACR + Key Vault, managed identity, OIDC for GitHub Actions, production Entra URIs + CORS.

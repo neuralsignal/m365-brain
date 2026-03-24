@@ -47,6 +47,9 @@ azure = [
 convert = [
     "obsidian-import[markitdown,docling]>=1.0.1,<2",
 ]
+admin = [
+    "reflex>=0.8.28,<0.9",
+]
 all = [
     "m365-extract[web,azure,convert]",
 ]
@@ -75,10 +78,12 @@ ignore = ["E501", "SIM108"]
 
 [tool.ruff.lint.per-file-ignores]
 "m365_extract/web/routes_*.py" = ["B008"]
+"m365_admin/*.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "integration: tests that require real Graph API credentials",
     "azurite: tests that require Azurite emulator",
+    "admin: tests that require reflex (admin env only)",
 ]

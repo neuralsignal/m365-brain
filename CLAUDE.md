@@ -239,3 +239,16 @@ Steps needed before agent workflows can run tests:
 ```
 auth -> graph -> extract -> convert -> storage
 ```
+
+## Admin Dashboard (Reflex)
+
+The `m365_admin/` package is a Reflex SPA for managing sync settings.
+
+### Gotchas
+
+- **`on_load` fires multiple times per page load** — Reflex fires `on_load` handlers during both server-side render and client-side hydration. Any `on_load` handler must be idempotent. In `handle_callback()`, this means: (1) check `user_id` early-return if already authenticated, and (2) do NOT consume OAuth state tokens on verify — use TTL-based expiry instead.
+- **Reflex state vars must be picklable** — Reflex serializes state between requests. Never store `sqlite3.Connection`, file handles, or other unpicklable objects as state class variables. Create fresh service instances per handler call (`_make_services()`).
+- **External OAuth redirects lose Reflex state** — When the browser navigates to Entra (external redirect), the WebSocket disconnects and Reflex creates fresh state on return. Backend vars like `_oauth_state` are lost. Solution: persist OAuth state tokens to disk (`state/oauth_state.json`).
+- **`router.page.params` is deprecated** — Use `self.router.url.query_parameters` (Reflex >=0.8.1). `router.url` is a `ReflexURL` (subclass of `str`); `query_parameters` is a frozen dict from `urllib.parse.parse_qsl`.
+- **Config must have `web:` section** — `get_config()` validates this at load time. If `M365_ADMIN_CONFIG` points to the CLI config (no `web:` section), it crashes with a clear error. Set `M365_ADMIN_CONFIG=./config.web.yaml` in `.env`.
+- **`Killing worker-0` warning during dev** — Granian (Reflex's ASGI server) killed the worker when `handle_callback()` blocked the event loop with synchronous MSAL + SQLite calls. Fixed: blocking calls are now wrapped in `asyncio.to_thread()`. If this warning reappears, check for new synchronous I/O added to event handlers.

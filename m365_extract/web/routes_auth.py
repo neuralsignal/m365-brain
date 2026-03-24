@@ -44,7 +44,13 @@ def callback(
     user_manager: UserManager = Depends(get_user_manager),
 ) -> JSONResponse:
     """Handle OAuth2 callback: exchange code for tokens, create/update user."""
-    log.info("auth.callback_received", url=str(request.url), has_code=code is not None, has_state=state is not None, has_error=error is not None)
+    log.info(
+        "auth.callback_received",
+        url=str(request.url),
+        has_code=code is not None,
+        has_state=state is not None,
+        has_error=error is not None,
+    )
 
     if error is not None:
         log.error("auth.callback_error", error=error, description=error_description)

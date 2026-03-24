@@ -95,11 +95,13 @@
 
 ---
 
-## Phase 5: Web UI Testing + Security Hardening + Deployment -- PARTIAL
+## Phase 5: Reflex Admin Dashboard + Deployment
 
-**Goal**: Validate the web service end-to-end, harden for multi-user, deploy to Azure.
+**Goal**: Replace the headless FastAPI JSON API with a full-stack admin dashboard using [Reflex.dev](https://reflex.dev) (Python → React frontend + FastAPI backend). Non-technical users visit a URL, authenticate via Entra, choose extractors, see sync status, and manage their configuration.
 
-**Status**: Phase 4 built the complete web service (FastAPI, OAuth2, per-user isolation, scheduler). CI/CD infrastructure is complete (18 GitHub Actions workflows). Live validation (2026-03-24) confirmed all extractors work against real Graph API. Phase 5 is split into three sub-phases.
+**Status**: Phase 4 built the complete web service backend (FastAPI, OAuth2, per-user isolation, scheduler). CI/CD infrastructure is complete (18 GitHub Actions workflows). Live validation (2026-03-24) confirmed OAuth2 login, user creation, health endpoint, and all extractors against real Graph API. The core gap: **no UI** — Phase 4 delivered API endpoints only.
+
+**Architecture decision**: m365-extract stays as a library/CLI (extractors, sync API, auth, config, storage, Graph client). A new Reflex app (`web-ui/`) imports m365-extract as a dependency and adds the UI, RBAC, scheduling, and deployment layers. This keeps the PyPI package lean for CLI-only users and lets the UI evolve independently.
 
 **Done (infrastructure)**:
 - GitHub Actions CI/CD workflows (lint, test, coverage, release-please, PyPI publish, docs deploy)
@@ -111,53 +113,69 @@
 - `config.yaml` — `client_secret: null` for CLI mode compatibility
 - `.env.example` — template for environment variables
 
-### Phase 5A: Local Web UI Testing
+### Phase 5A: Local Web Service Testing -- DONE
 
-**Goal**: First person ever logs in through the web UI against a real Entra app.
+First person ever logs in through the web service against a real Entra app.
 
-**Prerequisites** (manual, in Azure Portal):
-1. Add client secret: Entra > App registrations > `workflow-read` > Certificates & secrets > New
-2. Add redirect URI: Entra > Authentication > Add platform > Web > `http://localhost:8000/auth/callback`
-3. Verify "Allow public client flows" still enabled (needed for CLI device code flow too)
+**Completed (2026-03-24)**:
+- Entra app configured: client secret, Web platform, redirect URI (`http://localhost:8000/auth/callback`)
+- OAuth2 login → callback → user creation: verified working against real Entra
+- Fixed callback to handle Entra error responses (`code` and `state` params made optional)
+- `/admin/users`, `/health` endpoints verified
+- Documented multi-user gaps in MATURITY.md
 
-**Environment variables** (add to `.env`):
-```
-AZURE_CLIENT_ID=<same as MSAL_CLIENT_ID>
-AZURE_TENANT_ID=<same as MSAL_TENANT_ID>
-AZURE_CLIENT_SECRET=<from step 1>
-SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(32))">
-FERNET_KEY=<python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
-```
+### Phase 5B: Reflex Admin Dashboard MVP
 
-**Test flow**:
-1. `m365-extract --config config.web.yaml serve` → Uvicorn on 0.0.0.0:8000
-2. `http://localhost:8000/auth/login` → Entra redirect
-3. Log in → callback returns `{"status": "authenticated", "user_id": "<oid>"}`
-4. `GET /admin/users` → shows authenticated user
-5. `POST /sync/<user_id>` → vault output in `vault/<user_id>/`
-6. `GET /health` → 200 OK
+Scaffold the Reflex app and deliver a working dashboard that replaces the headless API.
 
-**Known risks**:
-- Redirect URI mismatch: `request.url_for("callback")` may generate `http://0.0.0.0:8000/...` instead of `http://localhost:8000/...`
-- `config.web.yaml` uses `AZURE_*` env vars while `config.yaml` uses `MSAL_*` — both reference the same Entra app
+**Structure**: `web-ui/` directory with its own `pixi.toml` (Reflex is PyPI-only, not conda-forge).
 
-### Phase 5B: Security Hardening (future)
+1. Scaffold `web-ui/` Reflex project (`pixi.toml`, `rxconfig.py`, app structure)
+2. Entra OAuth2 login via Reflex state + MSAL (replace current FastAPI session auth)
+3. Post-login dashboard: user profile, enabled extractors, last sync time
+4. Extractor toggle UI (wire up `extractor_preferences` from `UserManager`)
+5. Manual sync trigger button with progress/status feedback
+6. Admin view: user list, enable/disable users
+7. Per-user sync state isolation (move from global JSON to `state/{user_id}/`)
 
-1. Admin endpoint authentication (API key or Entra role check)
-2. Per-user sync state files (`state/{user_id}/sync_state.json`)
-3. Persistent `_last_sync` (move from in-memory dict to database)
-4. Rate limiting on auth endpoints (FastAPI SlowAPI)
-5. Audit logging (structured events for auth/admin actions)
+### Phase 5C: Sync Visibility + Per-User Scheduling
 
-### Phase 5C: Azure Deployment (future)
+Make sync history visible and give users control over their sync cadence.
 
-1. Bicep IaC for App Service + Container Registry + Key Vault
-2. Managed Identity for Azure Blob Storage
-3. OIDC federated identity for GitHub Actions deploy
-4. Production redirect URIs and CORS
-5. Health probes for App Service
-6. Graph webhooks (`web/routes_webhooks.py`, subscription management)
-7. Test with 2-3 users
+1. Sync history table (SQLite: `user_id`, `started_at`, `status`, `items_synced`, `errors`)
+2. Sync history UI (table with filtering, error details)
+3. Per-user scheduling (interval override per user, stored in user preferences)
+4. Persistent sync status (move `_last_sync` from in-memory to database)
+5. Real-time sync progress via Reflex WebSocket state updates
+
+### Phase 5D: Security + RBAC
+
+Harden for multi-user production use.
+
+1. Role-based access: admin vs user (Entra app roles or first-user-is-admin)
+2. Admin-only routes (user management, global config)
+3. Rate limiting on auth endpoints
+4. Audit logging (structured events for auth/admin/sync actions)
+5. Session timeout enforcement
+
+### Phase 5E: Azure Deployment
+
+Deploy the Reflex app to Azure App Service.
+
+1. Dockerized Reflex app (frontend build + backend + nginx reverse proxy)
+2. Bicep IaC (App Service + ACR + Key Vault + Storage Account)
+3. Managed Identity for Azure Blob Storage
+4. OIDC federated identity for GitHub Actions deploy
+5. Production Entra redirect URIs and CORS
+6. Health probes for App Service
+
+### Phase 5F: Graph Webhooks (deferred)
+
+Polling is sufficient for current scale. Webhooks add complexity without proportional benefit until user count grows.
+
+1. Graph change notification subscriptions
+2. Webhook endpoint to receive push notifications
+3. Subscription renewal lifecycle
 
 ---
 
