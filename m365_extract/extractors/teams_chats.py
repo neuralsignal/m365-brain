@@ -86,7 +86,7 @@ def _process_chat(
             client.get_paginated(
                 f"/me/chats/{chat_id}/messages",
                 params=params,
-                max_pages=max_messages // 50,
+                max_pages=max(1, max_messages // 50),
             )
         )
     except Exception as exc:
@@ -95,6 +95,11 @@ def _process_chat(
 
     if not messages:
         return False
+
+    # Detect truncation — messages may have been capped by max_messages
+    message_limit_reached = len(messages) >= max_messages
+    if message_limit_reached:
+        log.warning("teams_chats.message_limit_reached", chat_id=chat_id, messages=len(messages), limit=max_messages)
 
     # Sort chronologically
     messages.sort(key=lambda m: m.get("createdDateTime", ""))
@@ -125,6 +130,7 @@ def _process_chat(
         conversation_type=chat_type,
         participants=participants,
         last_message_time=last_msg_time,
+        message_limit_reached=message_limit_reached,
     )
 
     body_parts = [f"# {title}\n"]
