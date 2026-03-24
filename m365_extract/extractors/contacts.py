@@ -106,8 +106,9 @@ def _sync_contacts(
     max_items: int,
 ) -> tuple[int, str | None]:
     """Sync contacts from a single delta endpoint. Returns (items_written, new_delta_link)."""
-    params = {"$select": _CONTACT_SELECT, "$top": "50"}
-    contacts, new_delta_link = client.get_delta(path, delta_link, params=params)
+    # Contacts delta endpoint rejects $select, $top, $filter, etc.
+    # Only pass params on non-delta (initial) requests via get_paginated fallback.
+    contacts, new_delta_link = client.get_delta(path, delta_link)
 
     written = 0
     for contact in contacts[:max_items]:

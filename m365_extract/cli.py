@@ -165,7 +165,7 @@ _DRY_RUN_PROBES: dict[str, str] = {
     "email": "/me/mailFolders/Inbox/messages?$top=1&$select=id,subject",
     # calendar probe computed dynamically — see _dry_run_probe_path()
     "teams_chats": "/me/chats?$top=1&$select=id,topic",
-    "teams_channels": "/me/joinedTeams?$top=1&$select=id,displayName",
+    "teams_channels": "/me/joinedTeams?$select=id,displayName",
     "onedrive": "/me/drive/root/children?$top=1&$select=id,name",
     "sharepoint": "/me/followedSites?$top=1&$select=id,displayName",
     "contacts": "/me/contacts?$top=1&$select=id,displayName",

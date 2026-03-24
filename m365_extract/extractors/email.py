@@ -121,7 +121,7 @@ def _write_email(storage: StorageBackend, msg: dict, folder: str) -> bool:
         return False
 
     # Extract sender
-    from_field = msg.get("from", {}).get("emailAddress", {})
+    from_field = (msg.get("from") or {}).get("emailAddress", {})
     sender_address = from_field.get("address", "")
     sender_name = from_field.get("name", "")
 

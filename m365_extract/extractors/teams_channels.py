@@ -34,7 +34,7 @@ def run(
     Returns (updated_state, items_written).
     """
     # Discover teams the user is a member of
-    teams = list(client.get_paginated("/me/joinedTeams", params={"$top": "50"}))
+    teams = list(client.get_paginated("/me/joinedTeams"))
     log.info("teams_channels.fetched_teams", count=len(teams))
 
     written = 0
