@@ -26,6 +26,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -123,6 +125,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -209,6 +213,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -290,6 +296,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -375,6 +383,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -459,6 +469,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -540,6 +552,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "azure_blob"
               azure_blob:
@@ -627,6 +641,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "local"
               local:
@@ -710,6 +726,8 @@ class TestLoadConfig:
               mode: "cli"
               log_level: "INFO"
               json_logs: false
+              continuous_poll_seconds: 30
+              max_consecutive_auth_failures: 5
             storage:
               backend: "azure_blob"
               azure_blob:

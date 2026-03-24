@@ -19,6 +19,8 @@ class ServiceConfig:
     mode: str
     log_level: str
     json_logs: bool
+    continuous_poll_seconds: int
+    max_consecutive_auth_failures: int
 
 
 @dataclass(frozen=True)

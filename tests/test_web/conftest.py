@@ -58,6 +58,8 @@ def full_web_config(tmp_path, web_config):
             mode="web",
             log_level="DEBUG",
             json_logs=False,
+            continuous_poll_seconds=30,
+            max_consecutive_auth_failures=5,
         ),
         storage=StorageConfig(
             backend="local",

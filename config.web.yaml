@@ -13,6 +13,8 @@ service:
   mode: "web"
   log_level: "INFO"
   json_logs: false
+  continuous_poll_seconds: 30
+  max_consecutive_auth_failures: 5
 
 storage:
   backend: "local"
