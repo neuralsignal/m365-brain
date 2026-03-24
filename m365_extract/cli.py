@@ -11,10 +11,9 @@ Commands:
 from __future__ import annotations
 
 import json
-import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import click
@@ -25,6 +24,7 @@ from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.auth.token_provider import make_cli_token_provider
 from m365_extract.config import Config, load_config
 from m365_extract.graph_client import GraphClient
+from m365_extract.logging_config import configure_logging
 from m365_extract.state import SyncState
 from m365_extract.storage import create_storage
 from m365_extract.storage.base import StorageBackend
@@ -136,11 +136,7 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run: bool, extrac
 
     config = load_config(ctx.obj["config_path"])
 
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(config.service.log_level),
-        ),
-    )
+    configure_logging(config.service.log_level, config.service.json_logs)
 
     token_provider = make_cli_token_provider(config.auth)
 
@@ -167,7 +163,7 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run: bool, extrac
 # Each returns a small payload to confirm the scope is granted.
 _DRY_RUN_PROBES: dict[str, str] = {
     "email": "/me/mailFolders/Inbox/messages?$top=1&$select=id,subject",
-    "calendar": "/me/calendarView?$top=1&$select=id,subject&startDateTime=2020-01-01T00:00:00Z&endDateTime=2099-12-31T00:00:00Z",
+    # calendar probe computed dynamically — see _dry_run_probe_path()
     "teams_chats": "/me/chats?$top=1&$select=id,topic",
     "teams_channels": "/me/joinedTeams?$top=1&$select=id,displayName",
     "onedrive": "/me/drive/root/children?$top=1&$select=id,name",
@@ -177,11 +173,25 @@ _DRY_RUN_PROBES: dict[str, str] = {
 }
 
 
+def _dry_run_probe_path(ext_name: str) -> str | None:
+    """Return the Graph probe URL for a given extractor, or None.
+
+    Calendar uses a dynamic ±30 day window because Graph rejects
+    calendarView ranges exceeding 1825 days.
+    """
+    if ext_name == "calendar":
+        now = datetime.now(tz=UTC)
+        start = (now - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00Z")
+        end = (now + timedelta(days=30)).strftime("%Y-%m-%dT00:00:00Z")
+        return f"/me/calendarView?$top=1&$select=id,subject&startDateTime={start}&endDateTime={end}"
+    return _DRY_RUN_PROBES.get(ext_name)
+
+
 def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]) -> None:
     """Validate auth and probe each extractor's endpoint without writing files."""
     from m365_extract.graph_client import GraphApiError
 
-    click.echo("Dry run: validating authentication and extractor permissions...\n")
+    log.info("cli.dry_run_start")
 
     # Step 1: Validate token by calling /me
     with GraphClient(config.graph, token_provider) as client:
@@ -189,9 +199,9 @@ def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]
             me = client.get("/me?$select=displayName,userPrincipalName")
             display_name = me.get("displayName", "unknown")
             upn = me.get("userPrincipalName", "unknown")
-            click.echo(f"  Auth:     OK (signed in as {display_name} <{upn}>)")
+            log.info("cli.dry_run_auth_ok", user=display_name, upn=upn)
         except GraphApiError as exc:
-            click.echo(f"  Auth:     FAILED — {exc}")
+            log.error("cli.dry_run_auth_failed", error=str(exc))
             raise SystemExit(1) from exc
 
         # Step 2: Probe each enabled extractor
@@ -199,7 +209,7 @@ def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]
         failed = 0
         for ext_name in names:
             if ext_name not in EXTRACTORS:
-                click.echo(f"  {ext_name:16s} UNKNOWN (not a valid extractor)")
+                log.warning("cli.dry_run_probe_unknown", name=ext_name)
                 failed += 1
                 continue
 
@@ -207,24 +217,24 @@ def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]
             ext_config = config_getter(config)
 
             if not ext_config.enabled:
-                click.echo(f"  {ext_name:16s} skipped (disabled)")
+                log.info("cli.dry_run_probe_skipped", name=ext_name, reason="disabled")
                 continue
 
-            probe_path = _DRY_RUN_PROBES.get(ext_name)
+            probe_path = _dry_run_probe_path(ext_name)
             if probe_path is None:
-                click.echo(f"  {ext_name:16s} skipped (no probe configured)")
+                log.info("cli.dry_run_probe_skipped", name=ext_name, reason="no probe configured")
                 continue
 
             try:
                 data = client.get(probe_path)
                 item_count = len(data.get("value", []))
-                click.echo(f"  {ext_name:16s} OK ({item_count} item(s) in probe)")
+                log.info("cli.dry_run_probe_ok", name=ext_name, items=item_count)
                 passed += 1
             except GraphApiError as exc:
-                click.echo(f"  {ext_name:16s} FAILED — {exc}")
+                log.error("cli.dry_run_probe_failed", name=ext_name, error=str(exc))
                 failed += 1
 
-    click.echo(f"\nDry run complete: {passed} passed, {failed} failed")
+    log.info("cli.dry_run_complete", passed=passed, failed=failed)
     if failed > 0:
         raise SystemExit(1)
 
@@ -233,7 +243,7 @@ def _run_continuous(
     config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
 ) -> None:
     """Run extractors continuously on their configured intervals."""
-    click.echo("Running in continuous mode. Press Ctrl+C to stop.")
+    log.info("cli.continuous_started")
 
     # Track last run time per extractor
     last_run: dict[str, float] = {}
@@ -277,4 +287,4 @@ def _run_continuous(
             time.sleep(30)
 
     except KeyboardInterrupt:
-        click.echo("\nStopped.")
+        log.info("cli.continuous_stopped")

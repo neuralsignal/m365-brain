@@ -53,7 +53,7 @@ def _standard_patches():
         _patch_cli("create_storage"),
         _patch_cli("SyncState"),
         _patch_cli("GraphClient"),
-        _patch_cli("structlog"),
+        _patch_cli("configure_logging"),
     )
 
 
@@ -86,7 +86,7 @@ class TestSyncCommand:
             _patch_cli("create_storage"),
             _patch_cli("SyncState"),
             _patch_cli("run_extractors") as mock_run,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
         ):
             mock_load.return_value = full_config
 
@@ -105,7 +105,7 @@ class TestSyncCommand:
             _patch_cli("create_storage"),
             _patch_cli("SyncState"),
             _patch_cli("_run_continuous") as mock_run,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
         ):
             mock_load.return_value = full_config
 
@@ -123,7 +123,7 @@ class TestSyncCommand:
             _patch_cli("create_storage"),
             _patch_cli("SyncState"),
             _patch_cli("run_extractors") as mock_run,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
         ):
             mock_load.return_value = full_config
 
@@ -149,7 +149,8 @@ class TestRunContinuous:
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -159,7 +160,6 @@ class TestRunContinuous:
 
             result = runner.invoke(main, args)
 
-            assert "Stopped" in result.output
             assert result.exit_code == 0
             mock_mod.run.assert_called_once()
 
@@ -185,7 +185,8 @@ class TestRunContinuous:
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -216,7 +217,8 @@ class TestDryRun:
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -225,9 +227,8 @@ class TestDryRun:
             result = runner.invoke(main, ["--config", config_file, "sync", "--dry-run"])
 
         assert result.exit_code == 0
-        assert "Test User" in result.output
-        assert "OK" in result.output
-        assert "Dry run complete" in result.output
+        mock_log.info.assert_any_call("cli.dry_run_auth_ok", user="Test User", upn="test@x.com")
+        mock_log.info.assert_any_call("cli.dry_run_complete", passed=3, failed=0)
 
     def test_dry_run_auth_failure(self, runner, config_file, full_config):
         """--dry-run exits 1 when /me call fails."""
@@ -241,7 +242,8 @@ class TestDryRun:
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -250,7 +252,7 @@ class TestDryRun:
             result = runner.invoke(main, ["--config", config_file, "sync", "--dry-run"])
 
         assert result.exit_code == 1
-        assert "FAILED" in result.output
+        mock_log.error.assert_any_call("cli.dry_run_auth_failed", error="HTTP 401 — token expired")
 
     def test_dry_run_extractor_probe_failure(self, runner, config_file, full_config):
         """--dry-run reports per-extractor failures and exits 1."""
@@ -275,7 +277,8 @@ class TestDryRun:
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -284,8 +287,9 @@ class TestDryRun:
             result = runner.invoke(main, ["--config", config_file, "sync", "--dry-run", "--extractors", "email"])
 
         assert result.exit_code == 1
-        assert "email" in result.output
-        assert "FAILED" in result.output
+        mock_log.error.assert_any_call(
+            "cli.dry_run_probe_failed", name="email", error="HTTP 403 — Authorization_RequestDenied"
+        )
 
     def test_dry_run_skips_disabled_extractors(self, runner, config_file, full_config):
         """--dry-run skips disabled extractors."""
@@ -298,7 +302,8 @@ class TestDryRun:
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
             _patch_cli("GraphClient") as mock_gc,
-            _patch_cli("structlog"),
+            _patch_cli("configure_logging"),
+            _patch_cli("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -309,7 +314,7 @@ class TestDryRun:
             )
 
         assert result.exit_code == 0
-        assert "skipped (disabled)" in result.output
+        mock_log.info.assert_any_call("cli.dry_run_probe_skipped", name="teams_channels", reason="disabled")
 
     def test_requires_flag(self, runner, config_file):
         """sync without --once, --continuous, or --dry-run errors."""

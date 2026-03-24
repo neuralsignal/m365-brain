@@ -15,7 +15,8 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | `m365_extract/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
 | `m365_extract/graph_client.py` | Microsoft Graph API client (httpx, pagination, retry, rate limiting) |
 | `m365_extract/markdown_writer.py` | Markdown frontmatter builders + slugify |
-| `m365_extract/state.py` | Sync state persistence (delta tokens) |
+| `m365_extract/logging_config.py` | Central structlog configuration (`configure_logging()`) |
+| `m365_extract/state.py` | Sync state persistence (delta tokens, atomic writes) |
 | `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
 | `m365_extract/web/` | FastAPI web service (auth, sync, admin, scheduler, middleware) |
 | `tests/` | 322 tests (pytest + hypothesis) |
@@ -24,6 +25,17 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | `vault/` | Local sync output directory (emails, calendar, onedrive, sharepoint, teams-chats) |
 | `pixi.toml` | pixi package manager config |
 | `pyproject.toml` | Python package metadata |
+
+## Logging
+
+structlog is the only logging mechanism. No `click.echo`, `print`, or stdlib `logging` for operational output.
+
+- **Central config**: `m365_extract/logging_config.py` — call `configure_logging(log_level, json_output)` once at startup
+- **Entry points**: `cli.py:sync()` and `web/app.py:create_app()` call `configure_logging()` before any log output
+- **Event naming**: `module.action` (e.g., `email.sync_complete`, `graph.retryable_error`, `cli.dry_run_auth_ok`)
+- **Renderer**: JSON when `service.json_logs: true` (daemon/production), ConsoleRenderer when false (dev/interactive)
+- **Log levels**: debug (pagination, internal state), info (sync lifecycle), warning (skipped items, truncation), error (failures that continue), critical (daemon exit)
+- **Exception**: `click.echo` is acceptable in `auth login` and `auth status` commands (user-facing interactive output, not operational logging)
 
 ## Engineering Standards
 

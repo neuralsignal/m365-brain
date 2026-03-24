@@ -1,38 +1,58 @@
 # m365-extract Maturity Assessment
 
-_2026-03-23 — v0.2.2 (Phases 1-3 + 6 complete)_
+_2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5 partial)_
 
 ## Current State
 
-31 source modules, 8 extractors, 2 storage backends, 247 tests (23 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 82%+. Phases 1-3 and 6 of the roadmap are implemented.
+35 source modules, 8 extractors, 2 storage backends, 334 tests (25 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented.
 
 ### What's Implemented
 
 | Area | Status | Detail |
 |------|--------|--------|
-| Core library | Done | Graph client, auth (device code), state, config package, markdown writer |
+| Core library | Done | Graph client (friendly errors, hint system), auth (device code), state, config package, markdown writer |
+| Sync API | Done | Public `sync.py` module — CLI and web both import from here |
 | Extractors | 8/8 | email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
 | Storage | Done | Local + Azure Blob backends, factory dispatch, StorageBackend protocol |
 | Document conversion | Done | obsidian-import pass-through config, deferred import |
-| CLI | Done | `auth login`, `sync --once`, `sync --continuous`, `--extractors` filter |
+| CLI | Done | `auth login`, `auth status`, `sync --once`, `sync --continuous`, `sync --dry-run`, `--extractors` filter |
+| Web service | Done | FastAPI app, auth code flow, token store, scheduler, per-user storage isolation, access control middleware |
 | Config | Done | Config package (loader.py + schema.py), frozen dataclasses, env var expansion |
 | Azure IaC | Done | Bicep templates (main.bicep), dev/prod parameter files |
-| Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, pixi tasks |
-| Tests | 247 pass | Unit + mock + Azurite integration (9 skip when no Azurite) |
+| Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, `.env.example`, pixi tasks |
+| Tests | 334 pass | Unit + mock + Azurite integration (9 skip when no Azurite) |
 | CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
 | Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
 | Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
-| Coverage | Done | pytest-cov, 82%+ threshold in CI |
+| Coverage | Done | pytest-cov, 94% (threshold: 80%) |
 | Packaging | Done | PyPI publish workflow (OIDC on tag), release-please auto-versioning |
 | Dev scripts | 3 | dev-setup.sh, deploy-infra.sh, teardown-dev.sh |
 
-### What's Missing (Roadmap Phases 4-5)
+### What's Missing (Roadmap Phase 5)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| Phase 4 | Multi-user web service (FastAPI, auth code flow, token store, scheduler) | Not started |
-| Phase 5 | Webhooks + Azure App Service deployment | Not started (CI/CD portion complete) |
+| Phase 5 | Graph webhooks (change notifications) | Not started — requires public HTTPS endpoint |
+| Phase 5 | Azure App Service deployment | Not started |
 | Future | MCP server integration | Not started |
+
+### Entra App Registration Permissions
+
+The app (`workflow-read`) requires delegated Graph API permissions. Some require admin consent. Only request scopes for extractors you intend to enable — requesting an ungranted scope blocks the entire login flow.
+
+| Scope | Extractor | Admin consent? | Notes |
+|-------|-----------|----------------|-------|
+| `User.Read` | (all) | No | Token validation |
+| `Mail.Read` | email | No | |
+| `Calendars.Read` | calendar | No | |
+| `Chat.Read` | teams_chats | No | |
+| `ChannelMessage.Read.All` | teams_channels | Yes | |
+| `Files.Read.All` | onedrive | Yes | |
+| `Sites.Read.All` | sharepoint | Yes | |
+| `Contacts.Read` | contacts | No | |
+| `User.Read.All` | directory | Yes | Read user profiles |
+| `Directory.Read.All` | directory | Yes | Manager chain + direct reports traversal |
+| `offline_access` | (all) | No | Persistent token refresh |
 
 ## Architecture Quality
 

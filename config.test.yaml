@@ -5,13 +5,6 @@ auth:
     - "User.Read"
     - "Mail.Read"
     - "Calendars.Read"
-    - "Chat.Read"
-    - "ChannelMessage.Read.All"
-    - "Files.Read.All"
-    - "Sites.Read.All"
-    - "Contacts.Read"
-    - "User.Read.All"
-    # Directory.Read.All — add when directory extractor is enabled
     - "offline_access"
   token_cache_path: "./state/token_cache.json"
   client_secret: null
@@ -39,16 +32,16 @@ extractors:
   email:
     enabled: true
     poll_interval_minutes: 3
-    folders: ["Inbox", "SentItems", "Archive"]
-    lookback_days: 365
-    max_items_per_sync: 500
+    folders: ["Inbox"]
+    lookback_days: 30
+    max_items_per_sync: 10
   calendar:
     enabled: true
     poll_interval_minutes: 60
-    lookback_days: 365
+    lookback_days: 30
     forward_days: 90
   teams_chats:
-    enabled: true
+    enabled: false
     poll_interval_minutes: 5
     max_messages_per_chat: 200
   teams_channels:
@@ -58,13 +51,13 @@ extractors:
     enabled: false
     poll_interval_minutes: 120
     eager_convert_patterns: []
-    convertible_extensions: [".docx", ".pptx", ".xlsx", ".pdf", ".csv", ".txt", ".md", ".html"]
+    convertible_extensions: [".docx", ".pdf"]
     max_file_size_mb: 100
   sharepoint:
     enabled: false
     poll_interval_minutes: 240
     eager_convert_patterns: []
-    convertible_extensions: [".docx", ".pptx", ".xlsx", ".pdf", ".csv", ".txt", ".md", ".html"]
+    convertible_extensions: [".docx", ".pdf"]
     max_file_size_mb: 100
   contacts:
     enabled: false
@@ -82,18 +75,8 @@ converters:
   backends:
     pdf: "markitdown"
     docx: "markitdown"
-    pptx: "markitdown"
-    xlsx: "markitdown"
-    csv: "markitdown"
-    json: "native"
-    yaml: "native"
-    image: "native"
     default: "native"
   extraction:
     timeout_seconds: 30
     max_file_size_mb: 100
     xlsx_max_rows_per_sheet: 500
-  media:
-    extract_images: false
-    image_format: "png"
-    image_max_dimension: 0

@@ -35,12 +35,12 @@ def run(
     now = datetime.now(UTC)
     lookback = timedelta(days=config.lookback_days)
     start = now - lookback
-    end = now + timedelta(days=90)  # also fetch upcoming 90 days
+    end = now + timedelta(days=config.forward_days)
 
     params = {
         "startDateTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "endDateTime": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "$select": "id,subject,start,end,location,organizer,attendees,body,type,webLink",
+        "$select": "id,subject,start,end,location,organizer,attendees,body,type,webLink,lastModifiedDateTime",
         "$top": "50",
         "$orderby": "start/dateTime",
     }
@@ -48,15 +48,34 @@ def run(
     events = list(client.get_paginated("/me/calendarView", params=params))
     log.info("calendar.fetched", count=len(events))
 
+    # Skip-unchanged: track event_id → lastModifiedDateTime
+    known_modified = state.get("event_modified_times", {})
+    event_modified: dict[str, str] = {}
+
     written = 0
+    skipped = 0
     for event in events:
+        event_id = event.get("id", "")
+        last_modified = event.get("lastModifiedDateTime", "")
+
+        # Track all events we see
+        if event_id and last_modified:
+            event_modified[event_id] = last_modified
+
+        # Skip write if unchanged since last sync
+        if event_id and last_modified and known_modified.get(event_id) == last_modified:
+            skipped += 1
+            continue
+
         if _write_event(storage, event):
             written += 1
 
     state["last_sync"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     state["events_fetched"] = len(events)
     state["events_written"] = written
-    log.info("calendar.sync_complete", written=written, total=len(events))
+    state["events_skipped"] = skipped
+    state["event_modified_times"] = event_modified
+    log.info("calendar.sync_complete", written=written, skipped=skipped, total=len(events))
     return state, written
 
 

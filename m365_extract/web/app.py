@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from m365_extract.auth.token_store import TokenStore
 from m365_extract.config import Config
+from m365_extract.logging_config import configure_logging
 from m365_extract.user_manager import UserManager
 from m365_extract.web.exceptions import AccessDeniedError, SyncError, UserNotFoundError, WebConfigError
 from m365_extract.web.routes_admin import router as admin_router
@@ -29,6 +30,7 @@ def create_app(config: Config) -> FastAPI:
         msg = "WebConfig is required for web mode (config.web is None)"
         raise WebConfigError(msg)
 
+    configure_logging(config.service.log_level, config.service.json_logs)
     web_config = config.web
 
     @asynccontextmanager

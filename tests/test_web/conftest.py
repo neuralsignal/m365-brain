@@ -57,6 +57,7 @@ def full_web_config(tmp_path, web_config):
         service=ServiceConfig(
             mode="web",
             log_level="DEBUG",
+            json_logs=False,
         ),
         storage=StorageConfig(
             backend="local",
@@ -86,6 +87,7 @@ def full_web_config(tmp_path, web_config):
                 enabled=True,
                 poll_interval_minutes=60,
                 lookback_days=30,
+                forward_days=90,
             ),
             teams_chats=TeamsChatsExtractorConfig(
                 enabled=False,

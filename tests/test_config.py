@@ -25,6 +25,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -47,6 +48,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -120,6 +122,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -142,6 +145,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -204,6 +208,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -226,6 +231,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -283,6 +289,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -305,6 +312,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -366,6 +374,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -388,6 +397,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -448,6 +458,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -470,6 +481,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -527,6 +539,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "azure_blob"
               azure_blob:
@@ -551,6 +564,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -612,6 +626,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "local"
               local:
@@ -634,6 +649,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5
@@ -693,6 +709,7 @@ class TestLoadConfig:
             service:
               mode: "cli"
               log_level: "INFO"
+              json_logs: false
             storage:
               backend: "azure_blob"
               azure_blob:
@@ -715,6 +732,7 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 60
                 lookback_days: 365
+                forward_days: 90
               teams_chats:
                 enabled: true
                 poll_interval_minutes: 5

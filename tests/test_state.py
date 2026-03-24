@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import tempfile
+from pathlib import Path
+
+from hypothesis import given
+from hypothesis import strategies as st
+
 from m365_extract.state import SyncState
 
 
@@ -50,3 +57,40 @@ class TestSyncState:
         state = SyncState(str(nested))
         state.save("test", {"key": "value"})
         assert state.load("test") == {"key": "value"}
+
+    def test_atomic_write_produces_valid_json(self, tmp_path):
+        """Verify the atomic write path produces a valid, readable JSON file."""
+        state = SyncState(str(tmp_path / "state.json"))
+        data = {"delta_link": "https://graph.microsoft.com/v1.0/delta?token=abc", "count": 42}
+        state.save("email", data)
+
+        # Read the raw file and verify it's valid JSON
+        raw = (tmp_path / "state.json").read_text(encoding="utf-8")
+        parsed = json.loads(raw)
+        assert parsed["email"] == data
+
+    def test_no_temp_files_left_after_save(self, tmp_path):
+        """Atomic write should not leave .tmp files on success."""
+        state = SyncState(str(tmp_path / "state.json"))
+        state.save("test", {"key": "value"})
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+
+    @given(
+        key=st.text(
+            min_size=1,
+            max_size=30,
+            alphabet=st.characters(whitelist_categories=("L", "N")),
+        ),
+        values=st.dictionaries(
+            st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
+            st.one_of(st.text(max_size=50), st.integers(), st.booleans()),
+            max_size=10,
+        ),
+    )
+    def test_save_load_round_trips_property(self, key, values):
+        """Property: save(k, v) followed by load(k) always returns v."""
+        with tempfile.TemporaryDirectory() as td:
+            state = SyncState(str(Path(td) / "state.json"))
+            state.save(key, values)
+            assert state.load(key) == values

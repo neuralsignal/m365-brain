@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
 from pathlib import Path
 
 
@@ -42,5 +45,14 @@ class SyncState:
         return json.loads(self._path.read_text(encoding="utf-8"))
 
     def _write(self, data: dict) -> None:
+        """Write state atomically via temp file + os.replace (POSIX atomic)."""
         _ensure_parent(self._path)
-        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        fd, tmp_path = tempfile.mkstemp(dir=self._path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, indent=2))
+            os.replace(tmp_path, self._path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise

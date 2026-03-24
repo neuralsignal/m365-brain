@@ -129,12 +129,25 @@
 
 ## Phase 6: Contacts + Directory -- DONE
 
-**Prerequisites**: `Contacts.Read` and `User.Read.All` permissions granted in Entra admin center.
+**Prerequisites**: `Contacts.Read`, `User.Read.All`, and `Directory.Read.All` permissions granted in Entra admin center.
 
 1. `extractors/contacts.py` — personal contacts with delta sync ✓
 2. `extractors/directory.py` — GAL full refresh ✓
 
 Implemented and merged in v0.3.0-pending (commit `4666ef0`).
+
+### Entra Permissions for Directory Extractor
+
+The directory extractor requires two scopes:
+
+| Scope | Why | Admin consent? |
+|-------|-----|----------------|
+| `User.Read.All` | Read all user profiles via `/users/delta` (displayName, email, jobTitle, department, etc.) | Yes |
+| `Directory.Read.All` | Traverse manager chain (`/users/{id}/manager`) and direct reports (`/users/{id}/directReports`) | Yes |
+
+Both require admin consent. `Directory.Read.All` must be added as a **delegated** permission on the Entra app registration and explicitly granted by a Global Administrator.
+
+**Note:** The directory extractor is disabled by default. Only add `Directory.Read.All` to the app registration when you intend to enable it. Requesting this scope before it is granted blocks the entire device code login flow.
 
 ---
 

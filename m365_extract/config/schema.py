@@ -18,6 +18,7 @@ class AuthConfig:
 class ServiceConfig:
     mode: str
     log_level: str
+    json_logs: bool
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class CalendarExtractorConfig:
     enabled: bool
     poll_interval_minutes: int
     lookback_days: int
+    forward_days: int
 
 
 @dataclass(frozen=True)

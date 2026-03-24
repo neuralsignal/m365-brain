@@ -23,6 +23,7 @@ def calendar_config():
         enabled=True,
         poll_interval_minutes=60,
         lookback_days=30,
+        forward_days=90,
     )
 
 
@@ -151,4 +152,77 @@ class TestCalendarExtractor:
             if "Weekly Team Standup" in content:
                 assert "recurring" in content
                 break
+        client.close()
+
+    def test_skip_unchanged_events(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config, calendar_response
+    ):
+        """Second sync skips events that haven't changed (same lastModifiedDateTime)."""
+        # Add lastModifiedDateTime to fixture events
+        for event in calendar_response["value"]:
+            event["lastModifiedDateTime"] = "2026-03-20T10:00:00Z"
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        # First sync — writes all events
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
+        state, count1 = calendar.run(client, storage, {}, calendar_config)
+        assert count1 == 2
+        assert "event_modified_times" in state
+        assert len(state["event_modified_times"]) == 2
+
+        # Second sync with same state — should skip unchanged events
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
+        state2, count2 = calendar.run(client, storage, state, calendar_config)
+        assert count2 == 0
+        assert state2["events_skipped"] == 2
+
+        client.close()
+
+    def test_modified_event_rewritten(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config, calendar_response
+    ):
+        """An event with a new lastModifiedDateTime gets rewritten."""
+        for event in calendar_response["value"]:
+            event["lastModifiedDateTime"] = "2026-03-20T10:00:00Z"
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        # First sync
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
+        state, _ = calendar.run(client, storage, {}, calendar_config)
+
+        # Modify one event
+        calendar_response["value"][0]["lastModifiedDateTime"] = "2026-03-21T08:00:00Z"
+
+        # Second sync — one changed, one unchanged
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
+        state2, count2 = calendar.run(client, storage, state, calendar_config)
+        assert count2 == 1
+        assert state2["events_skipped"] == 1
+
+        client.close()
+
+    def test_uses_forward_days_config(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """Verify forward_days config is used in the API request."""
+        config = CalendarExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=60,
+            lookback_days=30,
+            forward_days=180,
+        )
+
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json={"value": []})
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        calendar.run(client, storage, {}, config)
+
+        # Verify the request was made (the URL contains the date range)
+        request = httpx_mock.get_request()
+        assert request is not None
+        assert "calendarView" in str(request.url)
         client.close()

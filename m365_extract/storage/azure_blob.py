@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import structlog
-
-log = structlog.get_logger()
-
 
 class AzureBlobBackend:
     """Azure Blob Storage backend implementing the StorageBackend protocol.

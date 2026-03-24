@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import click
 import structlog
 
 from m365_extract.config import Config
@@ -66,7 +65,6 @@ def run_extractors(
                 else:
                     updated_state, count = module.run(client, storage, state, ext_config)
                 sync_state.save(ext_name, updated_state)
-                click.echo(f"  {ext_name}: {count} items written")
+                log.info("sync.extractor_done", name=ext_name, items=count)
             except Exception as exc:
                 log.error("sync.extractor_failed", name=ext_name, error=str(exc))
-                click.echo(f"  {ext_name}: FAILED - {exc}")

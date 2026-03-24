@@ -92,6 +92,7 @@ def calendar_config():
         enabled=True,
         poll_interval_minutes=60,
         lookback_days=30,
+        forward_days=90,
     )
 
 
@@ -125,6 +126,7 @@ def full_config(tmp_path):
         service=ServiceConfig(
             mode="cli",
             log_level="DEBUG",
+            json_logs=False,
         ),
         storage=StorageConfig(
             backend="local",
@@ -154,6 +156,7 @@ def full_config(tmp_path):
                 enabled=True,
                 poll_interval_minutes=60,
                 lookback_days=30,
+                forward_days=90,
             ),
             teams_chats=TeamsChatsExtractorConfig(
                 enabled=True,

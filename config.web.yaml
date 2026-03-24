@@ -12,6 +12,7 @@ auth:
 service:
   mode: "web"
   log_level: "INFO"
+  json_logs: false
 
 storage:
   backend: "local"
@@ -38,6 +39,7 @@ extractors:
     enabled: true
     poll_interval_minutes: 60
     lookback_days: 365
+    forward_days: 90
   teams_chats:
     enabled: true
     poll_interval_minutes: 5
