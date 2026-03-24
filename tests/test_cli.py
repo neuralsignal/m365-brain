@@ -156,6 +156,7 @@ class TestRunContinuous:
         ):
             _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
             mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
             mock_time.sleep.side_effect = KeyboardInterrupt
 
             result = runner.invoke(main, args)
@@ -194,11 +195,157 @@ class TestRunContinuous:
             # time.time() returns 1000.0; first cycle: 1000-0=1000 >= 180 -> runs
             # last_run set to 1000; second cycle: 1000-1000=0 < 180 -> skip
             mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
             mock_time.sleep.side_effect = sleep_side_effect
 
             runner.invoke(main, args)
 
             assert mock_mod.run.call_count == 1
+
+    def test_uses_continuous_poll_seconds_from_config(self, runner, config_file, full_config):
+        """Sleep uses config.service.continuous_poll_seconds, not a hardcoded value."""
+        from m365_extract.cli import main
+
+        args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
+        mock_mod = _make_mock_extractor(return_value=({}, 1))
+        original = EXTRACTORS["email"]
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_cli("create_storage"),
+            _patch_cli("SyncState") as mock_state_cls,
+            _patch_cli("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_cli("log"),
+            patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
+            mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            runner.invoke(main, args)
+
+            mock_time.sleep.assert_called_with(full_config.service.continuous_poll_seconds)
+
+    def test_auth_failure_recovers(self, runner, config_file, full_config):
+        """GraphClient raises once, then succeeds — daemon continues, counter resets."""
+        from m365_extract.cli import main
+
+        args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
+        mock_mod = _make_mock_extractor(return_value=({}, 1))
+        original = EXTRACTORS["email"]
+
+        call_count = 0
+
+        def gc_side_effect(*args_inner, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("token expired")
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            return mock_client
+
+        cycle = 0
+
+        def sleep_side_effect(seconds):
+            nonlocal cycle
+            cycle += 1
+            if cycle >= 2:
+                raise KeyboardInterrupt
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_cli("create_storage"),
+            _patch_cli("SyncState") as mock_state_cls,
+            _patch_cli("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_cli("log"),
+            patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_config
+            mock_state = MagicMock()
+            mock_state.load.return_value = {}
+            mock_state_cls.return_value = mock_state
+            mock_gc.side_effect = gc_side_effect
+            mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
+            mock_time.sleep.side_effect = sleep_side_effect
+
+            result = runner.invoke(main, args)
+
+            assert result.exit_code == 0
+            # Second cycle succeeded, so the extractor ran
+            assert mock_mod.run.call_count == 1
+
+    def test_exits_after_max_consecutive_auth_failures(self, runner, config_file, full_config):
+        """GraphClient raises N consecutive times — SystemExit(1)."""
+        from m365_extract.cli import main
+
+        args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
+        original = EXTRACTORS["email"]
+        mock_mod = _make_mock_extractor(return_value=({}, 0))
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_cli("create_storage"),
+            _patch_cli("SyncState") as mock_state_cls,
+            _patch_cli("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_cli("log"),
+            patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_config
+            mock_state = MagicMock()
+            mock_state.load.return_value = {}
+            mock_state_cls.return_value = mock_state
+            # GraphClient constructor always raises
+            mock_gc.side_effect = ConnectionError("auth failed")
+            mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
+            mock_time.sleep.return_value = None
+
+            result = runner.invoke(main, args)
+
+            assert result.exit_code == 1
+
+    def test_heartbeat_logged_each_cycle(self, runner, config_file, full_config):
+        """Verify cli.continuous_heartbeat event emitted each cycle."""
+        from m365_extract.cli import main
+
+        args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
+        mock_mod = _make_mock_extractor(return_value=({}, 1))
+        original = EXTRACTORS["email"]
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_cli("create_storage"),
+            _patch_cli("SyncState") as mock_state_cls,
+            _patch_cli("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_cli("log") as mock_log,
+            patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
+            mock_time.time.return_value = 1000.0
+            mock_time.monotonic.return_value = 0.0
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            runner.invoke(main, args)
+
+            heartbeat_calls = [c for c in mock_log.info.call_args_list if c[0][0] == "cli.continuous_heartbeat"]
+            assert len(heartbeat_calls) >= 1
+            assert heartbeat_calls[0][1]["loop"] == 1
 
 
 class TestDryRun:

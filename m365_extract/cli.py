@@ -245,46 +245,75 @@ def _run_continuous(
     """Run extractors continuously on their configured intervals."""
     log.info("cli.continuous_started")
 
-    # Track last run time per extractor
     last_run: dict[str, float] = {}
+    consecutive_auth_failures = 0
+    start_time = time.monotonic()
+    loop_count = 0
 
     try:
         while True:
             now = time.time()
+            loop_count += 1
+            uptime = time.monotonic() - start_time
 
-            with GraphClient(config.graph, token_provider) as client:
-                for ext_name in names:
-                    if ext_name not in EXTRACTORS:
-                        continue
+            # Determine which extractors are due
+            extractors_due = []
+            for ext_name in names:
+                if ext_name not in EXTRACTORS:
+                    continue
+                _, config_getter, _ = EXTRACTORS[ext_name]
+                ext_config = config_getter(config)
+                if not ext_config.enabled:
+                    continue
+                interval_seconds = ext_config.poll_interval_minutes * 60
+                if now - last_run.get(ext_name, 0) >= interval_seconds:
+                    extractors_due.append(ext_name)
 
-                    module, config_getter, needs_converters = EXTRACTORS[ext_name]
-                    ext_config = config_getter(config)
+            log.info(
+                "cli.continuous_heartbeat",
+                loop=loop_count,
+                uptime_seconds=round(uptime, 1),
+                extractors_due=len(extractors_due),
+            )
 
-                    if not ext_config.enabled:
-                        continue
+            try:
+                with GraphClient(config.graph, token_provider) as client:
+                    for ext_name in extractors_due:
+                        module, config_getter, needs_converters = EXTRACTORS[ext_name]
+                        ext_config = config_getter(config)
 
-                    interval_seconds = ext_config.poll_interval_minutes * 60
-                    last = last_run.get(ext_name, 0)
+                        log.info("cli.running_extractor", name=ext_name)
+                        state = sync_state.load(ext_name)
 
-                    if now - last < interval_seconds:
-                        continue
+                        try:
+                            if needs_converters:
+                                updated_state, count = module.run(client, storage, state, ext_config, config.converters)
+                            else:
+                                updated_state, count = module.run(client, storage, state, ext_config)
+                            sync_state.save(ext_name, updated_state)
+                            last_run[ext_name] = time.time()
+                            log.info("cli.extractor_done", name=ext_name, items=count)
+                        except Exception as exc:
+                            log.error("cli.extractor_failed", name=ext_name, error=str(exc))
+                            last_run[ext_name] = time.time()
 
-                    log.info("cli.running_extractor", name=ext_name)
-                    state = sync_state.load(ext_name)
+                consecutive_auth_failures = 0
+            except Exception as exc:
+                consecutive_auth_failures += 1
+                log.error(
+                    "cli.auth_failure",
+                    error=str(exc),
+                    consecutive_failures=consecutive_auth_failures,
+                    max_failures=config.service.max_consecutive_auth_failures,
+                )
+                if consecutive_auth_failures >= config.service.max_consecutive_auth_failures:
+                    log.critical(
+                        "cli.max_auth_failures_reached",
+                        consecutive_failures=consecutive_auth_failures,
+                    )
+                    raise SystemExit(1) from None
 
-                    try:
-                        if needs_converters:
-                            updated_state, count = module.run(client, storage, state, ext_config, config.converters)
-                        else:
-                            updated_state, count = module.run(client, storage, state, ext_config)
-                        sync_state.save(ext_name, updated_state)
-                        last_run[ext_name] = time.time()
-                        log.info("cli.extractor_done", name=ext_name, items=count)
-                    except Exception as exc:
-                        log.error("cli.extractor_failed", name=ext_name, error=str(exc))
-                        last_run[ext_name] = time.time()
-
-            time.sleep(30)
+            time.sleep(config.service.continuous_poll_seconds)
 
     except KeyboardInterrupt:
         log.info("cli.continuous_stopped")
