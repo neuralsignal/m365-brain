@@ -76,6 +76,30 @@ class TestDumpsLoadsMarkdown:
         assert "Hello" in loaded_body
 
 
+class TestFrontmatterRoundTrip:
+    """Property-based test: subjects with YAML special characters must round-trip."""
+
+    @given(
+        st.text(
+            alphabet=st.characters(
+                whitelist_categories=("L", "N", "P", "S", "Z"),
+                blacklist_characters=("\x00",),
+            ),
+            min_size=1,
+            max_size=200,
+        )
+    )
+    def test_frontmatter_round_trip_with_special_chars(self, subject):
+        """Any subject should survive dumps_markdown → loads_markdown round-trip."""
+        metadata = {"title": subject, "type": "email", "tags": ["test"]}
+        body = "Test body content."
+        serialized = dumps_markdown(metadata, body)
+        loaded_meta, loaded_body = loads_markdown(serialized)
+        assert loaded_meta["title"] == subject
+        assert loaded_meta["type"] == "email"
+        assert "Test body content" in loaded_body
+
+
 class TestBuildEmailFrontmatter:
     def test_basic_email(self):
         fm = build_email_frontmatter(

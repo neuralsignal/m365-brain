@@ -359,6 +359,47 @@ class TestExtractGraphError:
             client.get("/me/messages/123")
 
 
+class TestDefensiveBehavior:
+    """Edge cases: non-retryable errors and missing headers."""
+
+    def test_403_raises_immediately_no_retry(self, httpx_mock: HTTPXMock, client):
+        """403 Forbidden is not retryable — should raise after a single request."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            status_code=403,
+            text=json.dumps({"error": {"code": "Forbidden", "message": "Access denied."}}),
+        )
+        with pytest.raises(GraphApiError, match="HTTP 403"):
+            client.get("/me/messages")
+        # Only one request should have been made (no retries)
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_429_without_retry_after_header(self, httpx_mock: HTTPXMock, client):
+        """429 without Retry-After header should use the fallback default (5s), not crash."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            status_code=429,
+            # No Retry-After header
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={"value": []},
+        )
+        result = client.get("/me/messages")
+        assert result == {"value": []}
+
+    def test_410_gone_raises_immediately(self, httpx_mock: HTTPXMock, client):
+        """410 Gone (expired delta token) is not retryable — should raise immediately."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/contacts/delta",
+            status_code=410,
+            text=json.dumps({"error": {"code": "ResyncRequired", "message": "Delta token expired."}}),
+        )
+        with pytest.raises(GraphApiError, match="HTTP 410"):
+            client.get("/me/contacts/delta")
+        assert len(httpx_mock.get_requests()) == 1
+
+
 class TestFriendlyErrors:
     """Tests for actionable error hints on known Graph error codes."""
 
