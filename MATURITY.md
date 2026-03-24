@@ -4,7 +4,7 @@ _2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5 partial)_
 
 ## Current State
 
-35 source modules, 8 extractors, 2 storage backends, 334 tests (25 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented.
+35 source modules, 8 extractors, 2 storage backends, 364 tests (34 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented. Live validated against real Graph API (2026-03-24).
 
 ### What's Implemented
 
@@ -20,13 +20,40 @@ _2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5 partial)_
 | Config | Done | Config package (loader.py + schema.py), frozen dataclasses, env var expansion |
 | Azure IaC | Done | Bicep templates (main.bicep), dev/prod parameter files |
 | Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, `.env.example`, pixi tasks |
-| Tests | 334 pass | Unit + mock + Azurite integration (9 skip when no Azurite) |
+| Tests | 364 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 34 test files |
 | CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
 | Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
 | Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
 | Coverage | Done | pytest-cov, 94% (threshold: 80%) |
 | Packaging | Done | PyPI publish workflow (OIDC on tag), release-please auto-versioning |
 | Dev scripts | 3 | dev-setup.sh, deploy-infra.sh, teardown-dev.sh |
+
+### Live Validation Results (2026-03-24)
+
+All extractors tested against real Microsoft Graph API with a live Entra app registration.
+
+**Probe results (dry-run)**:
+- 7/7 probes pass after fixing `teams_channels` `$top` parameter rejection
+
+**Extractor sync results**:
+- 6/6 enabled extractors sync successfully against real Graph API
+- `teams_channels` disabled — requires `Channel.ReadBasic.All` admin consent (not just `ChannelMessage.Read.All`)
+- Incremental sync verified: email delta tokens, calendar skip-unchanged, OneDrive delta
+
+**SharePoint scale test**:
+- 25K items across 100 pages synced
+- Initial delta does not complete in 100 pages (`max_pages: 100` config limit) — subsequent syncs pick up via delta token
+
+**Edge cases discovered and fixed**:
+- 13 new edge-case tests added during live validation
+
+### Bugs Found During Live Validation
+
+| Bug | Fix | Commit |
+|-----|-----|--------|
+| `/me/joinedTeams` rejects `$top` query param | Removed `$top` from probe and extractor | Live validation session |
+| Contacts delta endpoint rejects `$select`/`$top` | Removed unsupported params from contacts extractor | Live validation session |
+| Null `from` field in email crashes `_write_email` | Added `or {}` guard pattern | Live validation session |
 
 ### What's Missing (Roadmap Phase 5)
 
@@ -46,7 +73,8 @@ The app (`workflow-read`) requires delegated Graph API permissions. Some require
 | `Mail.Read` | email | No | |
 | `Calendars.Read` | calendar | No | |
 | `Chat.Read` | teams_chats | No | |
-| `ChannelMessage.Read.All` | teams_channels | Yes | |
+| `ChannelMessage.Read.All` | teams_channels | Yes | Also needs `Channel.ReadBasic.All` for channel listing |
+| `Channel.ReadBasic.All` | teams_channels | Yes | Required to list channels within teams |
 | `Files.Read.All` | onedrive | Yes | |
 | `Sites.Read.All` | sharepoint | Yes | |
 | `Contacts.Read` | contacts | No | |
@@ -120,3 +148,36 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 
 - Contacts extractor (Phase 6)
 - Directory extractor (Phase 6)
+
+## Multi-User Web Service Gap Assessment
+
+### What Works for Local/Internal Testing (1-3 users)
+
+- OAuth2 login flow with Entra (authorization code + PKCE)
+- Per-user token encryption at rest (Fernet + SQLite)
+- Per-user storage isolation (`vault/{user_id}/`)
+- Background sync scheduler (APScheduler, per-user jobs)
+- Admin user management (list, enable, disable, delete)
+- Session-based access control (user can only trigger own sync)
+- Thread-safe token refresh with locking
+
+### Critical Gaps for Production
+
+| Gap | Severity | Impact |
+|-----|----------|--------|
+| Admin endpoints unauthenticated | Critical | Anyone can list/delete users at `/admin/users` |
+| No RBAC | Critical | No admin vs user role distinction |
+| Sync state shared | High | Single `sync_state.json` — not per-user scoped |
+| `_last_sync` in-memory | Medium | Lost on restart, sync status returns stale data |
+| No audit logging | Medium | No trail of auth/admin actions |
+| No rate limiting | Medium | Auth endpoints vulnerable to brute force |
+| No DB migrations | Medium | Schema evolution requires manual intervention |
+| No secrets rotation | Low | Fernet key, session secret — no rotation strategy |
+
+### Hardening Roadmap
+
+**Phase 5A (local testing)**: Entra app config, environment setup, verify full login → sync flow, fix integration bugs.
+
+**Phase 5B (security hardening)**: Admin endpoint auth (API key or Entra role check), per-user sync state, persistent `_last_sync`, rate limiting (SlowAPI), audit logging.
+
+**Phase 5C (deployment)**: Bicep IaC for App Service + ACR + Key Vault, managed identity, OIDC federated identity for GitHub Actions, production redirect URIs, CORS, health probes.

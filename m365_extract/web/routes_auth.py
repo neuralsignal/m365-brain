@@ -35,13 +35,25 @@ def login(request: Request, config: Config = Depends(get_config)) -> RedirectRes
 @router.get("/callback")
 def callback(
     request: Request,
-    code: str,
-    state: str,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
     config: Config = Depends(get_config),
     token_store: TokenStore = Depends(get_token_store),
     user_manager: UserManager = Depends(get_user_manager),
 ) -> JSONResponse:
     """Handle OAuth2 callback: exchange code for tokens, create/update user."""
+    log.info("auth.callback_received", url=str(request.url), has_code=code is not None, has_state=state is not None, has_error=error is not None)
+
+    if error is not None:
+        log.error("auth.callback_error", error=error, description=error_description)
+        return JSONResponse({"error": error, "error_description": error_description}, status_code=400)
+
+    if code is None or state is None:
+        log.warning("auth.callback_missing_params", has_code=code is not None, has_state=state is not None)
+        return JSONResponse({"error": "Missing code or state parameter"}, status_code=400)
+
     expected_state = request.session.get("oauth_state")
     if state != expected_state:
         log.warning("auth.callback_bad_state", expected=expected_state, got=state)

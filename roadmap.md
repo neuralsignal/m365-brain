@@ -95,13 +95,13 @@
 
 ---
 
-## Phase 5: Webhooks + Deployment -- PARTIAL
+## Phase 5: Web UI Testing + Security Hardening + Deployment -- PARTIAL
 
-**Goal**: Near-real-time sync deployed to Azure App Service.
+**Goal**: Validate the web service end-to-end, harden for multi-user, deploy to Azure.
 
-**Status**: CI/CD infrastructure is complete (18 GitHub Actions workflows including CI, release-please, publish, docs-deploy, and 8 dark factory agent workflows). Web mode hardened with per-user storage isolation, access control, and token expiry fix. Remaining: Azure App Service deployment and Graph webhooks.
+**Status**: Phase 4 built the complete web service (FastAPI, OAuth2, per-user isolation, scheduler). CI/CD infrastructure is complete (18 GitHub Actions workflows). Live validation (2026-03-24) confirmed all extractors work against real Graph API. Phase 5 is split into three sub-phases.
 
-**Done**:
+**Done (infrastructure)**:
 - GitHub Actions CI/CD workflows (lint, test, coverage, release-please, PyPI publish, docs deploy)
 - Dark factory agent workflows (code-quality, test-coverage, security-scan, dep-audit, docs-freshness, issue-triage, PR-review, PR-autofix)
 - `sync.py` — public sync API extracted from CLI layer (web + CLI both import from here)
@@ -111,19 +111,53 @@
 - `config.yaml` — `client_secret: null` for CLI mode compatibility
 - `.env.example` — template for environment variables
 
-**Remaining**:
-1. `web/routes_webhooks.py` — Graph change notification handler
-2. Subscription management (create, renew, validate)
-3. Azure App Service deployment (ACR push, OIDC federated identity)
+### Phase 5A: Local Web UI Testing
 
-### Stopping Point 5: Azure Deployment Infrastructure
+**Goal**: First person ever logs in through the web UI against a real Entra app.
 
-1. Create Container Registry (or reuse `acrsanoptis`)
-2. Create App Service Plan + Web App
-3. Configure App Service environment variables
-4. Update Entra app redirect URI to production URL
-5. Set up OIDC federated identity for GitHub Actions
-6. Test with 2-3 users
+**Prerequisites** (manual, in Azure Portal):
+1. Add client secret: Entra > App registrations > `workflow-read` > Certificates & secrets > New
+2. Add redirect URI: Entra > Authentication > Add platform > Web > `http://localhost:8000/auth/callback`
+3. Verify "Allow public client flows" still enabled (needed for CLI device code flow too)
+
+**Environment variables** (add to `.env`):
+```
+AZURE_CLIENT_ID=<same as MSAL_CLIENT_ID>
+AZURE_TENANT_ID=<same as MSAL_TENANT_ID>
+AZURE_CLIENT_SECRET=<from step 1>
+SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(32))">
+FERNET_KEY=<python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+```
+
+**Test flow**:
+1. `m365-extract --config config.web.yaml serve` → Uvicorn on 0.0.0.0:8000
+2. `http://localhost:8000/auth/login` → Entra redirect
+3. Log in → callback returns `{"status": "authenticated", "user_id": "<oid>"}`
+4. `GET /admin/users` → shows authenticated user
+5. `POST /sync/<user_id>` → vault output in `vault/<user_id>/`
+6. `GET /health` → 200 OK
+
+**Known risks**:
+- Redirect URI mismatch: `request.url_for("callback")` may generate `http://0.0.0.0:8000/...` instead of `http://localhost:8000/...`
+- `config.web.yaml` uses `AZURE_*` env vars while `config.yaml` uses `MSAL_*` — both reference the same Entra app
+
+### Phase 5B: Security Hardening (future)
+
+1. Admin endpoint authentication (API key or Entra role check)
+2. Per-user sync state files (`state/{user_id}/sync_state.json`)
+3. Persistent `_last_sync` (move from in-memory dict to database)
+4. Rate limiting on auth endpoints (FastAPI SlowAPI)
+5. Audit logging (structured events for auth/admin actions)
+
+### Phase 5C: Azure Deployment (future)
+
+1. Bicep IaC for App Service + Container Registry + Key Vault
+2. Managed Identity for Azure Blob Storage
+3. OIDC federated identity for GitHub Actions deploy
+4. Production redirect URIs and CORS
+5. Health probes for App Service
+6. Graph webhooks (`web/routes_webhooks.py`, subscription management)
+7. Test with 2-3 users
 
 ---
 
