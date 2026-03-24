@@ -124,11 +124,23 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
 
     # Extract attendees
     attendees = []
+    attendee_details = []
     for att in event.get("attendees", []):
         email_obj = att.get("emailAddress", {})
         att_name = email_obj.get("name", "")
+        att_email = email_obj.get("address", "")
+        att_status = att.get("status", {}).get("response", "")
         if att_name:
             attendees.append(att_name)
+        if att_name or att_email:
+            detail: dict[str, str] = {}
+            if att_name:
+                detail["name"] = att_name
+            if att_email:
+                detail["email"] = att_email
+            if att_status:
+                detail["status"] = att_status
+            attendee_details.append(detail)
 
     # Convert body
     body_obj = event.get("body", {})
@@ -150,6 +162,7 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
         organizer_name=organizer_name,
         organizer_email=organizer_email,
         attendees=attendees,
+        attendee_details=attendee_details,
         is_recurring=event.get("type", "singleInstance") != "singleInstance",
         web_link=event.get("webLink", ""),
     )
@@ -161,7 +174,20 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
         body_parts.append(f"**Where:** {location}")
     if organizer_name:
         body_parts.append(f"**Organizer:** {organizer_name}")
-    if attendees:
+    if attendee_details:
+        att_strs = []
+        for d in attendee_details:
+            parts = [d.get("name", "")]
+            extra = []
+            if d.get("email"):
+                extra.append(d["email"])
+            if d.get("status"):
+                extra.append(d["status"])
+            if extra:
+                parts.append(f"({', '.join(extra)})")
+            att_strs.append(" ".join(parts))
+        body_parts.append(f"**Attendees:** {', '.join(att_strs)}")
+    elif attendees:
         body_parts.append(f"**Attendees:** {', '.join(attendees)}")
     body_parts.append("")
     body_parts.append("---\n")

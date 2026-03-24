@@ -56,6 +56,7 @@ def build_calendar_frontmatter(
     organizer_name: str,
     organizer_email: str,
     attendees: list[str],
+    attendee_details: list[dict],
     is_recurring: bool,
     web_link: str,
 ) -> dict:
@@ -89,6 +90,8 @@ def build_calendar_frontmatter(
     }
     if location:
         fm["location"] = location
+    if attendee_details:
+        fm["attendee_details"] = attendee_details
     return fm
 
 
@@ -99,12 +102,13 @@ def build_teams_chat_frontmatter(
     conversation_type: str,
     participants: list[str],
     last_message_time: str,
+    message_limit_reached: bool,
 ) -> dict:
     """Build frontmatter dict for a Teams chat conversation."""
     slug = slugify(title)
     permalink = f"teams-chat-{slug}-{short_hash(conversation_id)}"
     tags = ["teams", f"teams-{conversation_type.lower()}"]
-    return {
+    fm: dict = {
         "title": title,
         "permalink": permalink,
         "type": "teams_chat",
@@ -120,6 +124,9 @@ def build_teams_chat_frontmatter(
         },
         "status": "raw",
     }
+    if message_limit_reached:
+        fm["message_limit_reached"] = True
+    return fm
 
 
 def build_onedrive_frontmatter(

@@ -205,6 +205,56 @@ class TestCalendarExtractor:
 
         client.close()
 
+    def test_attendee_details_in_frontmatter(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config, calendar_response
+    ):
+        """Frontmatter includes attendee_details with name, email, and status."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/calendarView.*"),
+            json=calendar_response,
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        calendar.run(client, storage, {}, calendar_config)
+
+        files = storage.list_files("calendar")
+        # Find the event with attendees (Weekly Team Standup)
+        for f in files:
+            content = storage.read_file(f)
+            if "Weekly Team Standup" in content:
+                assert "attendee_details" in content
+                assert "bob@example.com" in content
+                assert "carol@example.com" in content
+                assert "accepted" in content
+                break
+        client.close()
+
+    def test_attendee_body_includes_email(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config, calendar_response
+    ):
+        """Body text includes attendee emails and statuses."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/calendarView.*"),
+            json=calendar_response,
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        calendar.run(client, storage, {}, calendar_config)
+
+        files = storage.list_files("calendar")
+        for f in files:
+            content = storage.read_file(f)
+            if "Weekly Team Standup" in content:
+                # Body should have enriched attendee line
+                assert "bob@example.com" in content
+                assert "carol@example.com" in content
+                break
+        client.close()
+
     def test_uses_forward_days_config(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Verify forward_days config is used in the API request."""
         config = CalendarExtractorConfig(

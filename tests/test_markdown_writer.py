@@ -124,6 +124,10 @@ class TestBuildCalendarFrontmatter:
             organizer_name="Boss",
             organizer_email="boss@example.com",
             attendees=["Alice", "Bob"],
+            attendee_details=[
+                {"name": "Alice", "email": "alice@example.com", "status": "accepted"},
+                {"name": "Bob", "email": "bob@example.com", "status": "tentativelyAccepted"},
+            ],
             is_recurring=True,
             web_link="",
         )
@@ -131,6 +135,9 @@ class TestBuildCalendarFrontmatter:
         assert "recurring" in fm["tags"]
         assert fm["location"] == "Room A"
         assert fm["attendees"] == ["Alice", "Bob"]
+        assert len(fm["attendee_details"]) == 2
+        assert fm["attendee_details"][0]["email"] == "alice@example.com"
+        assert fm["attendee_details"][1]["status"] == "tentativelyAccepted"
 
     def test_no_location_omits_field(self):
         fm = build_calendar_frontmatter(
@@ -142,10 +149,12 @@ class TestBuildCalendarFrontmatter:
             organizer_name="Boss",
             organizer_email="boss@example.com",
             attendees=[],
+            attendee_details=[],
             is_recurring=False,
             web_link="",
         )
         assert "location" not in fm
+        assert "attendee_details" not in fm
 
 
 class TestBuildTeamsChatFrontmatter:
@@ -156,10 +165,23 @@ class TestBuildTeamsChatFrontmatter:
             conversation_type="oneOnOne",
             participants=["Alice", "Bob"],
             last_message_time="2026-03-12T10:00:00Z",
+            message_limit_reached=False,
         )
         assert fm["type"] == "teams_chat"
         assert "teams-oneonone" in fm["tags"]
         assert fm["participants"] == ["Alice", "Bob"]
+        assert "message_limit_reached" not in fm
+
+    def test_truncated_chat(self):
+        fm = build_teams_chat_frontmatter(
+            title="Big Group",
+            conversation_id="chat-456",
+            conversation_type="group",
+            participants=["Alice", "Bob", "Carol"],
+            last_message_time="2026-03-12T10:00:00Z",
+            message_limit_reached=True,
+        )
+        assert fm["message_limit_reached"] is True
 
 
 class TestBuildOneDriveFrontmatter:
