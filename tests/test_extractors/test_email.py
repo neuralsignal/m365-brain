@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -170,6 +171,53 @@ class TestEmailExtractor:
         assert count == 2
         assert "delta_link_Inbox" in state
         assert "delta_link_SentItems" in state
+        client.close()
+
+    def test_initial_sync_logs_sync_type(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
+        """Initial sync (no delta_link) logs sync_type='initial'."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={"value": [], "@odata.deltaLink": "https://delta?token=init"},
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        events: list[dict] = []
+
+        def capture_log(event, **kwargs):
+            events.append({"event": event, **kwargs})
+
+        with patch.object(email.log, "info", side_effect=capture_log):
+            email.run(client, storage, {}, email_config)
+
+        sync_start_events = [e for e in events if e["event"] == "email.folder_sync_start"]
+        assert len(sync_start_events) == 1
+        assert sync_start_events[0]["sync_type"] == "initial"
+        client.close()
+
+    def test_incremental_sync_logs_sync_type(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
+        """Incremental sync (with delta_link) logs sync_type='incremental'."""
+        delta_url = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=existing"
+        httpx_mock.add_response(
+            url=delta_url,
+            json={"value": [], "@odata.deltaLink": "https://delta?token=new"},
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        events: list[dict] = []
+
+        def capture_log(event, **kwargs):
+            events.append({"event": event, **kwargs})
+
+        with patch.object(email.log, "info", side_effect=capture_log):
+            email.run(client, storage, {"delta_link_Inbox": delta_url}, email_config)
+
+        sync_start_events = [e for e in events if e["event"] == "email.folder_sync_start"]
+        assert len(sync_start_events) == 1
+        assert sync_start_events[0]["sync_type"] == "incremental"
         client.close()
 
     def test_skips_invalid_messages(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):

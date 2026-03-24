@@ -283,4 +283,12 @@ class GraphClient:
         if page >= limit:
             log.warning("graph.delta_max_pages_reached", max_pages=limit, path=path)
 
+        log.info(
+            "graph.delta_complete",
+            path=path,
+            pages_fetched=page,
+            items_fetched=len(items),
+            delta_link_captured=new_delta_link is not None,
+        )
+
         return items, new_delta_link

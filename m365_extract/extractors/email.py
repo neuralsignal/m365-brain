@@ -80,6 +80,9 @@ def _sync_folder(
     folder_id = _FOLDER_IDS.get(folder, folder)
     path = f"/me/mailFolders/{folder_id}/messages/delta"
 
+    sync_type = "incremental" if delta_link else "initial"
+    log.info("email.folder_sync_start", folder=folder, sync_type=sync_type)
+
     params = {
         "$select": "id,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
         "receivedDateTime,importance,hasAttachments,webLink,parentFolderId",
@@ -103,7 +106,7 @@ def _sync_folder(
         if _write_email(storage, msg, folder):
             written += 1
 
-    log.info("email.folder_synced", folder=folder, fetched=len(messages), written=written)
+    log.info("email.folder_synced", folder=folder, sync_type=sync_type, fetched=len(messages), written=written)
     return written, new_delta_link
 
 
