@@ -220,6 +220,114 @@ class TestEmailExtractor:
         assert sync_start_events[0]["sync_type"] == "incremental"
         client.close()
 
+    def test_very_long_subject(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
+        """500-char subject should be slugified and truncated to a valid file path."""
+        long_subject = "A" * 500
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-long-subj",
+                        "subject": long_subject,
+                        "body": {"contentType": "text", "content": "Body"},
+                        "from": {"emailAddress": {"name": "Test", "address": "test@example.com"}},
+                        "toRecipients": [],
+                        "receivedDateTime": "2026-03-12T10:00:00Z",
+                        "importance": "normal",
+                        "hasAttachments": False,
+                        "webLink": "",
+                        "parentFolderId": "inbox",
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=long",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, email_config)
+        assert count == 1
+
+        files = storage.list_files("emails")
+        assert len(files) == 1
+        # File path slug should be truncated (max_length=80 default for slugify)
+        assert len(files[0]) < 200
+        client.close()
+
+    def test_subject_with_yaml_special_chars(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
+        """Subject with YAML special characters must not corrupt frontmatter."""
+        tricky_subject = 'RE: FW: Budget (Q1) — Final #2 [v3]: "approved"'
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-yaml-chars",
+                        "subject": tricky_subject,
+                        "body": {"contentType": "text", "content": "Approved."},
+                        "from": {"emailAddress": {"name": "Boss", "address": "boss@example.com"}},
+                        "toRecipients": [{"emailAddress": {"address": "me@example.com"}}],
+                        "receivedDateTime": "2026-03-12T14:00:00Z",
+                        "importance": "high",
+                        "hasAttachments": False,
+                        "webLink": "",
+                        "parentFolderId": "inbox",
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=yaml",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        email.run(client, storage, {}, email_config)
+
+        files = storage.list_files("emails")
+        content = storage.read_file(files[0])
+
+        from m365_extract.markdown_writer import loads_markdown
+
+        fm, body = loads_markdown(content)
+        assert fm["title"] == tricky_subject
+        client.close()
+
+    def test_missing_sender_fields(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
+        """Email with null from field should still be written with empty sender."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-no-sender",
+                        "subject": "System notification",
+                        "body": {"contentType": "text", "content": "Alert"},
+                        "from": None,
+                        "toRecipients": [],
+                        "receivedDateTime": "2026-03-12T08:00:00Z",
+                        "importance": "normal",
+                        "hasAttachments": False,
+                        "webLink": "",
+                        "parentFolderId": "inbox",
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=nosender",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, email_config)
+        assert count == 1
+
+        files = storage.list_files("emails")
+        content = storage.read_file(files[0])
+        assert "System notification" in content
+        client.close()
+
     def test_skips_invalid_messages(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
         httpx_mock.add_response(
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),

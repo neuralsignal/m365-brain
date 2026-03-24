@@ -255,6 +255,141 @@ class TestCalendarExtractor:
                 break
         client.close()
 
+    def test_all_day_event(self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config):
+        """All-day event uses date-only start.date (no dateTime), should not crash."""
+        response = {
+            "value": [
+                {
+                    "id": "EVT-ALL-DAY",
+                    "subject": "Company Holiday",
+                    "start": {"dateTime": "2026-04-01T00:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-04-02T00:00:00.0000000", "timeZone": "UTC"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Admin", "address": "admin@example.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": "Office closed"},
+                    "type": "singleInstance",
+                    "webLink": "",
+                    "isAllDay": True,
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = calendar.run(client, storage, {}, calendar_config)
+        assert count == 1
+
+        files = storage.list_files("calendar")
+        content = storage.read_file(files[0])
+        assert "Company Holiday" in content
+        assert "2026-04-01" in content
+        client.close()
+
+    def test_event_no_organizer_name(self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config):
+        """Event with empty organizer name should not crash and omit organizer line."""
+        response = {
+            "value": [
+                {
+                    "id": "EVT-NO-ORG",
+                    "subject": "Quick Sync",
+                    "start": {"dateTime": "2026-03-15T10:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-03-15T10:30:00.0000000", "timeZone": "UTC"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "", "address": "unknown@example.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = calendar.run(client, storage, {}, calendar_config)
+        assert count == 1
+
+        files = storage.list_files("calendar")
+        content = storage.read_file(files[0])
+        assert "Quick Sync" in content
+        # Organizer line should not appear when name is empty
+        assert "**Organizer:**" not in content
+        client.close()
+
+    def test_subject_with_yaml_special_chars(self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config):
+        """Subject with YAML special characters must round-trip safely through frontmatter."""
+        tricky_subject = 'Budget: Q1 "Final" #2 [DRAFT] {updated}'
+        response = {
+            "value": [
+                {
+                    "id": "EVT-YAML-CHARS",
+                    "subject": tricky_subject,
+                    "start": {"dateTime": "2026-03-16T09:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-03-16T10:00:00.0000000", "timeZone": "UTC"},
+                    "location": {"displayName": "Room: A [Main]"},
+                    "organizer": {"emailAddress": {"name": "Test", "address": "t@t.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        calendar.run(client, storage, {}, calendar_config)
+
+        files = storage.list_files("calendar")
+        content = storage.read_file(files[0])
+
+        # Parse the frontmatter back — must not corrupt the title
+        from m365_extract.markdown_writer import loads_markdown
+
+        fm, body = loads_markdown(content)
+        assert fm["title"] == tricky_subject
+        assert fm["location"] == "Room: A [Main]"
+        client.close()
+
+    def test_event_no_attendees_omits_attendee_details(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config
+    ):
+        """Solo event (empty attendees) should have no attendee_details in frontmatter."""
+        response = {
+            "value": [
+                {
+                    "id": "EVT-SOLO",
+                    "subject": "Focus Time",
+                    "start": {"dateTime": "2026-03-17T08:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-03-17T10:00:00.0000000", "timeZone": "UTC"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Me", "address": "me@example.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        calendar.run(client, storage, {}, calendar_config)
+
+        files = storage.list_files("calendar")
+        content = storage.read_file(files[0])
+        assert "attendee_details" not in content
+        client.close()
+
     def test_uses_forward_days_config(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Verify forward_days config is used in the API request."""
         config = CalendarExtractorConfig(
