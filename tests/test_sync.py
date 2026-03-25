@@ -22,9 +22,9 @@ def _patch_sync(target: str) -> patch:
 
 
 class TestRunExtractors:
-    def test_skips_disabled_extractors(self, full_config):
-        """teams_channels is disabled in full_config; verify module.run is not called."""
-        mock_mod = _make_mock_extractor()
+    def test_runs_all_named_extractors_regardless_of_config_enabled(self, full_config):
+        """run_extractors trusts the caller's names list — even disabled-in-config extractors run."""
+        mock_mod = _make_mock_extractor(return_value=({}, 3))
         original = EXTRACTORS["teams_channels"]
         mock_state = MagicMock()
         mock_state.load.return_value = {}
@@ -38,10 +38,11 @@ class TestRunExtractors:
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
             mock_gc.return_value.__exit__ = MagicMock(return_value=False)
 
-            run_extractors(full_config, lambda: "token", mock_storage, mock_state, ["teams_channels"])
+            total = run_extractors(full_config, lambda: "token", mock_storage, mock_state, ["teams_channels"])
 
-        mock_mod.run.assert_not_called()
-        mock_state.save.assert_not_called()
+        mock_mod.run.assert_called_once()
+        mock_state.save.assert_called_once()
+        assert total == 3
 
     def test_warns_on_unknown_extractor(self, full_config):
         mock_state = MagicMock()

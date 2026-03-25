@@ -62,7 +62,8 @@ def sync_user(
     """Sync one user: create SyncRecord(running), run extractors, update to completed/failed."""
     extractor_names = get_user_extractors(engine, user.user_id)
     if not extractor_names:
-        extractor_names = list(EXTRACTORS.keys())
+        # No DB preferences: fall back to config-enabled extractors
+        extractor_names = [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
 
     now = datetime.now(tz=UTC)
     record = SyncRecord(

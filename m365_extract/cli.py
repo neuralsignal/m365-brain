@@ -129,9 +129,11 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run: bool, extrac
 
     # Determine which extractors to run
     if extractor_names:
+        # Explicit --extractors flag: trust the user's choice, no config filtering
         names = [n.strip() for n in extractor_names.split(",")]
     else:
-        names = list(EXTRACTORS.keys())
+        # No flag: run only extractors enabled in config
+        names = [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
 
     if dry_run:
         _dry_run(config, token_provider, names)

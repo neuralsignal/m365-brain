@@ -42,7 +42,11 @@ EXTRACTORS: dict[str, tuple] = {
 def run_extractors(
     config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
 ) -> int:
-    """Run enabled extractors once. Returns total items synced across all extractors."""
+    """Run the named extractors once. Returns total items synced.
+
+    Trusts the caller's ``names`` list — does NOT filter by config.enabled.
+    Callers (CLI, daemon) are responsible for deciding which extractors to run.
+    """
     total_items = 0
     with GraphClient(config.graph, token_provider) as client:
         for ext_name in names:
@@ -52,10 +56,6 @@ def run_extractors(
 
             module, config_getter, needs_converters = EXTRACTORS[ext_name]
             ext_config = config_getter(config)
-
-            if not ext_config.enabled:
-                log.info("sync.extractor_disabled", name=ext_name)
-                continue
 
             log.info("sync.running_extractor", name=ext_name)
             state = sync_state.load(ext_name)
