@@ -52,6 +52,8 @@ sqlmodel = ">=0.0.22,<1"
 [feature.admin.tasks]
 dev = "reflex run"
 daemon = "m365-extract --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml daemon"
+migrate = "alembic upgrade head"
+makemigrations = "alembic revision --autogenerate"
 test-admin = "pytest tests/ -v --tb=short -m 'not integration and not azurite'"
 test-all = "pytest tests/ -v --tb=short -m 'not integration and not azurite'"
 

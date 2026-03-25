@@ -33,12 +33,13 @@ log = structlog.get_logger()
 
 
 @click.group()
-@click.option("--config", "config_path", required=True, type=click.Path(exists=True), help="Path to config.yaml")
+@click.option("--config", "config_path", required=True, type=str, help="Comma-separated config YAML paths")
 @click.pass_context
 def main(ctx: click.Context, config_path: str) -> None:
     """m365-extract: Sync Microsoft 365 data to Obsidian-compatible markdown."""
-    # Load .env from config file's directory first, then walk up from CWD as fallback
-    config_dir_env = Path(config_path).resolve().parent / ".env"
+    # Load .env from first config file's directory, then walk up from CWD as fallback
+    first_path = config_path.split(",")[0].strip()
+    config_dir_env = Path(first_path).resolve().parent / ".env"
     if config_dir_env.exists():
         load_dotenv(config_dir_env)
     load_dotenv(find_dotenv(usecwd=True))
@@ -155,8 +156,10 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run_flag: bool, e
 def daemon(ctx: click.Context, poll_interval: int | None) -> None:
     """Run the multi-user daemon: sync all enabled users from the database."""
     # Deferred imports — daemon mode requires sqlmodel + admin deps
-    from sqlmodel import SQLModel, create_engine
+    from alembic.config import Config as AlembicConfig
+    from sqlmodel import create_engine
 
+    from alembic import command as alembic_command
     from m365_extract.daemon import run_daemon_cycle, write_health_file
 
     config = load_config(ctx.obj["config_path"])
@@ -167,16 +170,20 @@ def daemon(ctx: click.Context, poll_interval: int | None) -> None:
 
     engine = create_engine(config.web.db_url)
 
-    import m365_extract.models  # noqa: F401
-
-    SQLModel.metadata.create_all(engine)
+    # Run Alembic migrations to HEAD instead of create_all()
+    alembic_ini = str(Path(__file__).resolve().parent.parent / "alembic.ini")
+    alembic_cfg = AlembicConfig(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", config.web.db_url)
+    alembic_command.upgrade(alembic_cfg, "head")
+    log.info("daemon.migrations_applied")
 
     from m365_admin.services.token_service import TokenService, TokenServiceAdapter
 
     token_service = TokenService(fernet_key=config.web.fernet_key)
     token_adapter = TokenServiceAdapter(token_service=token_service, engine=engine)
 
-    state_dir = str(Path(ctx.obj["config_path"]).resolve().parent / "state")
+    first_config = ctx.obj["config_path"].split(",")[0].strip()
+    state_dir = str(Path(first_config).resolve().parent / "state")
     interval = poll_interval if poll_interval is not None else config.service.continuous_poll_seconds
 
     log.info("daemon.started", poll_interval=interval, state_dir=state_dir)

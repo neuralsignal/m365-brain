@@ -24,6 +24,8 @@ COPY --from=builder /usr/local/bin/m365-extract /usr/local/bin/m365-extract
 COPY m365_extract/ m365_extract/
 COPY m365_admin/ m365_admin/
 COPY config/ config/
+COPY alembic.ini .
+COPY alembic/ alembic/
 COPY scripts/daemon_healthcheck.py scripts/daemon_healthcheck.py
 
 RUN useradd --create-home appuser && \

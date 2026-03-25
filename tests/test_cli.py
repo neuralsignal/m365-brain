@@ -631,6 +631,7 @@ class TestDaemonCommand:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("configure_logging"),
+            patch("alembic.command.upgrade"),
             patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -650,6 +651,7 @@ class TestDaemonCommand:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("configure_logging"),
+            patch("alembic.command.upgrade"),
             patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -668,6 +670,7 @@ class TestDaemonCommand:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("configure_logging"),
+            patch("alembic.command.upgrade"),
             patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -687,6 +690,7 @@ class TestDaemonCommand:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("configure_logging"),
+            patch("alembic.command.upgrade"),
             patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
             patch("m365_extract.cli.time") as mock_time,
         ):
@@ -710,6 +714,7 @@ class TestDaemonCommand:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("configure_logging"),
+            patch("alembic.command.upgrade"),
             patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
             patch("m365_extract.cli.time") as mock_time,
         ):

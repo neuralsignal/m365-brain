@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, create_engine
 
 from m365_extract.config import Config, load_config
 
@@ -64,19 +64,23 @@ def get_config_path() -> str | None:
 def get_engine():
     """Return the SQLModel engine, creating it on first call.
 
-    Creates all tables defined in m365_extract.models on first call.
+    Runs Alembic migrations to HEAD on first call.
     """
     global _engine  # noqa: PLW0603
     if _engine is not None:
         return _engine
 
+    from alembic.config import Config as AlembicConfig
+
+    from alembic import command as alembic_command
+
     config = get_config()
     _engine = create_engine(config.web.db_url)
 
-    # Import models to register them with SQLModel metadata, then create tables.
-    import m365_extract.models  # noqa: F401
-
-    SQLModel.metadata.create_all(_engine)
+    alembic_ini = str(_repo_root / "alembic.ini")
+    alembic_cfg = AlembicConfig(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", config.web.db_url)
+    alembic_command.upgrade(alembic_cfg, "head")
 
     return _engine
 

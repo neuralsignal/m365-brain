@@ -51,6 +51,8 @@ COPY m365_extract/ m365_extract/
 COPY m365_admin/ m365_admin/
 COPY rxconfig.py .
 COPY config/ config/
+COPY alembic.ini .
+COPY alembic/ alembic/
 
 # Pre-built static frontend
 COPY --from=builder /app/.web/build/client /srv
