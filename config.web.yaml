@@ -50,19 +50,19 @@ extractors:
     enabled: false
     poll_interval_minutes: 5
   onedrive:
-    enabled: false
+    enabled: true
     poll_interval_minutes: 120
     eager_convert_patterns: []
     convertible_extensions: [".docx", ".pdf"]
     max_file_size_mb: 100
   sharepoint:
-    enabled: false
+    enabled: true
     poll_interval_minutes: 240
     eager_convert_patterns: []
     convertible_extensions: [".docx", ".pdf"]
     max_file_size_mb: 100
   contacts:
-    enabled: false
+    enabled: true
     poll_interval_minutes: 1440
     max_items_per_sync: 500
     include_contact_folders: false
