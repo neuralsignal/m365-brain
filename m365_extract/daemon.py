@@ -20,7 +20,7 @@ from m365_extract.auth.token_provider import TokenStoreProtocol, make_web_token_
 from m365_extract.config import Config
 from m365_extract.models import ExtractorPreference, SyncRecord, User
 from m365_extract.state import SyncState
-from m365_extract.storage import create_storage
+from m365_extract.storage import create_user_storage
 from m365_extract.sync import EXTRACTORS, run_extractors
 
 log = structlog.get_logger()
@@ -36,10 +36,9 @@ def get_enabled_users(engine) -> list[User]:
 def get_user_extractors(engine, user_id: str) -> list[str]:
     """Return extractor names enabled for a specific user."""
     with Session(engine) as session:
-        statement = (
-            select(ExtractorPreference.extractor_name).where(
-                ExtractorPreference.user_id == user_id, ExtractorPreference.enabled == True
-            )  # noqa: E712
+        statement = select(ExtractorPreference.extractor_name).where(
+            ExtractorPreference.user_id == user_id,
+            ExtractorPreference.enabled == True,  # noqa: E712
         )
         return list(session.exec(statement).all())
 
@@ -76,7 +75,7 @@ def sync_user(
 
     try:
         token_provider = make_web_token_provider(token_adapter, user.user_id, config.auth)
-        storage = create_storage(config.storage)
+        storage = create_user_storage(config.storage, user.user_id)
 
         # Per-user sync state: state_dir/{user_id}/sync_state.json
         user_state_path = str(Path(state_dir) / user.user_id / "sync_state.json")

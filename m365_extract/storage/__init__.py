@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from m365_extract.config import StorageConfig
 from m365_extract.storage.base import StorageBackend
@@ -28,6 +29,39 @@ def create_storage(config: StorageConfig) -> StorageBackend:
             connection_string=config.azure_blob.connection_string,
             container_name=config.azure_blob.container_name,
             prefix=config.azure_blob.prefix,
+        )
+
+    print(f"Config error: unknown storage backend '{config.backend}'", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
+    """Create a storage backend with per-user isolation.
+
+    Appends ``user_id`` to the storage prefix (azure_blob) or base_path (local)
+    so each user's synced data lives in its own subdirectory.
+    """
+    if config.backend == "local":
+        if config.local is None:
+            print("Config error: backend is 'local' but storage.local section is missing", file=sys.stderr)
+            raise SystemExit(1)
+        from m365_extract.storage.local import LocalBackend
+
+        user_path = str(Path(config.local.base_path) / user_id)
+        return LocalBackend(user_path)
+
+    if config.backend == "azure_blob":
+        if config.azure_blob is None:
+            print("Config error: backend is 'azure_blob' but storage.azure_blob section is missing", file=sys.stderr)
+            raise SystemExit(1)
+        from m365_extract.storage.azure_blob import AzureBlobBackend
+
+        base_prefix = config.azure_blob.prefix.rstrip("/")
+        user_prefix = f"{base_prefix}/{user_id}"
+        return AzureBlobBackend(
+            connection_string=config.azure_blob.connection_string,
+            container_name=config.azure_blob.container_name,
+            prefix=user_prefix,
         )
 
     print(f"Config error: unknown storage backend '{config.backend}'", file=sys.stderr)
