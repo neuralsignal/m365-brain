@@ -111,19 +111,6 @@ def status(ctx: click.Context) -> None:
 
 
 @main.command()
-@click.pass_context
-def serve(ctx: click.Context) -> None:
-    """Start the web server (multi-user mode)."""
-    import uvicorn
-
-    from m365_extract.web.app import create_app
-
-    config = load_config(ctx.obj["config_path"])
-    app = create_app(config)
-    uvicorn.run(app, host=config.web.host, port=config.web.port)
-
-
-@main.command()
 @click.option("--once", is_flag=True, help="Run all enabled extractors once and exit")
 @click.option("--continuous", is_flag=True, help="Run extractors on their configured intervals")
 @click.option("--dry-run", is_flag=True, help="Validate auth and probe each extractor without writing files")
@@ -237,6 +224,46 @@ def _dry_run(config: Config, token_provider: Callable[[], str], names: list[str]
     log.info("cli.dry_run_complete", passed=passed, failed=failed)
     if failed > 0:
         raise SystemExit(1)
+
+
+@main.command()
+@click.option("--poll-interval", "poll_interval", type=int, help="Seconds between daemon cycles (overrides config)")
+@click.pass_context
+def daemon(ctx: click.Context, poll_interval: int | None) -> None:
+    """Run the multi-user daemon: sync all enabled users from the database."""
+    # Deferred imports — daemon mode requires sqlmodel + admin deps
+    from sqlmodel import SQLModel, create_engine
+
+    from m365_extract.daemon import run_daemon_cycle
+
+    config = load_config(ctx.obj["config_path"])
+    configure_logging(config.service.log_level, config.service.json_logs)
+
+    if config.web is None:
+        raise click.UsageError("daemon mode requires a config file with a 'web:' section (e.g., config.web.yaml)")
+
+    engine = create_engine(config.web.db_url)
+
+    import m365_extract.models  # noqa: F401
+
+    SQLModel.metadata.create_all(engine)
+
+    from m365_admin.services.token_service import TokenService, TokenServiceAdapter
+
+    token_service = TokenService(fernet_key=config.web.fernet_key)
+    token_adapter = TokenServiceAdapter(token_service=token_service, engine=engine)
+
+    state_dir = str(Path(ctx.obj["config_path"]).resolve().parent / "state")
+    interval = poll_interval if poll_interval is not None else config.service.continuous_poll_seconds
+
+    log.info("daemon.started", poll_interval=interval, state_dir=state_dir)
+
+    try:
+        while True:
+            run_daemon_cycle(config, engine, token_adapter, state_dir)
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        log.info("daemon.stopped")
 
 
 def _run_continuous(

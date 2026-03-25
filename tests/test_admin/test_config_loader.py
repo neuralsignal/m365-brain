@@ -112,6 +112,8 @@ def _write_config_yaml(tmp_path, full_web_config):
             "fernet_key": full_web_config.web.fernet_key,
             "db_path": str(tmp_path / "web.db"),
             "session_timeout_minutes": 60,
+            "db_url": "sqlite://",
+            "admin_emails": ["admin@example.com"],
         },
     }
     config_file = tmp_path / "config.yaml"

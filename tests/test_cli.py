@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
 import click.testing
 import pytest
 
-from m365_extract.config import WebConfig
 from m365_extract.sync import EXTRACTORS
 
 
@@ -528,9 +526,8 @@ class TestAuthStatus:
         cache_path = tmp_path / "token_cache.json"
         cache_path.write_text(json.dumps(cache_data))
 
-        patched_config = replace(
-            full_config,
-            auth=replace(full_config.auth, token_cache_path=str(cache_path)),
+        patched_config = full_config.model_copy(
+            update={"auth": full_config.auth.model_copy(update={"token_cache_path": str(cache_path)})},
         )
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -561,9 +558,8 @@ class TestAuthStatus:
         cache_path = tmp_path / "token_cache.json"
         cache_path.write_text(json.dumps(cache_data))
 
-        patched_config = replace(
-            full_config,
-            auth=replace(full_config.auth, token_cache_path=str(cache_path)),
+        patched_config = full_config.model_copy(
+            update={"auth": full_config.auth.model_copy(update={"token_cache_path": str(cache_path)})},
         )
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -583,9 +579,8 @@ class TestAuthStatus:
         cache_path = tmp_path / "token_cache.json"
         cache_path.write_text(json.dumps(cache_data))
 
-        patched_config = replace(
-            full_config,
-            auth=replace(full_config.auth, token_cache_path=str(cache_path)),
+        patched_config = full_config.model_copy(
+            update={"auth": full_config.auth.model_copy(update={"token_cache_path": str(cache_path)})},
         )
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -598,30 +593,123 @@ class TestAuthStatus:
         assert "no accounts" in result.output
 
 
-class TestServeCommand:
-    def test_serve_calls_uvicorn(self, runner, config_file, full_config):
+@pytest.mark.admin
+class TestDaemonCommand:
+    """Tests for the CLI `daemon` command.
+
+    Uses full_web_config (has web: section with db_url: "sqlite://").
+    Mocks run_daemon_cycle and time.sleep — lets real engine, SQLModel, and
+    TokenService/TokenServiceAdapter run.
+    """
+
+    def test_daemon_requires_web_config(self, runner, config_file, full_config):
+        """Config without web: section raises UsageError."""
+        from m365_extract.cli import main
+
+        with _patch_cli("load_config") as mock_load, _patch_cli("configure_logging"):
+            mock_load.return_value = full_config  # web=None
+
+            result = runner.invoke(main, ["--config", config_file, "daemon"])
+
+        assert result.exit_code != 0
+        assert "web" in result.output.lower()
+
+    def test_daemon_calls_run_daemon_cycle(self, runner, config_file, full_web_config):
+        """Daemon calls run_daemon_cycle at least once before KeyboardInterrupt stops it."""
         from m365_extract.cli import main
 
         with (
             _patch_cli("load_config") as mock_load,
-            patch("uvicorn.run") as mock_uvicorn_run,
-            patch("m365_extract.web.app.create_app") as mock_create_app,
+            _patch_cli("configure_logging"),
+            patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
+            patch("m365_extract.cli.time") as mock_time,
         ):
-            web_config = WebConfig(
-                host="0.0.0.0",
-                port=8000,
-                secret_key="test-secret",
-                fernet_key="test-fernet",
-                db_path="/tmp/web.db",
-                session_timeout_minutes=60,
-            )
-            config_with_web = replace(full_config, web=web_config)
-            mock_load.return_value = config_with_web
-            mock_app = MagicMock()
-            mock_create_app.return_value = mock_app
+            mock_load.return_value = full_web_config
+            mock_cycle.return_value = []
+            mock_time.sleep.side_effect = KeyboardInterrupt
 
-            result = runner.invoke(main, ["--config", config_file, "serve"])
+            result = runner.invoke(main, ["--config", config_file, "daemon"])
 
-            assert result.exit_code == 0
-            mock_create_app.assert_called_once_with(config_with_web)
-            mock_uvicorn_run.assert_called_once_with(mock_app, host="0.0.0.0", port=8000)
+        assert result.exit_code == 0
+        mock_cycle.assert_called_once()
+
+    def test_daemon_stops_on_keyboard_interrupt(self, runner, config_file, full_web_config):
+        """Exit code 0 on KeyboardInterrupt."""
+        from m365_extract.cli import main
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+            patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_web_config
+            mock_cycle.return_value = []
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            result = runner.invoke(main, ["--config", config_file, "daemon"])
+
+        assert result.exit_code == 0
+
+    def test_daemon_poll_interval_override(self, runner, config_file, full_web_config):
+        """--poll-interval 60 passes 60 to time.sleep."""
+        from m365_extract.cli import main
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+            patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_web_config
+            mock_cycle.return_value = []
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            result = runner.invoke(main, ["--config", config_file, "daemon", "--poll-interval", "60"])
+
+        assert result.exit_code == 0
+        mock_time.sleep.assert_called_with(60)
+
+    def test_daemon_uses_config_poll_interval(self, runner, config_file, full_web_config):
+        """Without --poll-interval, uses config.service.continuous_poll_seconds."""
+        from m365_extract.cli import main
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+            patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_web_config
+            mock_cycle.return_value = []
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            result = runner.invoke(main, ["--config", config_file, "daemon"])
+
+        assert result.exit_code == 0
+        mock_time.sleep.assert_called_with(full_web_config.service.continuous_poll_seconds)
+
+    def test_daemon_state_dir_from_config_path(self, runner, tmp_path, full_web_config):
+        """state_dir is derived from config file's parent directory."""
+        from m365_extract.cli import main
+
+        cfg_file = tmp_path / "config.web.yaml"
+        cfg_file.write_text("dummy: true")
+        expected_state_dir = str(tmp_path.resolve() / "state")
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+            patch("m365_extract.daemon.run_daemon_cycle") as mock_cycle,
+            patch("m365_extract.cli.time") as mock_time,
+        ):
+            mock_load.return_value = full_web_config
+            mock_cycle.return_value = []
+            mock_time.sleep.side_effect = KeyboardInterrupt
+
+            result = runner.invoke(main, ["--config", str(cfg_file), "daemon"])
+
+        assert result.exit_code == 0
+        # run_daemon_cycle receives state_dir as 4th positional arg
+        call_args = mock_cycle.call_args
+        assert call_args[0][3] == expected_state_dir

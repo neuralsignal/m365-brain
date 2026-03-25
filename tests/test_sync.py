@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
 from m365_extract.sync import EXTRACTORS, run_extractors
@@ -80,9 +79,9 @@ class TestRunExtractors:
         mock_state.save.assert_not_called()
 
     def test_passes_converters_when_needed(self, full_config):
-        od_config = replace(full_config.extractors.onedrive, enabled=True)
-        extractors = replace(full_config.extractors, onedrive=od_config)
-        config = replace(full_config, extractors=extractors)
+        od_config = full_config.extractors.onedrive.model_copy(update={"enabled": True})
+        extractors = full_config.extractors.model_copy(update={"onedrive": od_config})
+        config = full_config.model_copy(update={"extractors": extractors})
 
         mock_mod = _make_mock_extractor(return_value=({}, 5))
         original = EXTRACTORS["onedrive"]

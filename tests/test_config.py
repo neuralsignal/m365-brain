@@ -7,7 +7,7 @@ import textwrap
 
 import pytest
 
-from m365_extract.config import Config, load_config
+from m365_extract.config import Config, ConfigError, load_config
 
 
 class TestLoadConfig:
@@ -109,7 +109,7 @@ class TestLoadConfig:
               client_id: "test-id"
         """)
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(config_file))
 
     def test_wrong_type_crashes(self, tmp_path):
@@ -191,11 +191,11 @@ class TestLoadConfig:
                 xlsx_max_rows_per_sheet: 500
         """)
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(config_file))
 
     def test_missing_file_crashes(self, tmp_path):
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(tmp_path / "nonexistent.yaml"))
 
     def test_env_var_expansion(self, tmp_path, monkeypatch):
@@ -364,7 +364,7 @@ class TestLoadConfig:
         )
         # Ensure the variable is not set
         os.environ.pop("NONEXISTENT_VAR_12345", None)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(config_file))
 
     def test_paths_resolved_relative_to_config_dir(self, tmp_path):
@@ -535,7 +535,7 @@ class TestLoadConfig:
                 xlsx_max_rows_per_sheet: 500
         """)
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(config_file))
 
     def test_azure_blob_config_loads(self, tmp_path):
@@ -792,5 +792,5 @@ class TestLoadConfig:
                 xlsx_max_rows_per_sheet: 500
         """)
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             load_config(str(config_file))

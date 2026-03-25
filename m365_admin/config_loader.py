@@ -10,12 +10,14 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from sqlmodel import Session, SQLModel, create_engine
 
 from m365_extract.config import Config, load_config
 
 _repo_root = Path(__file__).resolve().parent.parent
 _cached_config: Config | None = None
 _config_path: str | None = None
+_engine = None
 
 
 def get_config() -> Config:
@@ -52,8 +54,34 @@ def get_config_path() -> str | None:
     return _config_path
 
 
+def get_engine():
+    """Return the SQLModel engine, creating it on first call.
+
+    Creates all tables defined in m365_extract.models on first call.
+    """
+    global _engine  # noqa: PLW0603
+    if _engine is not None:
+        return _engine
+
+    config = get_config()
+    _engine = create_engine(config.web.db_url)
+
+    # Import models to register them with SQLModel metadata, then create tables.
+    import m365_extract.models  # noqa: F401
+
+    SQLModel.metadata.create_all(_engine)
+
+    return _engine
+
+
+def get_session() -> Session:
+    """Create a new SQLModel Session from the shared engine."""
+    return Session(get_engine())
+
+
 def reset_config() -> None:
-    """Clear the cached config. Used by tests."""
-    global _cached_config, _config_path  # noqa: PLW0603
+    """Clear the cached config and engine. Used by tests."""
+    global _cached_config, _config_path, _engine  # noqa: PLW0603
     _cached_config = None
     _config_path = None
+    _engine = None

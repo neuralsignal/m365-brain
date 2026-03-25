@@ -1,10 +1,10 @@
 # m365-extract Maturity Assessment
 
-_2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5 partial)_
+_2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5A-5B done, 5C started)_
 
 ## Current State
 
-35 source modules, 8 extractors, 2 storage backends, 364 tests (34 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented. Live validated against real Graph API (2026-03-24).
+36 source modules, 8 extractors, 2 storage backends, 382 tests (37 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented. Phase 5B Reflex admin dashboard MVP done. Phase 5C daemon integration in progress. Live validated against real Graph API (2026-03-24).
 
 ### What's Implemented
 
@@ -20,7 +20,7 @@ _2026-03-24 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5 partial)_
 | Config | Done | Config package (loader.py + schema.py), frozen dataclasses, env var expansion |
 | Azure IaC | Done | Bicep templates (main.bicep), dev/prod parameter files |
 | Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, `.env.example`, pixi tasks |
-| Tests | 364 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 34 test files |
+| Tests | 382 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 37 test files |
 | CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
 | Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
 | Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
@@ -60,8 +60,8 @@ All extractors tested against real Microsoft Graph API with a live Entra app reg
 | Phase | Scope | Status |
 |-------|-------|--------|
 | Phase 5A | Local web service testing | Done (2026-03-24) — OAuth2 login, user creation, health endpoint verified |
-| Phase 5B | Reflex admin dashboard MVP | Not started — scaffold `web-ui/`, Entra login, extractor toggle, sync trigger |
-| Phase 5C | Sync visibility + per-user scheduling | Not started — sync history table/UI, persistent status, WebSocket updates |
+| Phase 5B | Reflex admin dashboard MVP | Done (2026-03-24) — 5 SQLModel tables, 4 state classes, 6 pages, sidebar, services, 74 admin tests |
+| Phase 5C | Daemon integration + sync visibility | In progress — daemon.py, TokenServiceAdapter, SyncRecord writes, CLI `daemon` command |
 | Phase 5D | Security + RBAC | Not started — admin vs user roles, rate limiting, audit logging |
 | Phase 5E | Azure deployment | Not started — Dockerized Reflex app, Bicep IaC, managed identity |
 | Phase 5F | Graph webhooks | Not started — deferred, polling sufficient for current scale |
@@ -169,10 +169,10 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 
 | Gap | Severity | Impact |
 |-----|----------|--------|
-| Admin endpoints unauthenticated | Critical | Anyone can list/delete users at `/admin/users` |
-| No RBAC | Critical | No admin vs user role distinction |
-| Sync state shared | High | Single `sync_state.json` — not per-user scoped |
-| `_last_sync` in-memory | Medium | Lost on restart, sync status returns stale data |
+| Admin endpoints unauthenticated | Critical | Partially addressed — `admin_emails` config restricts admin pages in Reflex UI |
+| No RBAC | Medium | Basic admin/user distinction via `admin_emails`; full RBAC (roles, middleware) deferred to Phase 5D |
+| Sync state shared | Done | Per-user sync state via `state/{user_id}/sync_state.json` (daemon.py) |
+| `_last_sync` in-memory | Done | SyncRecord table persists sync history; UI reads from database |
 | No audit logging | Medium | No trail of auth/admin actions |
 | No rate limiting | Medium | Auth endpoints vulnerable to brute force |
 | No DB migrations | Medium | Schema evolution requires manual intervention |

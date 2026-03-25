@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-# Skip test_admin/ collection when reflex is not installed (default env)
+# Skip test_admin/ and test_daemon.py when sqlmodel/reflex is not installed (default env)
 try:
     import reflex  # noqa: F401
 except ImportError:
-    collect_ignore_glob = ["test_admin/test_*.py"]
+    collect_ignore_glob = ["test_admin/test_*.py", "test_daemon.py"]
 
 from m365_extract.config import (
     AuthConfig,
@@ -224,6 +224,8 @@ def web_config(tmp_path):
         fernet_key=fernet_key,
         db_path=str(tmp_path / "web.db"),
         session_timeout_minutes=60,
+        db_url="sqlite://",
+        admin_emails=["admin@example.com"],
     )
 
 

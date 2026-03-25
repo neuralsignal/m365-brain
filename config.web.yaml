@@ -90,3 +90,6 @@ web:
   fernet_key: "${FERNET_KEY}"
   db_path: "./state/web.db"
   session_timeout_minutes: 60
+  db_url: "${DATABASE_URL}"
+  admin_emails:
+    - "${ADMIN_EMAIL}"

@@ -1,21 +1,21 @@
-"""Config schema -- frozen dataclass definitions for every config section."""
+"""Config schema -- frozen pydantic models for every config section."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True)
-class AuthConfig:
+class AuthConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     client_id: str
     tenant_id: str
     scopes: list[str]
     token_cache_path: str
-    client_secret: str | None
+    client_secret: str | None = None
 
 
-@dataclass(frozen=True)
-class ServiceConfig:
+class ServiceConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     mode: str
     log_level: str
     json_logs: bool
@@ -23,40 +23,40 @@ class ServiceConfig:
     max_consecutive_auth_failures: int
 
 
-@dataclass(frozen=True)
-class LocalStorageConfig:
+class LocalStorageConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     base_path: str
 
 
-@dataclass(frozen=True)
-class AzureBlobStorageConfig:
+class AzureBlobStorageConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     connection_string: str
     container_name: str
     prefix: str
 
 
-@dataclass(frozen=True)
-class StorageConfig:
+class StorageConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     backend: str
-    local: LocalStorageConfig | None
-    azure_blob: AzureBlobStorageConfig | None
+    local: LocalStorageConfig | None = None
+    azure_blob: AzureBlobStorageConfig | None = None
 
 
-@dataclass(frozen=True)
-class GraphConfig:
+class GraphConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     max_retries: int
     backoff_base_ms: int
     timeout_seconds: int
     max_pages: int
 
 
-@dataclass(frozen=True)
-class StateConfig:
+class StateConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     state_file_path: str
 
 
-@dataclass(frozen=True)
-class EmailExtractorConfig:
+class EmailExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     folders: list[str]
@@ -64,38 +64,29 @@ class EmailExtractorConfig:
     max_items_per_sync: int
 
 
-@dataclass(frozen=True)
-class CalendarExtractorConfig:
+class CalendarExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     lookback_days: int
     forward_days: int
 
 
-@dataclass(frozen=True)
-class TeamsChatsExtractorConfig:
+class TeamsChatsExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     max_messages_per_chat: int
 
 
-@dataclass(frozen=True)
-class TeamsChannelsExtractorConfig:
+class TeamsChannelsExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
 
 
-@dataclass(frozen=True)
-class OneDriveExtractorConfig:
-    enabled: bool
-    poll_interval_minutes: int
-    eager_convert_patterns: list[str]
-    convertible_extensions: list[str]
-    max_file_size_mb: int
-
-
-@dataclass(frozen=True)
-class SharePointExtractorConfig:
+class OneDriveExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     eager_convert_patterns: list[str]
@@ -103,16 +94,25 @@ class SharePointExtractorConfig:
     max_file_size_mb: int
 
 
-@dataclass(frozen=True)
-class ContactsExtractorConfig:
+class SharePointExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    enabled: bool
+    poll_interval_minutes: int
+    eager_convert_patterns: list[str]
+    convertible_extensions: list[str]
+    max_file_size_mb: int
+
+
+class ContactsExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     max_items_per_sync: int
     include_contact_folders: bool
 
 
-@dataclass(frozen=True)
-class DirectoryExtractorConfig:
+class DirectoryExtractorConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
     include_manager_chain: bool
@@ -120,8 +120,8 @@ class DirectoryExtractorConfig:
     only_active_users: bool
 
 
-@dataclass(frozen=True)
-class ExtractorsConfig:
+class ExtractorsConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     email: EmailExtractorConfig
     calendar: CalendarExtractorConfig
     teams_chats: TeamsChatsExtractorConfig
@@ -132,18 +132,20 @@ class ExtractorsConfig:
     directory: DirectoryExtractorConfig
 
 
-@dataclass(frozen=True)
-class WebConfig:
+class WebConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     host: str
     port: int
     secret_key: str
     fernet_key: str
     db_path: str
     session_timeout_minutes: int
+    db_url: str
+    admin_emails: list[str]
 
 
-@dataclass(frozen=True)
-class Config:
+class Config(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
     auth: AuthConfig
     service: ServiceConfig
     storage: StorageConfig
@@ -151,4 +153,4 @@ class Config:
     state: StateConfig
     extractors: ExtractorsConfig
     converters: dict
-    web: WebConfig | None
+    web: WebConfig | None = None

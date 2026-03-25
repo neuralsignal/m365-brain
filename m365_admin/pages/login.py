@@ -2,7 +2,7 @@
 
 import reflex as rx
 
-from m365_admin.state import AuthState
+from m365_admin.auth_state import AuthState
 
 
 @rx.page(route="/login", title="Sign In — m365 Admin")

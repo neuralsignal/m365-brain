@@ -124,29 +124,39 @@ First person ever logs in through the web service against a real Entra app.
 - `/admin/users`, `/health` endpoints verified
 - Documented multi-user gaps in MATURITY.md
 
-### Phase 5B: Reflex Admin Dashboard MVP
+### Phase 5B: Reflex Admin Dashboard MVP -- DONE
 
-Scaffold the Reflex app and deliver a working dashboard that replaces the headless API.
+Replaced headless FastAPI API with a full Reflex admin dashboard.
 
-**Structure**: `web-ui/` directory with its own `pixi.toml` (Reflex is PyPI-only, not conda-forge).
+**Completed (2026-03-24)**:
+- `m365_admin/` package with 5 SQLModel tables, 4 state classes, 6 pages, sidebar navigation
+- Entra OAuth2 login via Reflex state + MSAL
+- Dashboard: user profile, enabled extractors, last sync time
+- Extractor toggle UI (ExtractorPreference model, PreferencesState)
+- Sync history table (SyncRecord model, SyncState page)
+- Admin view: user list, enable/disable users, admin config management
+- Services: TokenService (Fernet encrypt/decrypt), AdminService (config CRUD, role check)
+- 74 admin tests passing
+- Deleted old FastAPI web layer (`m365_extract/web/`, `user_manager.py`, `token_store.py`)
 
-1. Scaffold `web-ui/` Reflex project (`pixi.toml`, `rxconfig.py`, app structure)
-2. Entra OAuth2 login via Reflex state + MSAL (replace current FastAPI session auth)
-3. Post-login dashboard: user profile, enabled extractors, last sync time
-4. Extractor toggle UI (wire up `extractor_preferences` from `UserManager`)
-5. Manual sync trigger button with progress/status feedback
-6. Admin view: user list, enable/disable users
-7. Per-user sync state isolation (move from global JSON to `state/{user_id}/`)
+### Phase 5C: Daemon Integration + Sync Visibility -- IN PROGRESS
 
-### Phase 5C: Sync Visibility + Per-User Scheduling
+Connect the sync daemon to the database so the UI shows real sync data.
 
-Make sync history visible and give users control over their sync cadence.
+**Completed (2026-03-24)**:
+- `m365_extract/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record)
+- `TokenStoreProtocol` in `token_provider.py` — replaces deleted `TokenStore` import with Protocol
+- `TokenServiceAdapter` in `token_service.py` — bridges TokenService to TokenStoreProtocol for daemon
+- CLI `daemon` command — `m365-extract --config config.web.yaml daemon`
+- Per-user sync state: `state/{user_id}/sync_state.json`
+- SyncRecord written at start (running) and completion (completed/failed)
+- `seed_admin_config()` call at engine startup (idempotent)
+- 9 daemon tests + 3 adapter tests passing
 
-1. Sync history table (SQLite: `user_id`, `started_at`, `status`, `items_synced`, `errors`)
-2. Sync history UI (table with filtering, error details)
-3. Per-user scheduling (interval override per user, stored in user preferences)
-4. Persistent sync status (move `_last_sync` from in-memory to database)
-5. Real-time sync progress via Reflex WebSocket state updates
+**Remaining**:
+1. Per-user scheduling (interval override per user, stored in user preferences)
+2. Real-time sync progress via Reflex WebSocket state updates
+3. Sync history UI filtering and error details
 
 ### Phase 5D: Security + RBAC
 

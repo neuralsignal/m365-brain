@@ -2,10 +2,12 @@
 
 import reflex as rx
 
+import m365_admin.pages.admin  # noqa: F401
 import m365_admin.pages.callback  # noqa: F401
 import m365_admin.pages.dashboard  # noqa: F401
 import m365_admin.pages.login  # noqa: F401
-from m365_admin.state import AuthState
+import m365_admin.pages.settings  # noqa: F401
+from m365_admin.auth_state import AuthState
 
 
 @rx.page(route="/", title="m365 Admin")

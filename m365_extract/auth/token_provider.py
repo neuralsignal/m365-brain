@@ -8,13 +8,18 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable
 
 from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.config import AuthConfig
 
-if TYPE_CHECKING:
-    from m365_extract.auth.token_store import TokenStore
+
+@runtime_checkable
+class TokenStoreProtocol(Protocol):
+    """Protocol for token storage — decouples auth from the specific store implementation."""
+
+    def get_tokens(self, user_id: str) -> dict | None: ...
+    def store_tokens(self, user_id: str, tokens: dict) -> None: ...
 
 _TOKEN_EXPIRY_BUFFER_SECONDS = 300
 
@@ -30,7 +35,7 @@ def make_cli_token_provider(auth_config: AuthConfig) -> Callable[[], str]:
 
 
 def make_web_token_provider(
-    token_store: TokenStore,
+    token_store: TokenStoreProtocol,
     user_id: str,
     auth_config: AuthConfig,
 ) -> Callable[[], str]:

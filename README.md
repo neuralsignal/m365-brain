@@ -14,7 +14,7 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **Document conversion** via [obsidian-import](https://pypi.org/project/obsidian-import/) (PDF, DOCX, PPTX, XLSX to markdown)
 - **MSAL device code authentication** with persistent token caching
 - **Frozen dataclass config** with strict validation and environment variable expansion
-- **CLI**: `auth login`, `sync --once`, `sync --continuous`
+- **CLI**: `auth login`, `sync --once`, `sync --continuous`, `daemon`
 - **Bicep IaC** for Azure Storage (dev/prod parameter files)
 - **Docker** + Docker Compose with Azurite emulator for local development
 
@@ -29,7 +29,7 @@ Optional extras:
 ```bash
 pip install m365-extract[azure]    # Azure Blob Storage backend
 pip install m365-extract[convert]  # Document conversion (obsidian-import)
-pip install m365-extract[web]      # FastAPI web service mode
+pip install m365-extract[admin]    # Reflex admin dashboard
 pip install m365-extract[all]      # Everything
 ```
 
@@ -56,6 +56,15 @@ m365-extract --config config.yaml sync --continuous
 ```
 
 Each extractor runs on its own `poll_interval_minutes`. The scheduler checks every 30 seconds.
+
+### Multi-user daemon mode
+
+```bash
+m365-extract --config config.web.yaml daemon
+m365-extract --config config.web.yaml daemon --poll-interval 60
+```
+
+Daemon mode reads enabled users from the database and syncs each on a schedule. Requires a config file with a `web:` section (database URL, Fernet key, admin emails).
 
 ### Filter extractors
 
@@ -84,7 +93,7 @@ auth:
   client_secret: null  # Required for web mode; null for CLI device code flow
 
 service:
-  mode: "cli"           # "cli" or "web"
+  mode: "cli"
   log_level: "INFO"
 
 storage:
@@ -286,9 +295,9 @@ m365-extract/
     converters/        # Document conversion (obsidian-import bridge, HTML-to-markdown)
     extractors/        # One module per M365 data source
     storage/           # Storage backend interface + implementations
-    web/               # FastAPI web service (optional)
+    daemon.py          # Multi-user daemon sync runner
     cli.py             # Click CLI entry point
-    sync.py            # Public sync API (extractors runner, used by CLI + web)
+    sync.py            # Public sync API (extractors runner, used by CLI + daemon)
     config/            # Frozen dataclass config loader with env var expansion
     graph_client.py    # httpx-based Graph API client with retry + pagination
     markdown_writer.py # Markdown + YAML frontmatter serialization

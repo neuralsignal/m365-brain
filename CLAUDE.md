@@ -7,9 +7,10 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | Path | Purpose |
 |------|---------|
 | `m365_extract/` | Source package |
-| `m365_extract/auth/` | MSAL device code + auth code flow, token provider, token store |
-| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once/--continuous`, `serve`) |
-| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + web) |
+| `m365_extract/auth/` | MSAL device code + auth code flow, token provider |
+| `m365_extract/models.py` | SQLModel tables shared between admin UI and daemon |
+| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once/--continuous`) |
+| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + daemon) |
 | `m365_extract/config/` | Frozen dataclass config loader with env var expansion |
 | `m365_extract/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
 | `m365_extract/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
@@ -18,8 +19,12 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | `m365_extract/logging_config.py` | Central structlog configuration (`configure_logging()`) |
 | `m365_extract/state.py` | Sync state persistence (delta tokens, atomic writes) |
 | `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
-| `m365_extract/web/` | FastAPI web service (auth, sync, admin, scheduler, middleware) |
-| `tests/` | 322 tests (pytest + hypothesis) |
+| `m365_admin/` | Reflex admin dashboard (OAuth, preferences, admin, sync status) |
+| `m365_admin/auth_state.py` | Entra OAuth2 flow via Reflex state |
+| `m365_admin/services/` | TokenService (Fernet), AdminService (config CRUD) |
+| `m365_admin/pages/` | Login, callback, dashboard, settings, admin pages |
+| `m365_admin/components/` | Sidebar, layout wrapper |
+| `tests/` | 369 tests (pytest + hypothesis) |
 | `infra/` | Bicep IaC (main.bicep, params.dev.bicepparam, params.prod.bicepparam) |
 | `scripts/` | Dev setup, deploy, teardown scripts |
 | `vault/` | Local sync output directory (emails, calendar, onedrive, sharepoint, teams-chats) |
@@ -242,13 +247,33 @@ auth -> graph -> extract -> convert -> storage
 
 ## Admin Dashboard (Reflex)
 
-The `m365_admin/` package is a Reflex SPA for managing sync settings.
+The `m365_admin/` package is a Reflex SPA for managing sync settings, user preferences, and admin configuration.
+
+### Architecture
+
+- **Models**: `m365_extract/models.py` — plain SQLModel tables shared between Reflex and the sync daemon
+- **Services**: `m365_admin/services/` — `TokenService` (Fernet encrypt/decrypt), `AdminService` (config CRUD, role check)
+- **State classes**: `auth_state.py` (OAuth), `preferences_state.py` (extractor toggles), `admin_state.py` (user mgmt + config), `sync_state.py` (read-only sync history)
+- **Pages**: `/login`, `/callback`, `/dashboard`, `/settings`, `/admin`
+- **Components**: `components/sidebar.py` (nav), `components/layout.py` (page wrapper)
+- **Database**: SQLModel with 5 tables (`user`, `tokenrecord`, `extractorpreference`, `adminconfig`, `syncrecord`). SQLite locally, PostgreSQL in production. Configured via `DATABASE_URL` env var.
+- **Admin role**: Emails in `config.web.admin_emails` list. Checked via `AuthState.is_admin` computed var.
+- **Write boundaries**: UI writes users/tokens/preferences/config. Daemon writes sync records. Neither overwrites the other's data.
+
+### Deleted modules (Phase 5B cleanup)
+
+- `m365_extract/web/` — replaced by Reflex admin UI
+- `m365_extract/user_manager.py` — replaced by `User` SQLModel + `rx.session()`
+- `m365_extract/auth/token_store.py` — replaced by `TokenRecord` SQLModel + `TokenService`
+- CLI `serve` command — replaced by `pixi run -e admin dev`
 
 ### Gotchas
 
 - **`on_load` fires multiple times per page load** — Reflex fires `on_load` handlers during both server-side render and client-side hydration. Any `on_load` handler must be idempotent. In `handle_callback()`, this means: (1) check `user_id` early-return if already authenticated, and (2) do NOT consume OAuth state tokens on verify — use TTL-based expiry instead.
-- **Reflex state vars must be picklable** — Reflex serializes state between requests. Never store `sqlite3.Connection`, file handles, or other unpicklable objects as state class variables. Create fresh service instances per handler call (`_make_services()`).
+- **Reflex state vars must be picklable** — Reflex serializes state between requests. Never store `sqlite3.Connection`, file handles, or other unpicklable objects as state class variables. Create fresh service instances per handler call.
 - **External OAuth redirects lose Reflex state** — When the browser navigates to Entra (external redirect), the WebSocket disconnects and Reflex creates fresh state on return. Backend vars like `_oauth_state` are lost. Solution: persist OAuth state tokens to disk (`state/oauth_state.json`).
 - **`router.page.params` is deprecated** — Use `self.router.url.query_parameters` (Reflex >=0.8.1). `router.url` is a `ReflexURL` (subclass of `str`); `query_parameters` is a frozen dict from `urllib.parse.parse_qsl`.
 - **Config must have `web:` section** — `get_config()` validates this at load time. If `M365_ADMIN_CONFIG` points to the CLI config (no `web:` section), it crashes with a clear error. Set `M365_ADMIN_CONFIG=./config.web.yaml` in `.env`.
 - **`Killing worker-0` warning during dev** — Granian (Reflex's ASGI server) killed the worker when `handle_callback()` blocked the event loop with synchronous MSAL + SQLite calls. Fixed: blocking calls are now wrapped in `asyncio.to_thread()`. If this warning reappears, check for new synchronous I/O added to event handlers.
+- **State inheritance** — `PreferencesState`, `AdminState`, `SyncState` all inherit from `AuthState` so they share auth vars. Reflex merges substates; `on_load` handlers from parent and child both fire.
+- **`DATABASE_URL` must be set** — `rxconfig.py` reads it at import time (before `config_loader`). Falls back to `sqlite:///state/web.db` for tests. Production must set the env var explicitly.

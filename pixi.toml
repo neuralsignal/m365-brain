@@ -13,12 +13,13 @@ hatchling = ">=1.28.0,<2"
 msal = ">=1.34, <2"
 httpx = ">=0.28, <1"
 pyyaml = ">=6.0, <7"
+pydantic = ">=2.12, <3"
 python-frontmatter = ">=1.1, <2"
 markdownify = ">=0.14, <1"
 structlog = ">=25.0, <26"
 click = ">=8.1, <9"
 python-dotenv = ">=1.0, <2"
-m365-extract = {path = ".", editable = true, extras = ["azure", "web"]}
+m365-extract = {path = ".", editable = true, extras = ["azure"]}
 obsidian-import = {version = ">=1.0.1,<2", extras = ["markitdown"]}
 pytest = ">=8.0, <9"
 hypothesis = ">=6.100, <7"
@@ -46,9 +47,11 @@ nodejs = ">=20,<21"
 
 [feature.admin.pypi-dependencies]
 reflex = ">=0.8.28,<0.9"
+sqlmodel = ">=0.0.22,<1"
 
 [feature.admin.tasks]
 dev = "reflex run"
+daemon = "m365-extract --config config.web.yaml daemon"
 test-admin = "pytest tests/ -v --tb=short -m 'not integration and not azurite'"
 test-all = "pytest tests/ -v --tb=short -m 'not integration and not azurite'"
 

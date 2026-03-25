@@ -1,5 +1,6 @@
-"""Config package -- re-exports schema and loader for backwards-compatible imports."""
+"""Config package -- re-exports schema, loader, and errors for convenient imports."""
 
+from m365_extract.config.errors import ConfigError
 from m365_extract.config.loader import load_config
 from m365_extract.config.schema import (
     AuthConfig,
@@ -27,6 +28,7 @@ __all__ = [
     "AzureBlobStorageConfig",
     "CalendarExtractorConfig",
     "Config",
+    "ConfigError",
     "ContactsExtractorConfig",
     "DirectoryExtractorConfig",
     "EmailExtractorConfig",

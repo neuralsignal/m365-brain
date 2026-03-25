@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_admin.state import (
+from m365_admin.auth_state import (
     _OAUTH_STATE_TTL_SECONDS,
     _store_oauth_state,
     _verify_oauth_state,
@@ -104,7 +104,7 @@ class TestOAuthStatePersistence:
     def state_dir(self, tmp_path):
         """Patch _oauth_state_path to use a temp directory."""
         state_file = tmp_path / "oauth_state.json"
-        with patch("m365_admin.state._oauth_state_path", return_value=state_file):
+        with patch("m365_admin.auth_state._oauth_state_path", return_value=state_file):
             yield tmp_path, state_file
 
     def test_store_and_verify_roundtrip(self, state_dir):
@@ -160,6 +160,21 @@ class TestOAuthStatePersistence:
 
         with tempfile.TemporaryDirectory() as td:
             state_file = Path(td) / "oauth_state.json"
-            with patch("m365_admin.state._oauth_state_path", return_value=state_file):
+            with patch("m365_admin.auth_state._oauth_state_path", return_value=state_file):
                 _store_oauth_state(token)
                 assert _verify_oauth_state(token) is True
+
+
+class TestIsAdmin:
+    """Test the is_admin logic (trivial email-in-list check)."""
+
+    def test_admin_email_is_admin(self):
+        from m365_extract.config.schema import WebConfig
+
+        wc = WebConfig(
+            host="h", port=0, secret_key="s", fernet_key="f",
+            db_path="d", session_timeout_minutes=0,
+            db_url="sqlite://", admin_emails=["admin@test.com"],
+        )
+        assert ("admin@test.com" in wc.admin_emails) is True
+        assert ("user@test.com" in wc.admin_emails) is False

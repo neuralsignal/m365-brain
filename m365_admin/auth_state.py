@@ -9,7 +9,7 @@ Gotchas:
       instead of using backend vars.
     - State tokens are NOT consumed on verify — they expire via 10-minute TTL
       and are pruned lazily on the next _store_oauth_state() call.
-    - handle_callback() offloads MSAL + SQLite calls to asyncio.to_thread()
+    - handle_callback() offloads MSAL + SQLModel calls to asyncio.to_thread()
       to avoid blocking the Granian event loop. Without this, dev hot reloads
       caused 'Killing worker-0' warnings.
 """
@@ -25,10 +25,10 @@ from pathlib import Path
 
 import reflex as rx
 
-from m365_admin.config_loader import get_config
+from m365_admin.config_loader import get_config, get_session
+from m365_admin.services.token_service import TokenService
 from m365_extract.auth.auth_code import AuthCodeAuth, AuthCodeError
-from m365_extract.auth.token_store import TokenStore
-from m365_extract.user_manager import UserManager
+from m365_extract.models import User
 
 # OAuth state tokens expire after 10 minutes
 _OAUTH_STATE_TTL_SECONDS = 600
@@ -98,30 +98,6 @@ def _verify_oauth_state(state_token: str) -> bool:
     return True
 
 
-def _make_services() -> tuple[UserManager, TokenStore, AuthCodeAuth]:
-    """Create fresh UserManager, TokenStore, and AuthCodeAuth from config.
-
-    Creates new instances each call to avoid storing unpicklable sqlite3.Connection
-    objects in Reflex state (which must be serializable between requests).
-    """
-    config = get_config()
-    web = config.web
-    if web is None:
-        msg = (
-            "config.web is None — the web section in config.web.yaml failed to load. "
-            "Ensure SECRET_KEY and FERNET_KEY are set in .env at the repo root."
-        )
-        raise RuntimeError(msg)
-    user_manager = UserManager(db_path=web.db_path, check_same_thread=False)
-    token_store = TokenStore(
-        db_path=web.db_path,
-        fernet_key=web.fernet_key,
-        check_same_thread=False,
-    )
-    auth = AuthCodeAuth(auth_config=config.auth)
-    return user_manager, token_store, auth
-
-
 def _get_redirect_uri() -> str:
     """Read redirect URI from env. Crashes if unset."""
     uri = os.environ.get("M365_ADMIN_REDIRECT_URI")
@@ -129,6 +105,18 @@ def _get_redirect_uri() -> str:
         msg = "M365_ADMIN_REDIRECT_URI environment variable is not set"
         raise RuntimeError(msg)
     return uri
+
+
+def _make_token_service() -> TokenService:
+    """Create a TokenService from config."""
+    config = get_config()
+    return TokenService(fernet_key=config.web.fernet_key)
+
+
+def _make_auth() -> AuthCodeAuth:
+    """Create an AuthCodeAuth from config."""
+    config = get_config()
+    return AuthCodeAuth(auth_config=config.auth)
 
 
 class AuthState(rx.State):
@@ -148,20 +136,28 @@ class AuthState(rx.State):
         """True when a user has completed the OAuth flow."""
         return self.user_id != ""
 
+    @rx.var
+    def is_admin(self) -> bool:
+        """True when the authenticated user is an admin."""
+        if not self.user_email:
+            return False
+        config = get_config()
+        return self.user_email in config.web.admin_emails
+
     def login(self) -> rx.event.EventSpec:
         """Start OAuth2 auth code flow — redirect to Entra login page."""
-        _user_manager, _token_store, auth = _make_services()
         self.auth_error = ""
         state_token = secrets.token_urlsafe(32)
         _store_oauth_state(state_token)
         redirect_uri = _get_redirect_uri()
+        auth = _make_auth()
         auth_url = auth.get_auth_url(redirect_uri=redirect_uri, state=state_token)
         return rx.redirect(auth_url, is_external=True)
 
     async def handle_callback(self) -> rx.event.EventSpec | None:
         """Process the OAuth callback — exchange code for tokens, create/fetch user.
 
-        Blocking MSAL and SQLite calls are offloaded to a thread so the Granian
+        Blocking MSAL and SQLModel calls are offloaded to a thread so the Granian
         event loop stays responsive (avoids 'Killing worker-0' during dev hot reload).
         """
         # Reflex fires on_load multiple times per page load. If the first call
@@ -191,7 +187,8 @@ class AuthState(rx.State):
             self.auth_error = "Invalid state parameter — possible CSRF attack"
             return rx.redirect("/login")
 
-        user_manager, token_store, auth = _make_services()
+        auth = _make_auth()
+        token_service = _make_token_service()
         redirect_uri = _get_redirect_uri()
 
         # Offload blocking MSAL HTTP call to a thread
@@ -210,19 +207,26 @@ class AuthState(rx.State):
             self.auth_error = "Could not extract user info from token response"
             return rx.redirect("/login")
 
-        # Offload blocking SQLite calls to a thread
-        await asyncio.to_thread(
-            token_store.store_tokens, user_id=user_info["user_id"], tokens=token_response
-        )
+        # Offload blocking SQLModel calls to a thread
+        def _persist_user_and_tokens() -> None:
+            session = get_session()
+            try:
+                token_service.store_tokens(session, user_id=user_info["user_id"], tokens=token_response)
 
-        existing = await asyncio.to_thread(user_manager.get_user, user_info["user_id"])
-        if existing is None:
-            await asyncio.to_thread(
-                user_manager.create_user,
-                user_id=user_info["user_id"],
-                display_name=user_info["display_name"],
-                email=user_info["email"],
-            )
+                existing = session.get(User, user_info["user_id"])
+                if existing is None:
+                    user = User(
+                        user_id=user_info["user_id"],
+                        display_name=user_info["display_name"],
+                        email=user_info["email"],
+                        enabled=True,
+                    )
+                    session.add(user)
+                    session.commit()
+            finally:
+                session.close()
+
+        await asyncio.to_thread(_persist_user_and_tokens)
 
         # Set client-visible state
         self.user_id = user_info["user_id"]
