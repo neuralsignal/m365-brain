@@ -584,7 +584,7 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 ### Config Split
 
-30. **Two config files: `config.web.yaml` (local dev) vs `config.deploy.yaml` (production)** -- `config.web.yaml` uses `storage.backend: "local"` with `./vault` path, suitable for `pixi run -e admin dev`. `config.deploy.yaml` uses `storage.backend: "azure_blob"` with env var expansion for connection string, container, and prefix. Both Dockerfiles copy `config.deploy.yaml` and reference it in their entrypoints. The `M365_ADMIN_CONFIG` env var in Bicep points to `./config.deploy.yaml`.
+30. **Two config files: `config.web.yaml` vs `config.deploy.yaml`** -- `config.web.yaml` uses `storage.backend: "local"` (no blob env vars needed). `config.deploy.yaml` uses `storage.backend: "azure_blob"` with `${AZURE_STORAGE_CONNECTION_STRING}` etc. The config loader eagerly expands ALL `${VAR}` references at load time — even sections the caller doesn't use. So the **web app must use `config.web.yaml`** (it doesn't have storage env vars and doesn't need them). Only the **daemon uses `config.deploy.yaml`** (it has the storage env vars via Bicep). Both Dockerfiles copy both config files. Bicep sets `M365_ADMIN_CONFIG=./config.web.yaml` for App Service and `M365_ADMIN_CONFIG=./config.deploy.yaml` for Container Instance.
 
 ---
 

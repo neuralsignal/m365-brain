@@ -289,7 +289,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'M365_ADMIN_CONFIG'
-          value: './config.deploy.yaml'
+          value: './config.web.yaml'
         }
         {
           name: 'ADMIN_EMAIL'
