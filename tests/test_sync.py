@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from m365_extract.extractors.errors import ExtractorError
 from m365_extract.sync import EXTRACTORS, run_extractors
 
 
@@ -61,7 +62,7 @@ class TestRunExtractors:
             mock_log.warning.assert_called_once_with("sync.unknown_extractor", name="nonexistent")
 
     def test_handles_extractor_exception(self, full_config):
-        mock_mod = _make_mock_extractor(side_effect=RuntimeError("API down"))
+        mock_mod = _make_mock_extractor(side_effect=ExtractorError("API down"))
         original = EXTRACTORS["email"]
         mock_state = MagicMock()
         mock_state.load.return_value = {}

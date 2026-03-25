@@ -186,8 +186,8 @@ def _write_contact(storage: StorageBackend, contact: dict) -> bool:
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    slug = slugify(display_name)
-    hsh = short_hash(contact_id)
+    slug = slugify(display_name, 80)
+    hsh = short_hash(contact_id, 6)
     file_path = f"contacts/{slug}-{hsh}/index.md"
 
     storage.write_file(file_path, content)

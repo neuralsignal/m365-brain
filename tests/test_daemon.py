@@ -16,6 +16,7 @@ from m365_extract.daemon import (
     sync_user,
     write_sync_record,
 )
+from m365_extract.graph_client import GraphApiError
 from m365_extract.models import ExtractorPreference, SyncRecord, User
 
 
@@ -117,7 +118,7 @@ class TestSyncUser:
 
         with (
             patch("m365_extract.daemon.make_web_token_provider", return_value=_fake_token_provider),
-            patch("m365_extract.daemon.run_extractors", side_effect=RuntimeError("Graph API down")),
+            patch("m365_extract.daemon.run_extractors", side_effect=GraphApiError("Graph API down")),
         ):
             record = sync_user(full_config, seeded_engine, FakeTokenAdapter(), user, str(tmp_path / "state"))
 

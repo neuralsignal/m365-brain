@@ -16,8 +16,11 @@ from pathlib import Path
 import structlog
 from sqlmodel import Session, select
 
-from m365_extract.auth.token_provider import TokenStoreProtocol, make_web_token_provider
+from m365_extract.auth.token_provider import TokenRefreshError, TokenStoreProtocol, make_web_token_provider
 from m365_extract.config import Config
+from m365_extract.config.errors import ConfigError
+from m365_extract.extractors.errors import ExtractorError
+from m365_extract.graph_client import GraphApiError
 from m365_extract.models import ExtractorPreference, SyncRecord, User
 from m365_extract.state import SyncState
 from m365_extract.storage import create_user_storage
@@ -87,7 +90,7 @@ def sync_user(
         record.completed_at = datetime.now(tz=UTC)
         record.items_synced = total_items
         log.info("daemon.sync_user_completed", user_id=user.user_id)
-    except Exception as exc:
+    except (GraphApiError, ExtractorError, ConfigError, TokenRefreshError) as exc:
         record.status = "failed"
         record.completed_at = datetime.now(tz=UTC)
         record.error_message = str(exc)

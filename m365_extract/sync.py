@@ -21,7 +21,8 @@ from m365_extract.extractors import (
     teams_channels,
     teams_chats,
 )
-from m365_extract.graph_client import GraphClient
+from m365_extract.extractors.errors import ExtractorError
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.state import SyncState
 from m365_extract.storage.base import StorageBackend
 
@@ -68,6 +69,6 @@ def run_extractors(
                 sync_state.save(ext_name, updated_state)
                 total_items += count
                 log.info("sync.extractor_done", name=ext_name, items=count)
-            except Exception as exc:
+            except (GraphApiError, ExtractorError) as exc:
                 log.error("sync.extractor_failed", name=ext_name, error=str(exc))
     return total_items

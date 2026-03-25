@@ -25,28 +25,28 @@ from m365_extract.markdown_writer import (
 
 class TestSlugify:
     def test_simple_text(self):
-        assert slugify("Hello World") == "hello-world"
+        assert slugify("Hello World", 80) == "hello-world"
 
     def test_special_characters(self):
-        assert slugify("RE: Q1 Budget (Final)") == "re-q1-budget-final"
+        assert slugify("RE: Q1 Budget (Final)", 80) == "re-q1-budget-final"
 
     def test_accented_characters(self):
-        assert slugify("Zürich Café") == "zurich-cafe"
+        assert slugify("Zürich Café", 80) == "zurich-cafe"
 
     def test_empty_string(self):
-        assert slugify("") == "untitled"
+        assert slugify("", 80) == "untitled"
 
     def test_max_length(self):
-        result = slugify("a" * 200, max_length=10)
+        result = slugify("a" * 200, 10)
         assert len(result) <= 10
 
     def test_strips_trailing_hyphens_on_truncation(self):
-        result = slugify("hello-world-this-is-long", max_length=12)
+        result = slugify("hello-world-this-is-long", 12)
         assert not result.endswith("-")
 
     @given(st.text(min_size=1, max_size=200))
     def test_always_returns_valid_slug(self, text):
-        result = slugify(text)
+        result = slugify(text, 80)
         assert len(result) <= 80
         assert result == result.lower()
         assert "--" not in result
@@ -56,13 +56,13 @@ class TestSlugify:
 
 class TestShortHash:
     def test_deterministic(self):
-        assert short_hash("hello") == short_hash("hello")
+        assert short_hash("hello", 6) == short_hash("hello", 6)
 
     def test_different_inputs(self):
-        assert short_hash("hello") != short_hash("world")
+        assert short_hash("hello", 6) != short_hash("world", 6)
 
     def test_length(self):
-        assert len(short_hash("test", length=8)) == 8
+        assert len(short_hash("test", 8)) == 8
 
 
 class TestDumpsLoadsMarkdown:

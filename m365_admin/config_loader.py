@@ -1,6 +1,6 @@
 """Config loader — loads m365-extract Config from YAML.
 
-Default config path: config.web.yaml in repo root. Override via M365_ADMIN_CONFIG env var.
+Default config path: composable fragments in config/ directory. Override via M365_ADMIN_CONFIG env var.
 Loads .env from repo root before first config load to ensure env vars are available.
 """
 
@@ -23,8 +23,8 @@ _engine = None
 def get_config() -> Config:
     """Load and return the m365-extract Config singleton.
 
-    Config path defaults to config.web.yaml in repo root.
-    Override via M365_ADMIN_CONFIG env var.
+    Config path defaults to composable fragments in config/ directory.
+    Override via M365_ADMIN_CONFIG env var (comma-separated paths).
     Result is cached after first load.
     """
     global _cached_config, _config_path  # noqa: PLW0603
@@ -35,14 +35,21 @@ def get_config() -> Config:
     # of import order or Reflex process management.
     load_dotenv(_repo_root / ".env", override=False)
 
-    _config_path = os.environ.get("M365_ADMIN_CONFIG", str(_repo_root / "config.web.yaml"))
+    default_config = ",".join(
+        [
+            str(_repo_root / "config" / "base.yaml"),
+            str(_repo_root / "config" / "auth.yaml"),
+            str(_repo_root / "config" / "storage" / "local.yaml"),
+            str(_repo_root / "config" / "service" / "web.yaml"),
+        ]
+    )
+    _config_path = os.environ.get("M365_ADMIN_CONFIG", default_config)
     _cached_config = load_config(_config_path)
 
     if _cached_config.web is None:
         msg = (
             f"config.web is None — the loaded config file ({_config_path}) "
-            "has no 'web:' section. The admin dashboard requires config.web.yaml, "
-            "not the CLI config. Set M365_ADMIN_CONFIG=./config.web.yaml in .env."
+            "has no 'web:' section. Ensure config/service/web.yaml is included in M365_ADMIN_CONFIG."
         )
         raise RuntimeError(msg)
 

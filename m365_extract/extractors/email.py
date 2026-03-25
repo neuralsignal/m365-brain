@@ -166,8 +166,8 @@ def _write_email(storage: StorageBackend, msg: dict, folder: str) -> bool:
     # Determine file path: emails/{year}/{date}/{slug}/index.md
     date_str = received[:10]
     year = date_str[:4]
-    slug = slugify(subject)
-    hsh = short_hash(message_id)
+    slug = slugify(subject, 80)
+    hsh = short_hash(message_id, 6)
     file_path = f"emails/{year}/{date_str}/{slug}-{hsh}/index.md"
 
     storage.write_file(file_path, content)

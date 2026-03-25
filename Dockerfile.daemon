@@ -23,7 +23,7 @@ COPY --from=builder /usr/local/bin/m365-extract /usr/local/bin/m365-extract
 
 COPY m365_extract/ m365_extract/
 COPY m365_admin/ m365_admin/
-COPY config.deploy.yaml .
+COPY config/ config/
 COPY scripts/daemon_healthcheck.py scripts/daemon_healthcheck.py
 
 RUN useradd --create-home appuser && \
@@ -37,4 +37,4 @@ ENV PYTHONPATH=/app
 HEALTHCHECK --interval=60s --timeout=5s --retries=3 \
     CMD python scripts/daemon_healthcheck.py
 
-ENTRYPOINT ["m365-extract", "--config", "config.deploy.yaml", "daemon"]
+ENTRYPOINT ["m365-extract", "--config", "config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/web.yaml,config/env/dev.yaml", "daemon"]

@@ -1,0 +1,4 @@
+# Azure dev environment overrides.
+
+service:
+  json_logs: true

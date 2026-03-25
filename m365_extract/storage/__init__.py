@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from m365_extract.config import StorageConfig
+from m365_extract.config.errors import ConfigError
 from m365_extract.storage.base import StorageBackend
 
 
@@ -13,16 +13,14 @@ def create_storage(config: StorageConfig) -> StorageBackend:
     """Create a storage backend from config. Crashes on unknown or misconfigured backend."""
     if config.backend == "local":
         if config.local is None:
-            print("Config error: backend is 'local' but storage.local section is missing", file=sys.stderr)
-            raise SystemExit(1)
+            raise ConfigError("backend is 'local' but storage.local section is missing")
         from m365_extract.storage.local import LocalBackend
 
         return LocalBackend(config.local.base_path)
 
     if config.backend == "azure_blob":
         if config.azure_blob is None:
-            print("Config error: backend is 'azure_blob' but storage.azure_blob section is missing", file=sys.stderr)
-            raise SystemExit(1)
+            raise ConfigError("backend is 'azure_blob' but storage.azure_blob section is missing")
         from m365_extract.storage.azure_blob import AzureBlobBackend
 
         return AzureBlobBackend(
@@ -31,8 +29,7 @@ def create_storage(config: StorageConfig) -> StorageBackend:
             prefix=config.azure_blob.prefix,
         )
 
-    print(f"Config error: unknown storage backend '{config.backend}'", file=sys.stderr)
-    raise SystemExit(1)
+    raise ConfigError(f"unknown storage backend '{config.backend}'")
 
 
 def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
@@ -43,8 +40,7 @@ def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
     """
     if config.backend == "local":
         if config.local is None:
-            print("Config error: backend is 'local' but storage.local section is missing", file=sys.stderr)
-            raise SystemExit(1)
+            raise ConfigError("backend is 'local' but storage.local section is missing")
         from m365_extract.storage.local import LocalBackend
 
         user_path = str(Path(config.local.base_path) / user_id)
@@ -52,8 +48,7 @@ def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
 
     if config.backend == "azure_blob":
         if config.azure_blob is None:
-            print("Config error: backend is 'azure_blob' but storage.azure_blob section is missing", file=sys.stderr)
-            raise SystemExit(1)
+            raise ConfigError("backend is 'azure_blob' but storage.azure_blob section is missing")
         from m365_extract.storage.azure_blob import AzureBlobBackend
 
         base_prefix = config.azure_blob.prefix.rstrip("/")
@@ -64,5 +59,4 @@ def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
             prefix=user_prefix,
         )
 
-    print(f"Config error: unknown storage backend '{config.backend}'", file=sys.stderr)
-    raise SystemExit(1)
+    raise ConfigError(f"unknown storage backend '{config.backend}'")

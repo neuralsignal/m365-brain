@@ -1,0 +1,5 @@
+# Azure prod environment overrides.
+
+service:
+  json_logs: true
+  log_level: "WARNING"

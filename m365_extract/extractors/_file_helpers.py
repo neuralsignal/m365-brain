@@ -43,9 +43,9 @@ def build_storage_path(prefix: str, parent_path: str, file_name: str, item_id: s
         # Slugify each path segment individually to preserve hierarchy
         for segment in parent_path.split("/"):
             if segment:
-                parts.append(slugify(segment))
-    name_slug = slugify(file_name)
-    hsh = short_hash(item_id)
+                parts.append(slugify(segment, 80))
+    name_slug = slugify(file_name, 80)
+    hsh = short_hash(item_id, 6)
     parts.append(f"{name_slug}-{hsh}.md")
     return "/".join(parts)
 

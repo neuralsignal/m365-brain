@@ -20,7 +20,7 @@ COPY m365_admin/ m365_admin/
 RUN pip install --no-cache-dir ".[admin,azure]"
 
 COPY rxconfig.py .
-COPY config.web.yaml .
+COPY config/ config/
 
 # Initialise Reflex (installs bun, node) and build production frontend
 RUN reflex init
@@ -50,8 +50,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY m365_extract/ m365_extract/
 COPY m365_admin/ m365_admin/
 COPY rxconfig.py .
-COPY config.web.yaml .
-COPY config.deploy.yaml .
+COPY config/ config/
 
 # Pre-built static frontend
 COPY --from=builder /app/.web/build/client /srv

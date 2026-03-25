@@ -1,3 +1,6 @@
+# Standalone test config — reduced scope, small limits.
+# Used as-is (not composed with other fragments).
+
 auth:
   client_id: "${MSAL_CLIENT_ID}"
   tenant_id: "${MSAL_TENANT_ID}"
@@ -6,7 +9,7 @@ auth:
     - "Mail.Read"
     - "Calendars.Read"
     - "offline_access"
-  token_cache_path: "./state/token_cache.json"
+  token_cache_path: "../state/token_cache.json"
   client_secret: null
 
 service:
@@ -19,7 +22,7 @@ service:
 storage:
   backend: "local"
   local:
-    base_path: "./vault"
+    base_path: "../vault"
 
 graph:
   max_retries: 3
@@ -28,7 +31,7 @@ graph:
   max_pages: 100
 
 state:
-  state_file_path: "./state/sync_state.json"
+  state_file_path: "../state/sync_state.json"
 
 extractors:
   email:

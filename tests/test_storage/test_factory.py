@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from m365_extract.config import AzureBlobStorageConfig, LocalStorageConfig, StorageConfig
+from m365_extract.config.errors import ConfigError
 from m365_extract.storage import create_storage, create_user_storage
 from m365_extract.storage.local import LocalBackend
 
@@ -43,7 +44,7 @@ class TestCreateStorage:
             local=None,
             azure_blob=None,
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             create_storage(config)
 
     def test_local_backend_missing_config_crashes(self):
@@ -52,7 +53,7 @@ class TestCreateStorage:
             local=None,
             azure_blob=None,
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             create_storage(config)
 
     def test_azure_blob_missing_config_crashes(self):
@@ -61,7 +62,7 @@ class TestCreateStorage:
             local=None,
             azure_blob=None,
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             create_storage(config)
 
 
@@ -101,5 +102,5 @@ class TestCreateUserStorage:
             local=None,
             azure_blob=None,
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             create_user_storage(config, "user-1")

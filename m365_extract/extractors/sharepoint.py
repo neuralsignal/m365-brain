@@ -19,7 +19,7 @@ from m365_extract.extractors._file_helpers import (
     process_drive_item,
 )
 from m365_extract.frontmatter import build_sharepoint_frontmatter
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import slugify
 from m365_extract.storage.base import StorageBackend
 
@@ -57,7 +57,7 @@ def run(
                     params={"$top": "100"},
                 )
             )
-        except Exception as exc:
+        except GraphApiError as exc:
             log.warning("sharepoint.drives_fetch_failed", site=site_name, error=str(exc))
             continue
 
@@ -107,7 +107,7 @@ def _sync_drive(
 
     try:
         items, new_delta_link = client.get_delta(path, delta_link, params=params)
-    except Exception as exc:
+    except GraphApiError as exc:
         log.warning(
             "sharepoint.delta_failed",
             site=site_name,
@@ -119,8 +119,8 @@ def _sync_drive(
     if new_delta_link:
         state[delta_key] = new_delta_link
 
-    site_slug = slugify(site_name)
-    drive_slug = slugify(drive_name)
+    site_slug = slugify(site_name, 80)
+    drive_slug = slugify(drive_name, 80)
     prefix = f"sharepoint/{site_slug}/{drive_slug}"
 
     written = 0

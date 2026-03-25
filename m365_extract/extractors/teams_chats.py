@@ -12,7 +12,7 @@ import structlog
 from m365_extract.config import TeamsChatsExtractorConfig
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
 from m365_extract.frontmatter import build_teams_chat_frontmatter
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, loads_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
@@ -89,7 +89,7 @@ def _process_chat(
                 max_pages=max(1, max_messages // 50),
             )
         )
-    except Exception as exc:
+    except GraphApiError as exc:
         log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
         return False
 
@@ -106,8 +106,8 @@ def _process_chat(
 
     last_msg_time = messages[-1].get("createdDateTime", "") if messages else ""
 
-    slug = slugify(title)
-    hsh = short_hash(chat_id)
+    slug = slugify(title, 80)
+    hsh = short_hash(chat_id, 6)
     file_path = f"teams-chats/{slug}_{hsh}.md"
 
     # Check if update is needed
@@ -117,7 +117,7 @@ def _process_chat(
             existing_fm, _ = loads_markdown(existing_content)
             if existing_fm.get("last_message_time") == last_msg_time:
                 return False
-        except Exception as exc:
+        except (ValueError, KeyError) as exc:
             log.warning(
                 "teams_chats.existing_file_parse_failed",
                 file_path=file_path,
@@ -145,7 +145,7 @@ def _process_chat(
     # Relations
     relations = []
     for p_name in participants:
-        contact_slug = slugify(p_name)
+        contact_slug = slugify(p_name, 80)
         if contact_slug and contact_slug != "untitled" and len(contact_slug) > 5:
             relations.append(f"- participant [[contact-{contact_slug}]]")
     if relations:

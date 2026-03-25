@@ -12,7 +12,7 @@ import structlog
 
 from m365_extract.config import DirectoryExtractorConfig
 from m365_extract.frontmatter import build_directory_user_frontmatter
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
@@ -90,8 +90,8 @@ def _build_user_link(user: dict) -> str:
     user_id = user.get("id") or ""
     if not display_name or not user_id:
         return ""
-    slug = slugify(display_name)
-    hsh = short_hash(user_id)
+    slug = slugify(display_name, 80)
+    hsh = short_hash(user_id, 6)
     return f"[[directory-{slug}-{hsh}]]"
 
 
@@ -100,7 +100,7 @@ def _fetch_manager_link(client: GraphClient, user_id: str) -> str:
     try:
         manager = client.get(f"/users/{user_id}/manager", params={"$select": "id,displayName"})
         return _build_user_link(manager)
-    except Exception:
+    except GraphApiError:
         log.debug("directory.no_manager", user_id=user_id)
         return ""
 
@@ -120,7 +120,7 @@ def _fetch_direct_reports_links(client: GraphClient, user_id: str) -> list[str]:
             if link:
                 links.append(link)
         return links
-    except Exception:
+    except GraphApiError:
         log.debug("directory.no_direct_reports", user_id=user_id)
         return []
 
@@ -179,8 +179,8 @@ def _write_user(
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    slug = slugify(display_name)
-    hsh = short_hash(user_id)
+    slug = slugify(display_name, 80)
+    hsh = short_hash(user_id, 6)
     file_path = f"directory/{slug}-{hsh}/index.md"
 
     storage.write_file(file_path, content)

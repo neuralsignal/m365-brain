@@ -1,0 +1,8 @@
+# Azure Blob Storage backend.
+
+storage:
+  backend: "azure_blob"
+  azure_blob:
+    connection_string: "${AZURE_STORAGE_CONNECTION_STRING}"
+    container_name: "${AZURE_STORAGE_CONTAINER}"
+    prefix: "${AZURE_STORAGE_PREFIX}"

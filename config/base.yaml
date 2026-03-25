@@ -1,32 +1,5 @@
-auth:
-  client_id: "${MSAL_CLIENT_ID}"
-  tenant_id: "${MSAL_TENANT_ID}"
-  scopes:
-    - "User.Read"
-    - "Mail.Read"
-    - "Calendars.Read"
-    - "Chat.Read"
-    - "ChannelMessage.Read.All"
-    - "Files.Read.All"
-    - "Sites.Read.All"
-    - "Contacts.Read"
-    - "User.Read.All"
-    # Directory.Read.All — add when directory extractor is enabled
-    - "offline_access"
-  token_cache_path: "./state/token_cache.json"
-  client_secret: null
-
-service:
-  mode: "cli"
-  log_level: "INFO"
-  json_logs: false
-  continuous_poll_seconds: 30
-  max_consecutive_auth_failures: 5
-
-storage:
-  backend: "local"
-  local:
-    base_path: "./vault"
+# Shared configuration: graph, state, extractors, converters.
+# Loaded by all modes. Override individual values in service/ and env/ fragments.
 
 graph:
   max_retries: 3
@@ -35,7 +8,7 @@ graph:
   max_pages: 100
 
 state:
-  state_file_path: "./state/sync_state.json"
+  state_file_path: "../state/sync_state.json"
 
 extractors:
   email:
@@ -54,7 +27,7 @@ extractors:
     poll_interval_minutes: 5
     max_messages_per_chat: 200
   teams_channels:
-    enabled: false  # needs Channel.ReadBasic.All admin consent
+    enabled: false
     poll_interval_minutes: 5
   onedrive:
     enabled: true

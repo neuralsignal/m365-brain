@@ -301,7 +301,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'M365_ADMIN_CONFIG'
-          value: './config.deploy.yaml'
+          value: 'config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/web.yaml,config/env/dev.yaml'
         }
         {
           name: 'ADMIN_EMAIL'
@@ -373,7 +373,7 @@ resource daemonContainer 'Microsoft.ContainerInstance/containerGroups@2023-05-01
             }
             {
               name: 'M365_ADMIN_CONFIG'
-              value: './config.deploy.yaml'
+              value: 'config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/web.yaml,config/env/dev.yaml'
             }
             {
               name: 'ADMIN_EMAIL'

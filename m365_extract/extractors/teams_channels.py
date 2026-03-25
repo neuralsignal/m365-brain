@@ -13,7 +13,7 @@ import structlog
 from m365_extract.config import TeamsChannelsExtractorConfig
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
 from m365_extract.frontmatter import build_teams_channel_frontmatter
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
@@ -81,7 +81,7 @@ def _process_channel(
             delta_link,
             params={"$top": "50"},
         )
-    except Exception as exc:
+    except GraphApiError as exc:
         log.warning(
             "teams_channels.fetch_failed",
             team=team_name,
@@ -137,9 +137,9 @@ def _process_channel(
 
     content_str = dumps_markdown(fm, "\n".join(body_parts))
 
-    team_slug = slugify(team_name)
-    channel_slug = slugify(channel_name)
-    hsh = short_hash(channel_id)
+    team_slug = slugify(team_name, 80)
+    channel_slug = slugify(channel_name, 80)
+    hsh = short_hash(channel_id, 6)
     file_path = f"teams-channels/{team_slug}/{channel_slug}-{hsh}.md"
 
     storage.write_file(file_path, content_str)

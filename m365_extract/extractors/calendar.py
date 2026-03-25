@@ -200,8 +200,8 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
     date_str = start_time[:10]
     year = date_str[:4]
     month = date_str[:7]
-    slug = slugify(subject)
-    hsh = short_hash(event_id)
+    slug = slugify(subject, 80)
+    hsh = short_hash(event_id, 6)
     file_path = f"calendar/{year}/{month}/{date_str}-{slug}-{hsh}.md"
 
     storage.write_file(file_path, content)

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import frontmatter
 
 
-def slugify(text: str, max_length: int = 80) -> str:
+def slugify(text: str, max_length: int) -> str:
     """Convert text to a filesystem-safe slug.
 
     Lowercases, strips accents, replaces non-alphanumeric with hyphens,
@@ -29,7 +29,7 @@ def slugify(text: str, max_length: int = 80) -> str:
     return text or "untitled"
 
 
-def short_hash(text: str, length: int = 6) -> str:
+def short_hash(text: str, length: int) -> str:
     """Return a deterministic short hex hash of the input text."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:length]
 

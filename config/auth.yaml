@@ -1,0 +1,19 @@
+# Authentication — CLI mode (device code flow, no client secret).
+# Web mode overrides these values in service/web.yaml.
+
+auth:
+  client_id: "${MSAL_CLIENT_ID}"
+  tenant_id: "${MSAL_TENANT_ID}"
+  scopes:
+    - "User.Read"
+    - "Mail.Read"
+    - "Calendars.Read"
+    - "Chat.Read"
+    - "ChannelMessage.Read.All"
+    - "Files.Read.All"
+    - "Sites.Read.All"
+    - "Contacts.Read"
+    - "User.Read.All"
+    - "offline_access"
+  token_cache_path: "../state/token_cache.json"
+  client_secret: null

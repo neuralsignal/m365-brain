@@ -1,0 +1,6 @@
+# Local filesystem storage backend.
+
+storage:
+  backend: "local"
+  local:
+    base_path: "../vault"

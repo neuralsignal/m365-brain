@@ -33,6 +33,14 @@ def _patch_sync(target: str) -> patch:
     return patch(f"m365_extract.sync.{target}")
 
 
+def _patch_continuous(target: str) -> patch:
+    return patch(f"m365_extract.continuous.{target}")
+
+
+def _patch_dry_run(target: str) -> patch:
+    return patch(f"m365_extract.dry_run.{target}")
+
+
 def _make_mock_extractor(return_value: tuple = ({}, 0), side_effect: Exception | None = None) -> MagicMock:
     """Create a mock extractor module with a run function."""
     mod = MagicMock()
@@ -102,7 +110,7 @@ class TestSyncCommand:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState"),
-            _patch_cli("_run_continuous") as mock_run,
+            _patch_cli("run_continuous") as mock_run,
             _patch_cli("configure_logging"),
         ):
             mock_load.return_value = full_config
@@ -146,11 +154,11 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log"),
+            _patch_continuous("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
             mock_time.time.return_value = 1000.0
@@ -183,11 +191,11 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log"),
+            _patch_continuous("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
             # time.time() returns 1000.0; first cycle: 1000-0=1000 >= 180 -> runs
@@ -213,11 +221,11 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log"),
+            _patch_continuous("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
             mock_time.time.return_value = 1000.0
@@ -231,6 +239,7 @@ class TestRunContinuous:
     def test_auth_failure_recovers(self, runner, config_file, full_config):
         """GraphClient raises once, then succeeds — daemon continues, counter resets."""
         from m365_extract.cli import main
+        from m365_extract.graph_client import GraphApiError
 
         args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
         mock_mod = _make_mock_extractor(return_value=({}, 1))
@@ -242,7 +251,7 @@ class TestRunContinuous:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise ConnectionError("token expired")
+                raise GraphApiError("token expired")
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -261,11 +270,11 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log"),
+            _patch_continuous("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             mock_load.return_value = full_config
             mock_state = MagicMock()
@@ -285,6 +294,7 @@ class TestRunContinuous:
     def test_exits_after_max_consecutive_auth_failures(self, runner, config_file, full_config):
         """GraphClient raises N consecutive times — SystemExit(1)."""
         from m365_extract.cli import main
+        from m365_extract.graph_client import GraphApiError
 
         args = ["--config", config_file, "sync", "--continuous", "--extractors", "email"]
         original = EXTRACTORS["email"]
@@ -295,18 +305,18 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log"),
+            _patch_continuous("log"),
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             mock_load.return_value = full_config
             mock_state = MagicMock()
             mock_state.load.return_value = {}
             mock_state_cls.return_value = mock_state
             # GraphClient constructor always raises
-            mock_gc.side_effect = ConnectionError("auth failed")
+            mock_gc.side_effect = GraphApiError("auth failed")
             mock_time.time.return_value = 1000.0
             mock_time.monotonic.return_value = 0.0
             mock_time.sleep.return_value = None
@@ -328,11 +338,11 @@ class TestRunContinuous:
             _patch_cli("make_cli_token_provider"),
             _patch_cli("create_storage"),
             _patch_cli("SyncState") as mock_state_cls,
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_continuous("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log") as mock_log,
+            _patch_continuous("log") as mock_log,
             patch.dict(EXTRACTORS, {"email": (mock_mod, original[1], original[2])}),
-            patch("m365_extract.cli.time") as mock_time,
+            patch("m365_extract.continuous.time") as mock_time,
         ):
             _setup_mocks(mock_load, mock_state_cls, mock_gc, full_config)
             mock_time.time.return_value = 1000.0
@@ -361,9 +371,9 @@ class TestDryRun:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_dry_run("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log") as mock_log,
+            _patch_dry_run("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -386,9 +396,9 @@ class TestDryRun:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_dry_run("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log") as mock_log,
+            _patch_dry_run("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -421,9 +431,9 @@ class TestDryRun:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_dry_run("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log") as mock_log,
+            _patch_dry_run("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
@@ -446,9 +456,9 @@ class TestDryRun:
         with (
             _patch_cli("load_config") as mock_load,
             _patch_cli("make_cli_token_provider"),
-            _patch_cli("GraphClient") as mock_gc,
+            _patch_dry_run("GraphClient") as mock_gc,
             _patch_cli("configure_logging"),
-            _patch_cli("log") as mock_log,
+            _patch_dry_run("log") as mock_log,
         ):
             mock_load.return_value = full_config
             mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
