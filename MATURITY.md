@@ -107,7 +107,7 @@ The codebase follows the workspace engineering principles well:
 
 | Dimension | m365-extract | Reference repos |
 |-----------|-------------|-----------------|
-| Docker | Dockerfile + docker-compose.dev.yaml | None |
+| Docker | Dockerfile.web + Dockerfile.daemon + docker-compose.yaml (with azurite profile) | None |
 | IaC (Bicep) | Storage Account + params per env | None |
 | Dev scripts | dev-setup.sh, deploy-infra.sh, teardown-dev.sh | None |
 | Multi-backend storage | Local + Azure Blob + factory | Single backend |

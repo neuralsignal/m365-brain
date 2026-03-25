@@ -1,8 +1,10 @@
 # Full-stack local testing with PostgreSQL (matching production).
+# Azurite emulator available via: docker compose --profile azurite up
 #
 # Usage:
 #   docker compose up --build        # build + start all services
 #   docker compose up -d postgres    # start only postgres (for local dev against pg)
+#   docker compose --profile azurite up  # include Azurite blob emulator
 #   docker compose down -v           # stop + remove volumes
 
 services:
@@ -46,6 +48,15 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    profiles: ["azurite"]
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck"
 
 volumes:
   pgdata:

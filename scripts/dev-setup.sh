@@ -52,7 +52,7 @@ info "pixi environment installed"
 echo ""
 echo "Starting Azurite emulator..."
 
-docker compose -f docker-compose.dev.yaml up -d 2>/dev/null
+docker compose --profile azurite up -d 2>/dev/null
 info "Azurite container started (or already running)"
 
 # Wait for blob service to be reachable

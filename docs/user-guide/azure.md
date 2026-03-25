@@ -38,7 +38,7 @@ storage:
 Using the provided Docker Compose file:
 
 ```bash
-docker compose -f docker-compose.dev.yaml up -d
+docker compose --profile azurite up -d
 ```
 
 This starts Azurite with all three services (Blob, Queue, Table) on their default ports:

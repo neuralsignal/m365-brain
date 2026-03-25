@@ -53,8 +53,8 @@
 
 **Implementation**:
 1. `storage/azure_blob.py` — Azure Blob Storage backend with per-user prefix routing
-2. Dockerfile (python:3.12-slim, multi-stage, non-root user)
-3. `docker-compose.yaml` (service + Azurite emulator for local dev)
+2. Dockerfile.web + Dockerfile.daemon (python:3.12-slim, multi-stage, non-root user)
+3. `docker-compose.yaml` (full stack + Azurite emulator via profile)
 4. Integration tests against Azurite
 
 **New dependencies**: `azure-storage-blob>=12.24,<13`

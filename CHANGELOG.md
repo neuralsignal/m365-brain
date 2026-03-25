@@ -46,6 +46,6 @@
 - CLI: `m365-extract auth login`, `sync --once`, `sync --continuous`
 - Frozen dataclass config with strict validation and env var expansion
 - Bicep IaC templates for Azure Storage (dev/prod)
-- Dockerfile (multi-stage, non-root)
-- Docker Compose with Azurite emulator
+- Docker images (Dockerfile.web, Dockerfile.daemon — multi-stage, non-root)
+- Docker Compose with Azurite emulator (profile)
 - 158 unit tests + 9 Azurite integration tests

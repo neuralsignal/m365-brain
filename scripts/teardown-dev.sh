@@ -16,7 +16,7 @@ info() { echo -e "${GREEN}[OK]${NC} $*"; }
 
 # Stop Azurite
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    docker compose -f docker-compose.dev.yaml down 2>/dev/null && \
+    docker compose --profile azurite down 2>/dev/null && \
         info "Azurite stopped" || \
         info "Azurite was not running"
 else

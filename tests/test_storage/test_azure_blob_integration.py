@@ -1,7 +1,7 @@
 """Integration tests for Azure Blob Storage backend against Azurite emulator.
 
 Run Azurite first:
-    docker compose -f docker-compose.dev.yaml up -d
+    docker compose --profile azurite up -d
 
 Then:
     pixi run pytest tests/test_storage/test_azure_blob_integration.py -m azurite

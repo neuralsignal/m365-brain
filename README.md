@@ -16,7 +16,7 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **Frozen dataclass config** with strict validation and environment variable expansion
 - **CLI**: `auth login`, `sync --once`, `sync --continuous`, `daemon`
 - **Bicep IaC** for Azure Storage (dev/prod parameter files)
-- **Docker** + Docker Compose with Azurite emulator for local development
+- **Docker** + Docker Compose with Azurite profile for local development
 
 ## Installation
 
@@ -214,7 +214,7 @@ storage:
 Start the Azurite emulator for local blob storage testing:
 
 ```bash
-docker compose -f docker-compose.dev.yaml up -d
+docker compose --profile azurite up -d
 ```
 
 Then set the connection string to Azurite's default:
@@ -253,22 +253,11 @@ The template creates:
 
 ## Docker
 
-### Build
+### Full stack (local dev)
 
 ```bash
-docker build -t m365-extract .
-```
-
-The image uses a multi-stage build (builder + slim runtime) and runs as a non-root user.
-
-### Run
-
-```bash
-docker run --rm \
-  -v $(pwd)/config.yaml:/app/config.yaml:ro \
-  -v $(pwd)/state:/app/state \
-  -v $(pwd)/vault:/app/vault \
-  m365-extract --config config.yaml sync --once
+docker compose up --build          # web + daemon + postgres
+docker compose --profile azurite up  # include Azurite blob emulator
 ```
 
 ## Development
