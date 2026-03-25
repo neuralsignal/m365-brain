@@ -104,6 +104,8 @@ def _write_config_yaml(tmp_path, full_web_config):
                 "max_file_size_mb": 100,
                 "xlsx_max_rows_per_sheet": 500,
             },
+            "slug_max_length": 80,
+            "hash_length": 6,
         },
         "web": {
             "host": "127.0.0.1",
@@ -270,6 +272,8 @@ class TestGetConfig:
                     "max_file_size_mb": 100,
                     "xlsx_max_rows_per_sheet": 500,
                 },
+                "slug_max_length": 80,
+                "hash_length": 6,
             },
             # No 'web' section — should raise
         }

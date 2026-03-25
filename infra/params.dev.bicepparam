@@ -17,4 +17,7 @@ param postgresStorageGb = 32
 // App Service (B1 — basic tier)
 param appServicePlanSku = 'B1'
 
+// Observability
+param logRetentionDays = 30
+
 // postgresAdminPassword: passed via CLI --parameters override (secret)

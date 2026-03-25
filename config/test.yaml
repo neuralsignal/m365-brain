@@ -85,3 +85,5 @@ converters:
     timeout_seconds: 30
     max_file_size_mb: 100
     xlsx_max_rows_per_sheet: 500
+  slug_max_length: 80
+  hash_length: 6

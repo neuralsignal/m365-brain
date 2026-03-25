@@ -1,7 +1,7 @@
 // m365-extract Azure infrastructure.
 //
-// Phase A: Storage + ACR + PostgreSQL + App Service + Container Instance + Key Vault
-// Phase B (future): VNet + private endpoints + custom domain + Log Analytics
+// Phase A: Storage + ACR + PostgreSQL + App Service + Container Instance + Key Vault + Log Analytics
+// Phase B (future): VNet + private endpoints + custom domain
 
 @description('Environment name used for resource naming (dev, test, prod)')
 param environment string
@@ -70,6 +70,10 @@ param entraTenantId string
 @description('Admin email address for the UI')
 param adminEmail string
 
+// --- Observability ---
+@description('Log retention in days (30 for dev, 90 for prod)')
+param logRetentionDays int = 30
+
 // --- Naming ---
 var storageAccountName = 'stm365ext${environment}'
 var acrName = 'acrm365ext${environment}'
@@ -79,6 +83,7 @@ var appServicePlanName = 'asp-m365-extract-${environment}'
 var webAppName = 'app-m365-admin-${environment}'
 var daemonContainerGroupName = 'ci-m365-daemon-${environment}'
 var keyVaultName = 'kv-m365-ext-${environment}'
+var logAnalyticsName = 'log-m365-extract-${environment}'
 
 // Derived values
 var databaseUrl = 'postgresql://${postgresAdminUser}:${postgresAdminPassword}@${postgresServer.properties.fullyQualifiedDomainName}:5432/${postgresDbName}?sslmode=require'
@@ -394,6 +399,77 @@ resource daemonContainer 'Microsoft.ContainerInstance/containerGroups@2023-05-01
 }
 
 // ============================================================================
+// Log Analytics Workspace
+// ============================================================================
+
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: logAnalyticsName
+  location: location
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: logRetentionDays
+  }
+}
+
+// ============================================================================
+// Diagnostic Settings — App Service
+// ============================================================================
+
+resource webAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'send-to-log-analytics'
+  scope: webApp
+  properties: {
+    workspaceId: logAnalytics.id
+    logs: [
+      {
+        category: 'AppServiceHTTPLogs'
+        enabled: true
+      }
+      {
+        category: 'AppServiceConsoleLogs'
+        enabled: true
+      }
+      {
+        category: 'AppServiceAppLogs'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
+}
+
+// ============================================================================
+// Diagnostic Settings — PostgreSQL
+// ============================================================================
+
+resource postgresDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'send-to-log-analytics'
+  scope: postgresServer
+  properties: {
+    workspaceId: logAnalytics.id
+    logs: [
+      {
+        category: 'PostgreSQLLogs'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
+}
+
+// ============================================================================
 // Outputs
 // ============================================================================
 
@@ -408,3 +484,5 @@ output webAppName string = webApp.name
 output webAppPrincipalId string = webApp.identity.principalId
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
+output logAnalyticsWorkspaceId string = logAnalytics.id
+output logAnalyticsWorkspaceName string = logAnalytics.name

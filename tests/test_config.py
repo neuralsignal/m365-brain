@@ -7,7 +7,7 @@ import textwrap
 
 import pytest
 
-from m365_extract.config import Config, ConfigError, load_config
+from m365_extract.config import Config, ConfigError, ConvertersConfig, load_config
 from m365_extract.config.loader import _deep_merge
 
 
@@ -91,6 +91,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -99,8 +101,8 @@ class TestLoadConfig:
         assert config.graph.max_retries == 3
         assert config.extractors.email.enabled is True
         assert config.extractors.email.folders == ["Inbox"]
-        assert isinstance(config.converters, dict)
-        assert config.converters["backends"]["pdf"] == "markitdown"
+        assert isinstance(config.converters, ConvertersConfig)
+        assert config.converters.backends["pdf"] == "markitdown"
 
     def test_missing_key_crashes(self, tmp_path):
         config_file = tmp_path / "config.yaml"
@@ -190,6 +192,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -278,6 +282,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -361,6 +367,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         # Ensure the variable is not set
@@ -448,6 +456,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -534,6 +544,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -619,6 +631,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -706,6 +720,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -791,6 +807,8 @@ class TestLoadConfig:
                 timeout_seconds: 30
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
+              slug_max_length: 80
+              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -872,6 +890,8 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
         timeout_seconds: 30
         max_file_size_mb: 100
         xlsx_max_rows_per_sheet: 500
+      slug_max_length: 80
+      hash_length: 6
 """)
 
 

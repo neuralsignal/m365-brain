@@ -132,6 +132,29 @@ class ExtractorsConfig(BaseModel):
     directory: DirectoryExtractorConfig
 
 
+class MediaConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    extract_images: bool
+    image_format: str
+    image_max_dimension: int
+
+
+class ExtractionConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    timeout_seconds: int
+    max_file_size_mb: int
+    xlsx_max_rows_per_sheet: int
+
+
+class ConvertersConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    backends: dict[str, str]
+    extraction: ExtractionConfig
+    media: MediaConfig | None = None
+    slug_max_length: int
+    hash_length: int
+
+
 class WebConfig(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
     host: str
@@ -152,5 +175,5 @@ class Config(BaseModel):
     graph: GraphConfig
     state: StateConfig
     extractors: ExtractorsConfig
-    converters: dict
+    converters: ConvertersConfig
     web: WebConfig | None = None

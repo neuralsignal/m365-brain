@@ -17,4 +17,7 @@ param postgresStorageGb = 64
 // App Service (P1v2 — production tier with autoscale)
 param appServicePlanSku = 'P1v2'
 
+// Observability
+param logRetentionDays = 90
+
 // postgresAdminPassword: passed via CLI --parameters override (secret)
