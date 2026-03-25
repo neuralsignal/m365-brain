@@ -41,8 +41,9 @@ EXTRACTORS: dict[str, tuple] = {
 
 def run_extractors(
     config: Config, token_provider: Callable[[], str], storage: StorageBackend, sync_state: SyncState, names: list[str]
-) -> None:
-    """Run enabled extractors once."""
+) -> int:
+    """Run enabled extractors once. Returns total items synced across all extractors."""
+    total_items = 0
     with GraphClient(config.graph, token_provider) as client:
         for ext_name in names:
             if ext_name not in EXTRACTORS:
@@ -65,6 +66,8 @@ def run_extractors(
                 else:
                     updated_state, count = module.run(client, storage, state, ext_config)
                 sync_state.save(ext_name, updated_state)
+                total_items += count
                 log.info("sync.extractor_done", name=ext_name, items=count)
             except Exception as exc:
                 log.error("sync.extractor_failed", name=ext_name, error=str(exc))
+    return total_items

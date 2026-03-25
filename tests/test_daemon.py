@@ -103,12 +103,13 @@ class TestSyncUser:
 
         with (
             patch("m365_extract.daemon.make_web_token_provider", return_value=_fake_token_provider),
-            patch("m365_extract.daemon.run_extractors") as mock_run,
+            patch("m365_extract.daemon.run_extractors", return_value=42) as mock_run,
         ):
             record = sync_user(full_config, seeded_engine, FakeTokenAdapter(), user, str(tmp_path / "state"))
 
         assert record.status == "completed"
         assert record.completed_at is not None
+        assert record.items_synced == 42
         mock_run.assert_called_once()
 
     def test_writes_failed_record(self, seeded_engine, full_config, tmp_path):
@@ -133,7 +134,7 @@ class TestRunDaemonCycle:
     def test_syncs_enabled_users(self, seeded_engine, full_config, tmp_path):
         with (
             patch("m365_extract.daemon.make_web_token_provider", return_value=_fake_token_provider),
-            patch("m365_extract.daemon.run_extractors"),
+            patch("m365_extract.daemon.run_extractors", return_value=10),
         ):
             records = run_daemon_cycle(
                 full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path / "state")

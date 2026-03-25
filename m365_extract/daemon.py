@@ -80,10 +80,11 @@ def sync_user(
         user_state_path = str(Path(state_dir) / user.user_id / "sync_state.json")
         sync_state = SyncState(user_state_path)
 
-        run_extractors(config, token_provider, storage, sync_state, extractor_names)
+        total_items = run_extractors(config, token_provider, storage, sync_state, extractor_names)
 
         record.status = "completed"
         record.completed_at = datetime.now(tz=UTC)
+        record.items_synced = total_items
         log.info("daemon.sync_user_completed", user_id=user.user_id)
     except Exception as exc:
         record.status = "failed"
