@@ -9,6 +9,7 @@ import json
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -18,6 +19,18 @@ from m365_extract.config import GraphConfig
 log = structlog.get_logger()
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+
+# Domains trusted for binary downloads (e.g., @microsoft.graph.downloadUrl CDN URLs).
+ALLOWED_DOWNLOAD_DOMAINS: frozenset[str] = frozenset(
+    {
+        ".sharepoint.com",
+        ".1drv.com",
+        ".microsoft.com",
+        ".office.com",
+        ".office365.com",
+        ".windows.net",
+    }
+)
 
 
 class GraphApiError(Exception):
@@ -70,6 +83,19 @@ def _extract_graph_error(body: str) -> tuple[str, str]:
         return code, message
     except (json.JSONDecodeError, KeyError, TypeError):
         return "unknown", "non-json response"
+
+
+def _is_allowed_download_domain(url: str) -> bool:
+    """Check whether a URL's host matches an allowed Microsoft CDN domain."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    return any(host == suffix.lstrip(".") or host.endswith(suffix) for suffix in ALLOWED_DOWNLOAD_DOMAINS)
+
+
+def _sanitize_log_url(url: str) -> str:
+    """Strip query parameters from a URL to avoid logging SAS tokens."""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 
 def _friendly_error(status: int, error_code: str, error_message: str, path: str) -> str:
@@ -216,10 +242,18 @@ class GraphClient:
         """Download binary content from a URL. Returns the raw response bytes.
 
         Used for downloading files via @microsoft.graph.downloadUrl.
+        Validates that absolute URLs point to allowed Microsoft CDN domains
+        to prevent SSRF. Strips query parameters from log output to avoid
+        leaking SAS tokens.
         """
+        if url.startswith("https://") and not _is_allowed_download_domain(url):
+            raise GraphApiError(
+                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}"
+            )
+
         return self._execute_with_retry(
             url=url,
-            log_ref=url,
+            log_ref=_sanitize_log_url(url) if url.startswith("https://") else url,
             params=None,
             extract=lambda r: r.content,
         )

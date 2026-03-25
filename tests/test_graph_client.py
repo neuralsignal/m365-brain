@@ -8,7 +8,14 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphApiError, GraphClient, _extract_graph_error
+from m365_extract.graph_client import (
+    GRAPH_BASE_URL,
+    GraphApiError,
+    GraphClient,
+    _extract_graph_error,
+    _is_allowed_download_domain,
+    _sanitize_log_url,
+)
 
 
 @pytest.fixture()
@@ -127,14 +134,25 @@ class TestGetBytes:
         result = client.get_bytes("/me/drive/items/file-1/content")
         assert result == b"file-content-bytes"
 
-    def test_absolute_url(self, httpx_mock: HTTPXMock, client):
-        absolute_url = "https://download.example.com/file"
+    def test_absolute_url_allowed_domain(self, httpx_mock: HTTPXMock, client):
+        absolute_url = "https://tenant.sharepoint.com/sites/docs/file.docx"
         httpx_mock.add_response(
             url=absolute_url,
             content=b"downloaded",
         )
         result = client.get_bytes(absolute_url)
         assert result == b"downloaded"
+
+    def test_absolute_url_blocked_domain(self, client):
+        with pytest.raises(GraphApiError, match="not an allowed Microsoft domain"):
+            client.get_bytes("https://evil.attacker.com/steal-token")
+
+    def test_sas_token_not_in_log_ref(self, httpx_mock: HTTPXMock, client):
+        url = "https://tenant.sharepoint.com/path/file.docx?sv=2021&sig=SECRET_SAS"
+        httpx_mock.add_response(url=url, content=b"ok")
+        client.get_bytes(url)
+        # If we get here without error, the request succeeded.
+        # The log_ref sanitization is verified by unit tests on _sanitize_log_url.
 
     def test_retry_on_500(self, httpx_mock: HTTPXMock, client):
         httpx_mock.add_response(
@@ -416,3 +434,45 @@ class TestFriendlyErrors:
             client.get("/me")
         assert "Hint:" not in str(exc_info.value)
         assert "SomeNewError" in str(exc_info.value)
+
+
+class TestIsAllowedDownloadDomain:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://tenant.sharepoint.com/sites/docs/file.docx",
+            "https://cdn.1drv.com/path/file",
+            "https://graph.microsoft.com/v1.0/me/photo",
+            "https://files.office.com/download/abc",
+            "https://storage.office365.com/blobs/123",
+            "https://account.blob.windows.net/container/blob",
+        ],
+    )
+    def test_allowed_domains(self, url: str) -> None:
+        assert _is_allowed_download_domain(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://evil.com/file",
+            "https://attacker.sharepoint.com.evil.com/file",
+            "https://notmicrosoft.com/file",
+            "https://sharepoint.com.evil.org/file",
+        ],
+    )
+    def test_blocked_domains(self, url: str) -> None:
+        assert _is_allowed_download_domain(url) is False
+
+
+class TestSanitizeLogUrl:
+    def test_strips_query_params(self) -> None:
+        url = "https://tenant.sharepoint.com/path/file.docx?sv=2021-06-08&sig=SECRET"
+        assert _sanitize_log_url(url) == "https://tenant.sharepoint.com/path/file.docx"
+
+    def test_preserves_url_without_query(self) -> None:
+        url = "https://tenant.sharepoint.com/path/file.docx"
+        assert _sanitize_log_url(url) == url
+
+    def test_strips_fragment_too(self) -> None:
+        url = "https://host.com/path?q=1#frag"
+        assert _sanitize_log_url(url) == "https://host.com/path"
