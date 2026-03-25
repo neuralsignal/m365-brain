@@ -9,10 +9,11 @@ from m365_extract.auth.token_store import TokenStore
 from m365_extract.user_manager import UserManager
 from m365_extract.web.dependencies import get_token_store, get_user_manager
 from m365_extract.web.exceptions import UserNotFoundError
+from m365_extract.web.middleware import require_admin
 
 log = structlog.get_logger()
 
-router = APIRouter(prefix="/admin")
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
 
 @router.get("/users")

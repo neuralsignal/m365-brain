@@ -86,3 +86,4 @@ web:
   fernet_key: "${FERNET_KEY}"
   db_path: "./state/web.db"
   session_timeout_minutes: 60
+  admin_secret: "${ADMIN_SECRET}"

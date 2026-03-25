@@ -462,6 +462,7 @@ class TestServeCommand:
                 fernet_key="test-fernet",
                 db_path="/tmp/web.db",
                 session_timeout_minutes=60,
+                admin_secret="test-admin-secret",
             )
             config_with_web = replace(full_config, web=web_config)
             mock_load.return_value = config_with_web

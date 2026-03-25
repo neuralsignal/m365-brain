@@ -136,6 +136,7 @@ class WebConfig:
     fernet_key: str
     db_path: str
     session_timeout_minutes: int
+    admin_secret: str
 
 
 @dataclass(frozen=True)

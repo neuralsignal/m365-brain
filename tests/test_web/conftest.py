@@ -41,6 +41,7 @@ def web_config(tmp_path):
         fernet_key=fernet_key,
         db_path=str(tmp_path / "web.db"),
         session_timeout_minutes=60,
+        admin_secret="test-admin-secret",
     )
 
 
