@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": { "value": "dev" },
+    "storageSku": { "value": "Standard_LRS" },
+    "containerName": { "value": "m365-vaults-dev" },
+    "acrSku": { "value": "Basic" },
+    "postgresSkuName": { "value": "Standard_B1ms" },
+    "postgresSkuTier": { "value": "Burstable" },
+    "postgresStorageGb": { "value": 32 },
+    "appServicePlanSku": { "value": "B1" }
+  }
+}

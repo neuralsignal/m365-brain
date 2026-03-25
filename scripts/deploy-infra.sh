@@ -45,7 +45,7 @@ fi
 
 LOCATION="switzerlandnorth"
 RESOURCE_GROUP="rg-m365-extract-${ENV}"
-PARAMS_FILE="infra/params.${ENV}.bicepparam"
+PARAMS_FILE="infra/params.${ENV}.json"
 TEMPLATE_FILE="infra/main.bicep"
 
 # -- Colors -------------------------------------------------------------------
