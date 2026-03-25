@@ -211,8 +211,8 @@ class AuthState(rx.State):
         def _persist_user_and_tokens() -> None:
             session = get_session()
             try:
-                token_service.store_tokens(session, user_id=user_info["user_id"], tokens=token_response)
-
+                # Create user BEFORE storing tokens — tokenrecord has FK to user table.
+                # SQLite doesn't enforce FKs by default, but PostgreSQL does.
                 existing = session.get(User, user_info["user_id"])
                 if existing is None:
                     user = User(
@@ -223,6 +223,8 @@ class AuthState(rx.State):
                     )
                     session.add(user)
                     session.commit()
+
+                token_service.store_tokens(session, user_id=user_info["user_id"], tokens=token_response)
             finally:
                 session.close()
 

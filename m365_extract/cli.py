@@ -234,7 +234,7 @@ def daemon(ctx: click.Context, poll_interval: int | None) -> None:
     # Deferred imports — daemon mode requires sqlmodel + admin deps
     from sqlmodel import SQLModel, create_engine
 
-    from m365_extract.daemon import run_daemon_cycle
+    from m365_extract.daemon import run_daemon_cycle, write_health_file
 
     config = load_config(ctx.obj["config_path"])
     configure_logging(config.service.log_level, config.service.json_logs)
@@ -261,6 +261,7 @@ def daemon(ctx: click.Context, poll_interval: int | None) -> None:
     try:
         while True:
             run_daemon_cycle(config, engine, token_adapter, state_dir)
+            write_health_file(state_dir)
             time.sleep(interval)
     except KeyboardInterrupt:
         log.info("daemon.stopped")

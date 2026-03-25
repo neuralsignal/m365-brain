@@ -44,6 +44,7 @@ convert = [
 admin = [
     "reflex>=0.8.28,<0.9",
     "sqlmodel>=0.0.22,<1",
+    "psycopg2-binary>=2.9,<3",
 ]
 all = [
     "m365-extract[azure,convert,admin]",

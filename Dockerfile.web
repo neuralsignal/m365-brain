@@ -1,0 +1,99 @@
+# Reflex admin UI container — single-port production deployment.
+# Based on Reflex production-one-port pattern: Caddy serves static frontend
+# and reverse-proxies to Reflex backend, all on one port.
+#
+# Build:  docker build -t m365-admin:latest -f Dockerfile.web .
+# Run:    docker run -p 8000:8000 --env-file .env m365-admin:latest
+
+# --- Build stage: compile frontend ---
+FROM python:3.12 AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY m365_extract/ m365_extract/
+COPY m365_admin/ m365_admin/
+RUN pip install --no-cache-dir ".[admin,azure]"
+
+COPY rxconfig.py .
+COPY config.web.yaml .
+
+# Initialise Reflex (installs bun, node) and build production frontend
+RUN reflex init
+RUN reflex export --frontend-only --no-zip
+
+# Extract static files and discard node_modules to reduce image size
+RUN mv .web/build/client /tmp/client && \
+    rm -rf .web && \
+    mkdir -p .web/build && \
+    mv /tmp/client .web/build/client
+
+# --- Runtime stage: slim image with Caddy + Python backend ---
+FROM python:3.12-slim
+
+# Caddy for static frontend + reverse proxy, curl for healthcheck
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends caddy curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# App source
+COPY m365_extract/ m365_extract/
+COPY m365_admin/ m365_admin/
+COPY rxconfig.py .
+COPY config.web.yaml .
+COPY config.deploy.yaml .
+
+# Pre-built static frontend
+COPY --from=builder /app/.web/build/client /srv
+
+# Caddy config: serve frontend on port 8000, proxy API to backend on 8001
+RUN cat > /etc/caddy/Caddyfile <<'CADDYEOF'
+:8000 {
+    encode gzip
+
+    header Permissions-Policy "unload=self"
+
+    @backend path /_event/* /ping /_upload /_upload/*
+    handle @backend {
+        reverse_proxy localhost:8001
+    }
+
+    root * /srv
+    route {
+        # Serve {path}/index.html directly to avoid 308 directory redirects
+        # that strip query parameters (critical for OAuth callback).
+        try_files {path} {path}/index.html {path}/ /index.html
+        file_server
+    }
+}
+CADDYEOF
+
+RUN useradd --create-home appuser && \
+    mkdir -p /app/state /app/.web/build /app/.states /data/caddy /config/caddy && \
+    cp -r /srv /app/.web/build/client && \
+    chown -R appuser:appuser /app/state /app/.web /app/.states /data/caddy /config/caddy /etc/caddy
+
+USER appuser
+
+EXPOSE 8000
+
+ENV WEBSITES_PORT=8000 XDG_DATA_HOME=/data XDG_CONFIG_HOME=/config PYTHONPATH=/app
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8000/ping || exit 1
+
+# Needed until Reflex properly passes SIGTERM on backend.
+STOPSIGNAL SIGKILL
+
+CMD caddy start --config /etc/caddy/Caddyfile && \
+    exec reflex run --env prod --backend-only --backend-port 8001

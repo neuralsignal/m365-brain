@@ -1,0 +1,172 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/workflows/docs-*.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      image_tag:
+        description: 'Docker image tag (default: git SHA short)'
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP_PREFIX: rg-m365-extract
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      environment: ${{ steps.meta.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine environment and tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+              echo "environment=prod" >> "$GITHUB_OUTPUT"
+              echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            else
+              echo "environment=dev" >> "$GITHUB_OUTPUT"
+              echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ inputs.image_tag }}"
+            if [ -z "$TAG" ]; then
+              TAG="${GITHUB_SHA::7}"
+            fi
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: |
+          ACR_NAME="acrm365ext${{ steps.meta.outputs.environment }}"
+          az acr login --name "$ACR_NAME"
+          echo "ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer -o tsv)" >> "$GITHUB_ENV"
+
+      - name: Build and push web image
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          docker build -t "${ACR_LOGIN_SERVER}/m365-admin:${TAG}" -f Dockerfile.web .
+          docker push "${ACR_LOGIN_SERVER}/m365-admin:${TAG}"
+
+      - name: Build and push daemon image
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          docker build -t "${ACR_LOGIN_SERVER}/m365-daemon:${TAG}" -f Dockerfile.daemon .
+          docker push "${ACR_LOGIN_SERVER}/m365-daemon:${TAG}"
+
+  deploy-infra:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: ${{ needs.build-and-push.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep
+        run: |
+          ENV="${{ needs.build-and-push.outputs.environment }}"
+          TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          RG="${RESOURCE_GROUP_PREFIX}-${ENV}"
+
+          az group create --name "$RG" --location switzerlandnorth --output none 2>/dev/null || true
+
+          az deployment group create \
+            --resource-group "$RG" \
+            --template-file infra/main.bicep \
+            --parameters "infra/params.${ENV}.bicepparam" \
+            --parameters \
+              postgresAdminPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+              webImageTag="${TAG}" \
+              daemonImageTag="${TAG}" \
+              secretKey="${{ secrets.SECRET_KEY }}" \
+              fernetKey="${{ secrets.FERNET_KEY }}" \
+              entraClientSecret="${{ secrets.AZURE_CLIENT_SECRET }}" \
+              entraClientId="${{ secrets.ENTRA_CLIENT_ID }}" \
+              entraTenantId="${{ secrets.AZURE_TENANT_ID }}" \
+              adminEmail="${{ secrets.ADMIN_EMAIL }}" \
+            --output none
+
+  deploy-app:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-infra]
+    environment: ${{ needs.build-and-push.outputs.environment }}
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update App Service image
+        run: |
+          ENV="${{ needs.build-and-push.outputs.environment }}"
+          TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          ACR_SERVER="acrm365ext${ENV}.azurecr.io"
+          APP_NAME="app-m365-admin-${ENV}"
+          RG="${RESOURCE_GROUP_PREFIX}-${ENV}"
+
+          az webapp config container set \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --container-image-name "${ACR_SERVER}/m365-admin:${TAG}"
+
+          az webapp restart --name "$APP_NAME" --resource-group "$RG"
+
+      - name: Restart daemon container
+        run: |
+          ENV="${{ needs.build-and-push.outputs.environment }}"
+          RG="${RESOURCE_GROUP_PREFIX}-${ENV}"
+
+          az container restart \
+            --name "ci-m365-daemon-${ENV}" \
+            --resource-group "$RG"
+
+      - name: Smoke test
+        run: |
+          ENV="${{ needs.build-and-push.outputs.environment }}"
+          APP_URL="https://app-m365-admin-${ENV}.azurewebsites.net"
+
+          echo "Waiting for app to start..."
+          sleep 30
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/ping" || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "Smoke test passed (HTTP $STATUS)"
+          else
+            echo "WARNING: Smoke test returned HTTP $STATUS (app may still be starting)"
+          fi

@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 COPY m365_extract/ m365_extract/
 RUN pip install --no-cache-dir ".[azure]"
 

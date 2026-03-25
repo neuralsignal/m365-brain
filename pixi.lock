@@ -1550,7 +1550,7 @@ packages:
 - pypi: ./
   name: m365-extract
   version: 0.2.2
-  sha256: 130cace81d7de3641a29a6de22688ca44169432da6d440a5d56749d9c70a0642
+  sha256: a5ad1dba0ca9e845b8b430dd0abf00dc9aad9088a19c12bb976319141e7c1035
   requires_dist:
   - msal>=1.34,<2
   - httpx>=0.28,<1
@@ -1565,6 +1565,7 @@ packages:
   - obsidian-import[markitdown,docling]>=1.0.1,<2 ; extra == 'convert'
   - reflex>=0.8.28,<0.9 ; extra == 'admin'
   - sqlmodel>=0.0.22,<1 ; extra == 'admin'
+  - psycopg2-binary>=2.9,<3 ; extra == 'admin'
   - m365-extract[azure,convert,admin] ; extra == 'all'
   - pytest>=8.0,<9 ; extra == 'dev'
   - hypothesis>=6.100,<7 ; extra == 'dev'

@@ -139,21 +139,22 @@ Replaced headless FastAPI API with a full Reflex admin dashboard.
 - 74 admin tests passing
 - Deleted old FastAPI web layer (`m365_extract/web/`, `user_manager.py`, `token_store.py`)
 
-### Phase 5C: Daemon Integration + Sync Visibility -- IN PROGRESS
+### Phase 5C: Daemon Integration + Sync Visibility -- DONE
 
 Connect the sync daemon to the database so the UI shows real sync data.
 
-**Completed (2026-03-24)**:
-- `m365_extract/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record)
+**Completed (2026-03-25)**:
+- `m365_extract/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record, write_health_file)
 - `TokenStoreProtocol` in `token_provider.py` — replaces deleted `TokenStore` import with Protocol
 - `TokenServiceAdapter` in `token_service.py` — bridges TokenService to TokenStoreProtocol for daemon
 - CLI `daemon` command — `m365-extract --config config.web.yaml daemon`
 - Per-user sync state: `state/{user_id}/sync_state.json`
 - SyncRecord written at start (running) and completion (completed/failed)
 - `seed_admin_config()` call at engine startup (idempotent)
+- Daemon health file (`state/daemon_health.json`) written after each cycle for Docker HEALTHCHECK
 - 9 daemon tests + 3 adapter tests passing
 
-**Remaining**:
+**Deferred (not blocking deployment)**:
 1. Per-user scheduling (interval override per user, stored in user preferences)
 2. Real-time sync progress via Reflex WebSocket state updates
 3. Sync history UI filtering and error details
@@ -168,16 +169,26 @@ Harden for multi-user production use.
 4. Audit logging (structured events for auth/admin/sync actions)
 5. Session timeout enforcement
 
-### Phase 5E: Azure Deployment
+### Phase 5E: Azure Deployment -- IN PROGRESS
 
 Deploy the Reflex app to Azure App Service.
 
-1. Dockerized Reflex app (frontend build + backend + nginx reverse proxy)
-2. Bicep IaC (App Service + ACR + Key Vault + Storage Account)
-3. Managed Identity for Azure Blob Storage
-4. OIDC federated identity for GitHub Actions deploy
-5. Production Entra redirect URIs and CORS
-6. Health probes for App Service
+**Completed (2026-03-25)**:
+- `Dockerfile.web` fixed: Node.js in runtime stage for `reflex run --env prod` (serves frontend + backend)
+- `Dockerfile.daemon` fixed: real health check via `scripts/daemon_healthcheck.py` (reads `state/daemon_health.json`)
+- `docker-compose.yaml` for full-stack local testing with PostgreSQL
+- `infra/main.bicep` updated: 13 app settings on App Service, 10 on Container Instance (all secrets + config)
+- Key Vault RBAC role assignment removed from Bicep (requires Owner — documented manual step)
+- `deploy.yml` updated: push to main → dev, tag push → prod, all secrets passed to Bicep
+- `scripts/deploy-infra.sh` updated: validates + passes all new Bicep parameters
+- Base `Dockerfile` fixed: missing `README.md` COPY for hatchling metadata
+
+**Remaining (Phase 3: OIDC + Phase 5: First Deploy)**:
+1. Create service principal `sp-m365-extract-deploy` with OIDC federated credentials
+2. Configure GitHub secrets (8 secrets) and environments (dev, prod)
+3. Add production redirect URI to Entra app
+4. First deployment: `bash scripts/deploy-infra.sh dev` + `bash scripts/build-and-push.sh dev`
+5. Smoke test and OAuth verification on Azure
 
 ### Phase 5F: Graph Webhooks (deferred)
 

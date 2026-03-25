@@ -1,0 +1,51 @@
+# Full-stack local testing with PostgreSQL (matching production).
+#
+# Usage:
+#   docker compose up --build        # build + start all services
+#   docker compose up -d postgres    # start only postgres (for local dev against pg)
+#   docker compose down -v           # stop + remove volumes
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: m365admin
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: m365extract
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U m365admin -d m365extract"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
+      M365_ADMIN_CONFIG: ./config.web.yaml
+
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.daemon
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
+
+volumes:
+  pgdata:

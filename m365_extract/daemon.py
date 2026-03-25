@@ -110,3 +110,10 @@ def run_daemon_cycle(config: Config, engine, token_adapter: TokenStoreProtocol, 
 
     log.info("daemon.cycle_complete", users_synced=len(records))
     return records
+
+
+def write_health_file(state_dir: str) -> None:
+    """Write a health file with the current timestamp for Docker HEALTHCHECK."""
+    health_path = Path(state_dir) / "daemon_health.json"
+    health_path.parent.mkdir(parents=True, exist_ok=True)
+    health_path.write_text(json.dumps({"last_cycle_completed": datetime.now(tz=UTC).isoformat()}))

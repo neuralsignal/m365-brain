@@ -37,3 +37,15 @@ jobs:
           sleep 2
       - name: Run Azurite integration tests
         run: pixi run test-azurite
+
+  test-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.8
+        with:
+          cache: true
+          locked: false
+          environments: admin
+      - name: Run all tests (including admin)
+        run: pixi run -e admin test-all

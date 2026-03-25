@@ -10,3 +10,17 @@ infra/
 docker-compose*.yaml
 .pytest_cache/
 *.egg-info/
+docs/
+scripts/
+!scripts/daemon_healthcheck.py
+.github/
+.git/
+.ruff_cache/
+pixi.toml
+pixi.lock
+CHANGELOG.md
+MATURITY.md
+roadmap.md
+CLAUDE.md
+!README.md
+mkdocs.yml
