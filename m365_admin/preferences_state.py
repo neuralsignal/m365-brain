@@ -45,17 +45,21 @@ class PreferencesState(AuthState):
             for name in EXTRACTOR_NAMES:
                 if name in existing_map:
                     p = existing_map[name]
-                    prefs.append({
-                        "extractor_name": p.extractor_name,
-                        "enabled": p.enabled,
-                        "settings_json": p.settings_json,
-                    })
+                    prefs.append(
+                        {
+                            "extractor_name": p.extractor_name,
+                            "enabled": p.enabled,
+                            "settings_json": p.settings_json,
+                        }
+                    )
                 else:
-                    prefs.append({
-                        "extractor_name": name,
-                        "enabled": False,
-                        "settings_json": "{}",
-                    })
+                    prefs.append(
+                        {
+                            "extractor_name": name,
+                            "enabled": False,
+                            "settings_json": "{}",
+                        }
+                    )
             self.preferences = prefs
         finally:
             session.close()

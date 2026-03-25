@@ -193,9 +193,7 @@ class AuthState(rx.State):
 
         # Offload blocking MSAL HTTP call to a thread
         try:
-            token_response = await asyncio.to_thread(
-                auth.acquire_token_by_code, code=code, redirect_uri=redirect_uri
-            )
+            token_response = await asyncio.to_thread(auth.acquire_token_by_code, code=code, redirect_uri=redirect_uri)
         except AuthCodeError as exc:
             self.auth_error = str(exc)
             return rx.redirect("/login")

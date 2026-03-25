@@ -136,9 +136,7 @@ class TestRunDaemonCycle:
             patch("m365_extract.daemon.make_web_token_provider", return_value=_fake_token_provider),
             patch("m365_extract.daemon.run_extractors", return_value=10),
         ):
-            records = run_daemon_cycle(
-                full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path / "state")
-            )
+            records = run_daemon_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path / "state"))
 
         assert len(records) == 2
         assert all(r.status == "completed" for r in records)

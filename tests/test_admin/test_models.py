@@ -111,9 +111,7 @@ class TestExtractorPreference:
         session.add(pref)
         session.commit()
 
-        results = session.exec(
-            select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")
-        ).all()
+        results = session.exec(select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")).all()
         assert len(results) == 1
         assert results[0].extractor_name == "email"
         assert results[0].enabled is True
@@ -126,9 +124,7 @@ class TestExtractorPreference:
             session.add(ExtractorPreference(user_id="u-1", extractor_name=name, enabled=True))
         session.commit()
 
-        results = session.exec(
-            select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")
-        ).all()
+        results = session.exec(select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")).all()
         assert len(results) == 3
 
 

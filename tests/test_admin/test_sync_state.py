@@ -26,16 +26,19 @@ def session():
 class TestSyncRecordQuery:
     def test_latest_sync_for_user(self, session):
         now = datetime.now(tz=UTC)
-        session.add(SyncRecord(
-            user_id="u-1", started_at=now, status="completed",
-            extractors_run=json.dumps(["email"]), items_synced=10,
-        ))
+        session.add(
+            SyncRecord(
+                user_id="u-1",
+                started_at=now,
+                status="completed",
+                extractors_run=json.dumps(["email"]),
+                items_synced=10,
+            )
+        )
         session.commit()
 
         latest = session.exec(
-            select(SyncRecord)
-            .where(SyncRecord.user_id == "u-1")
-            .order_by(SyncRecord.started_at.desc())
+            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
         ).first()
         assert latest is not None
         assert latest.status == "completed"
@@ -43,9 +46,7 @@ class TestSyncRecordQuery:
 
     def test_no_syncs_returns_none(self, session):
         latest = session.exec(
-            select(SyncRecord)
-            .where(SyncRecord.user_id == "u-1")
-            .order_by(SyncRecord.started_at.desc())
+            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
         ).first()
         assert latest is None
 
@@ -55,21 +56,29 @@ class TestSyncRecordQuery:
         now = datetime.now(tz=UTC)
         old = now - timedelta(hours=1)
 
-        session.add(SyncRecord(
-            user_id="u-1", started_at=old, status="completed",
-            extractors_run=json.dumps(["email"]), items_synced=5,
-        ))
-        session.add(SyncRecord(
-            user_id="u-1", started_at=now, status="failed",
-            extractors_run=json.dumps(["calendar"]), items_synced=0,
-            error_message="Connection timeout",
-        ))
+        session.add(
+            SyncRecord(
+                user_id="u-1",
+                started_at=old,
+                status="completed",
+                extractors_run=json.dumps(["email"]),
+                items_synced=5,
+            )
+        )
+        session.add(
+            SyncRecord(
+                user_id="u-1",
+                started_at=now,
+                status="failed",
+                extractors_run=json.dumps(["calendar"]),
+                items_synced=0,
+                error_message="Connection timeout",
+            )
+        )
         session.commit()
 
         latest = session.exec(
-            select(SyncRecord)
-            .where(SyncRecord.user_id == "u-1")
-            .order_by(SyncRecord.started_at.desc())
+            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
         ).first()
         assert latest.status == "failed"
         assert latest.error_message == "Connection timeout"
@@ -79,19 +88,18 @@ class TestSyncRecordQuery:
         from datetime import timedelta
 
         for i in range(25):
-            session.add(SyncRecord(
-                user_id="u-1",
-                started_at=now - timedelta(hours=i),
-                status="completed",
-                items_synced=i,
-            ))
+            session.add(
+                SyncRecord(
+                    user_id="u-1",
+                    started_at=now - timedelta(hours=i),
+                    status="completed",
+                    items_synced=i,
+                )
+            )
         session.commit()
 
         records = session.exec(
-            select(SyncRecord)
-            .where(SyncRecord.user_id == "u-1")
-            .order_by(SyncRecord.started_at.desc())
-            .limit(20)
+            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc()).limit(20)
         ).all()
         assert len(records) == 20
 
@@ -104,12 +112,8 @@ class TestSyncRecordQuery:
         session.add(SyncRecord(user_id="u-2", started_at=now, status="failed", items_synced=0))
         session.commit()
 
-        u1_records = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1")
-        ).all()
-        u2_records = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-2")
-        ).all()
+        u1_records = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-1")).all()
+        u2_records = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-2")).all()
 
         assert len(u1_records) == 1
         assert u1_records[0].status == "completed"
@@ -119,13 +123,16 @@ class TestSyncRecordQuery:
     def test_extractors_run_json_roundtrip(self, session):
         now = datetime.now(tz=UTC)
         extractors = ["email", "calendar", "teams_chats"]
-        session.add(SyncRecord(
-            user_id="u-1", started_at=now, status="completed",
-            extractors_run=json.dumps(extractors), items_synced=42,
-        ))
+        session.add(
+            SyncRecord(
+                user_id="u-1",
+                started_at=now,
+                status="completed",
+                extractors_run=json.dumps(extractors),
+                items_synced=42,
+            )
+        )
         session.commit()
 
-        record = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1")
-        ).first()
+        record = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-1")).first()
         assert json.loads(record.extractors_run) == extractors

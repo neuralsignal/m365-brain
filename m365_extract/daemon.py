@@ -37,8 +37,9 @@ def get_user_extractors(engine, user_id: str) -> list[str]:
     """Return extractor names enabled for a specific user."""
     with Session(engine) as session:
         statement = (
-            select(ExtractorPreference.extractor_name)
-            .where(ExtractorPreference.user_id == user_id, ExtractorPreference.enabled == True)  # noqa: E712
+            select(ExtractorPreference.extractor_name).where(
+                ExtractorPreference.user_id == user_id, ExtractorPreference.enabled == True
+            )  # noqa: E712
         )
         return list(session.exec(statement).all())
 

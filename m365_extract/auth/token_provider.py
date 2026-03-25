@@ -21,6 +21,7 @@ class TokenStoreProtocol(Protocol):
     def get_tokens(self, user_id: str) -> dict | None: ...
     def store_tokens(self, user_id: str, tokens: dict) -> None: ...
 
+
 _TOKEN_EXPIRY_BUFFER_SECONDS = 300
 
 

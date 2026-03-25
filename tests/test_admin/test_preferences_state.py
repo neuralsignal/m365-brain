@@ -12,8 +12,14 @@ from m365_extract.models import ExtractorPreference, User
 pytestmark = pytest.mark.admin
 
 EXTRACTOR_NAMES = [
-    "email", "calendar", "teams_chats", "teams_channels",
-    "onedrive", "sharepoint", "contacts", "directory",
+    "email",
+    "calendar",
+    "teams_chats",
+    "teams_channels",
+    "onedrive",
+    "sharepoint",
+    "contacts",
+    "directory",
 ]
 
 
@@ -97,9 +103,7 @@ class TestExtractorPreferences:
             session.add(ExtractorPreference(user_id="u-1", extractor_name=name, enabled=True))
         session.commit()
 
-        results = session.exec(
-            select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")
-        ).all()
+        results = session.exec(select(ExtractorPreference).where(ExtractorPreference.user_id == "u-1")).all()
         assert len(results) == 8
         names = {r.extractor_name for r in results}
         assert names == set(EXTRACTOR_NAMES)

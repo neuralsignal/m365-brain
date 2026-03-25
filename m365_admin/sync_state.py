@@ -32,9 +32,7 @@ class SyncState(AuthState):
         try:
             # Latest sync
             latest = session.exec(
-                select(SyncRecord)
-                .where(SyncRecord.user_id == self.user_id)
-                .order_by(SyncRecord.started_at.desc())  # type: ignore[attr-defined]
+                select(SyncRecord).where(SyncRecord.user_id == self.user_id).order_by(SyncRecord.started_at.desc())  # type: ignore[attr-defined]
             ).first()
 
             if latest is not None:
@@ -60,13 +58,15 @@ class SyncState(AuthState):
             self.sync_history = []
             for r in records:
                 extractors = json.loads(r.extractors_run) if r.extractors_run else []
-                self.sync_history.append({
-                    "started_at": r.started_at.isoformat(),
-                    "completed_at": r.completed_at.isoformat() if r.completed_at else "",
-                    "status": r.status,
-                    "extractors": ", ".join(extractors),
-                    "items_synced": str(r.items_synced),
-                    "error": r.error_message or "",
-                })
+                self.sync_history.append(
+                    {
+                        "started_at": r.started_at.isoformat(),
+                        "completed_at": r.completed_at.isoformat() if r.completed_at else "",
+                        "status": r.status,
+                        "extractors": ", ".join(extractors),
+                        "items_synced": str(r.items_synced),
+                        "error": r.error_message or "",
+                    }
+                )
         finally:
             session.close()
