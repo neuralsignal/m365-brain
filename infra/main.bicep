@@ -288,8 +288,20 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'https://${webAppName}.azurewebsites.net/callback'
         }
         {
+          name: 'AZURE_STORAGE_CONNECTION_STRING'
+          value: storageAccount.listKeys().keys[0].value != '' ? 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net' : ''
+        }
+        {
+          name: 'AZURE_STORAGE_CONTAINER'
+          value: containerName
+        }
+        {
+          name: 'AZURE_STORAGE_PREFIX'
+          value: '${environment}/'
+        }
+        {
           name: 'M365_ADMIN_CONFIG'
-          value: './config.web.yaml'
+          value: './config.deploy.yaml'
         }
         {
           name: 'ADMIN_EMAIL'
