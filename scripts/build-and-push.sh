@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Build Docker images and push to Azure Container Registry.
+# Build Docker image and push to Azure Container Registry.
 #
 # Usage:
-#   bash scripts/build-and-push.sh dev              # build + push both images
-#   bash scripts/build-and-push.sh dev --web-only   # build + push web image only
-#   bash scripts/build-and-push.sh dev --daemon-only  # build + push daemon image only
+#   bash scripts/build-and-push.sh dev              # build + push image
 #   bash scripts/build-and-push.sh dev --tag v1.2.3  # custom tag (default: latest)
 #
 # Prerequisites:
@@ -22,22 +20,18 @@ cd "$PROJECT_DIR"
 
 ENV=""
 TAG="latest"
-BUILD_WEB=true
-BUILD_DAEMON=true
 
 while [ $# -gt 0 ]; do
     case "$1" in
         dev|prod|test) ENV="$1" ;;
         --tag) shift; TAG="$1" ;;
-        --web-only) BUILD_DAEMON=false ;;
-        --daemon-only) BUILD_WEB=false ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
     shift
 done
 
 if [ -z "$ENV" ]; then
-    echo "Usage: $0 <dev|prod|test> [--tag TAG] [--web-only|--daemon-only]"
+    echo "Usage: $0 <dev|prod|test> [--tag TAG]"
     exit 1
 fi
 
@@ -76,43 +70,21 @@ echo "Logging in to ACR..."
 az acr login --name "$ACR_NAME"
 info "ACR login successful"
 
-# -- Build + Push Web Image ---------------------------------------------------
+# -- Build + Push Image -------------------------------------------------------
 
-if [ "$BUILD_WEB" = true ]; then
-    echo ""
-    echo "Building web image (Dockerfile.web)..."
-    WEB_IMAGE="${ACR_LOGIN_SERVER}/m365-admin:${TAG}"
+echo ""
+echo "Building image (Dockerfile)..."
+IMAGE="${ACR_LOGIN_SERVER}/m365-admin:${TAG}"
 
-    docker build \
-        -t "$WEB_IMAGE" \
-        -f Dockerfile.web \
-        .
+docker build \
+    -t "$IMAGE" \
+    .
 
-    info "Built: $WEB_IMAGE"
+info "Built: $IMAGE"
 
-    echo "Pushing web image..."
-    docker push "$WEB_IMAGE"
-    info "Pushed: $WEB_IMAGE"
-fi
-
-# -- Build + Push Daemon Image ------------------------------------------------
-
-if [ "$BUILD_DAEMON" = true ]; then
-    echo ""
-    echo "Building daemon image (Dockerfile.daemon)..."
-    DAEMON_IMAGE="${ACR_LOGIN_SERVER}/m365-daemon:${TAG}"
-
-    docker build \
-        -t "$DAEMON_IMAGE" \
-        -f Dockerfile.daemon \
-        .
-
-    info "Built: $DAEMON_IMAGE"
-
-    echo "Pushing daemon image..."
-    docker push "$DAEMON_IMAGE"
-    info "Pushed: $DAEMON_IMAGE"
-fi
+echo "Pushing image..."
+docker push "$IMAGE"
+info "Pushed: $IMAGE"
 
 # -- Done ---------------------------------------------------------------------
 
@@ -122,6 +94,3 @@ echo ""
 echo "Next steps:"
 echo "  # Update App Service to new image:"
 echo "  az webapp config container set --name app-m365-admin-${ENV} --resource-group rg-m365-extract-${ENV} --container-image-name ${ACR_LOGIN_SERVER}/m365-admin:${TAG}"
-echo ""
-echo "  # Restart daemon container:"
-echo "  az container restart --name ci-m365-daemon-${ENV} --resource-group rg-m365-extract-${ENV}"

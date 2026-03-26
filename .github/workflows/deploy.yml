@@ -73,14 +73,8 @@ jobs:
       - name: Build and push web image
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
-          docker build -t "${ACR_LOGIN_SERVER}/m365-admin:${TAG}" -f Dockerfile.web .
+          docker build -t "${ACR_LOGIN_SERVER}/m365-admin:${TAG}" .
           docker push "${ACR_LOGIN_SERVER}/m365-admin:${TAG}"
-
-      - name: Build and push daemon image
-        run: |
-          TAG="${{ steps.meta.outputs.tag }}"
-          docker build -t "${ACR_LOGIN_SERVER}/m365-daemon:${TAG}" -f Dockerfile.daemon .
-          docker push "${ACR_LOGIN_SERVER}/m365-daemon:${TAG}"
 
   deploy-infra:
     runs-on: ubuntu-latest
@@ -111,7 +105,6 @@ jobs:
             --parameters \
               postgresAdminPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
               webImageTag="${TAG}" \
-              daemonImageTag="${TAG}" \
               secretKey="${{ secrets.SECRET_KEY }}" \
               fernetKey="${{ secrets.FERNET_KEY }}" \
               entraClientSecret="${{ secrets.AZURE_CLIENT_SECRET }}" \
@@ -146,15 +139,6 @@ jobs:
             --container-image-name "${ACR_SERVER}/m365-admin:${TAG}"
 
           az webapp restart --name "$APP_NAME" --resource-group "$RG"
-
-      - name: Restart daemon container
-        run: |
-          ENV="${{ needs.build-and-push.outputs.environment }}"
-          RG="${RESOURCE_GROUP_PREFIX}-${ENV}"
-
-          az container restart \
-            --name "ci-m365-daemon-${ENV}" \
-            --resource-group "$RG"
 
       - name: Smoke test
         run: |

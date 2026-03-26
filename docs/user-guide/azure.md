@@ -4,13 +4,13 @@ This guide covers deploying m365-extract with Azure Blob Storage, including loca
 
 ## Azure Configuration
 
-Use `config.azure.yaml` instead of the default `config.yaml` when running with Azure Blob Storage:
+Use composable config fragments to include the Azure Blob storage backend:
 
 ```bash
-m365-extract --config config.azure.yaml sync --once
+m365-extract --config config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/cli.yaml sync --once
 ```
 
-The key difference is the storage section:
+The storage fragment (`config/storage/azure_blob.yaml`):
 
 ```yaml
 storage:
@@ -72,24 +72,31 @@ pixi run test-azurite
 
 ## Bicep IaC Deployment
 
-The `infra/` directory contains Bicep templates for deploying an Azure Storage Account.
+The `infra/` directory contains Bicep templates for deploying the full Azure infrastructure.
 
 ### Template: `infra/main.bicep`
 
 Creates:
 
 - **Storage Account** (`StorageV2`, TLS 1.2, HTTPS-only, no public blob access)
-- **Blob Services** (default configuration)
 - **Blob Container** (for storing synced markdown vaults)
+- **Azure Container Registry** (Docker images for web + daemon)
+- **PostgreSQL Flexible Server** (v16, Burstable B1ms, 32GB)
+- **Key Vault** (RBAC-enabled, soft delete)
+- **App Service Plan** (Linux, B1)
+- **App Service** (Reflex admin UI, system-managed identity)
+- **Container Instance** (sync daemon, always restart)
+- **Log Analytics Workspace** (PerGB2018 pricing, 30d dev / 90d prod retention)
+- **Diagnostic Settings** (App Service + PostgreSQL logs and metrics → Log Analytics)
 
-Parameters:
+### Prod Deployment Checklist
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `environment` | `string` | Environment name used in resource naming (e.g., `dev`, `prod`) |
-| `location` | `string` | Azure region (default: `switzerlandnorth`) |
-| `storageSku` | `string` | Storage SKU (e.g., `Standard_LRS`, `Standard_GRS`) |
-| `containerName` | `string` | Blob container name |
+See `roadmap.md` Phase 5E for the full step-by-step checklist. Summary:
+
+1. Add prod redirect URI to Entra app registration (replaces, not appends)
+2. Create `prod` GitHub environment with separate secrets
+3. Tag and push: `git tag v0.3.0 && git push origin v0.3.0`
+4. Verify OAuth login, daemon logs, sync history, Log Analytics
 
 ### Deploy: Development
 

@@ -1,8 +1,8 @@
-# Reflex admin UI container — single-port production deployment.
-# Based on Reflex production-one-port pattern: Caddy serves static frontend
-# and reverse-proxies to Reflex backend, all on one port.
+# Reflex admin UI + sync daemon — single-port production deployment.
+# The sync daemon runs as a background thread inside the Reflex process.
+# Caddy serves static frontend and reverse-proxies to Reflex backend, all on one port.
 #
-# Build:  docker build -t m365-admin:latest -f Dockerfile.web .
+# Build:  docker build -t m365-admin:latest .
 # Run:    docker run -p 8000:8000 --env-file .env m365-admin:latest
 
 # --- Build stage: compile frontend ---

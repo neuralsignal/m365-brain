@@ -1,10 +1,10 @@
 # Docker
 
-m365-extract provides two service-specific Dockerfiles and a single `docker-compose.yaml` for local development.
+m365-extract provides a single `Dockerfile` and `docker-compose.yaml` for local development. The sync daemon runs as a background thread inside the Reflex web app — no separate container needed.
 
 ## Docker Compose
 
-The `docker-compose.yaml` runs the full stack locally: PostgreSQL, the Reflex admin UI (`Dockerfile.web`), and the sync daemon (`Dockerfile.daemon`). An Azurite blob emulator is available via the `azurite` profile.
+The `docker-compose.yaml` runs the full stack locally: PostgreSQL and the Reflex admin UI + sync daemon (`Dockerfile`). An Azurite blob emulator is available via the `azurite` profile.
 
 ### Start full stack
 

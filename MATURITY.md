@@ -1,10 +1,10 @@
 # m365-extract Maturity Assessment
 
-_2026-03-25 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5A-5C done, 5E in progress)_
+_2026-03-26 — v0.2.2+ (Phases 1-6 complete, Phase 5A-5C done, 5E dev deployed, prod pending)_
 
 ## Current State
 
-36 source modules, 8 extractors, 2 storage backends, 382 tests (37 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-4 and 6 of the roadmap are implemented. Phase 5A-5C done. Phase 5E (Azure deployment) in progress — Docker images build, Bicep template compiles with full env var injection, CI/CD triggers on merge to main. Live validated against real Graph API (2026-03-24).
+40+ source modules, 8 extractors, 2 storage backends, 398 tests (37 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-6 of the roadmap are implemented. Phase 5A-5C done. Phase 5E dev environment deployed and working end-to-end (OAuth login, dashboard, daemon sync to blob). Prod deployment pending (Entra redirect URI + GitHub secrets + tag). Live validated against real Graph API (2026-03-24). Config refactored to composable fragments. Alembic DB migrations replace create_all(). Log Analytics observability added to Bicep.
 
 ### What's Implemented
 
@@ -17,10 +17,12 @@ _2026-03-25 — v0.2.2+ (Phases 1-4 + 6 complete, Phase 5A-5C done, 5E in progre
 | Document conversion | Done | obsidian-import pass-through config, deferred import |
 | CLI | Done | `auth login`, `auth status`, `sync --once`, `sync --continuous`, `sync --dry-run`, `--extractors` filter |
 | Web service | Done | FastAPI app, auth code flow, token store, scheduler, per-user storage isolation, access control middleware |
-| Config | Done | Config package (loader.py + schema.py), frozen dataclasses, env var expansion |
-| Azure IaC | Done | Bicep templates (main.bicep), dev/prod parameter files |
+| Config | Done | Composable YAML fragments in config/, deep-merge loader, frozen pydantic models, env var expansion |
+| DB migrations | Done | Alembic via Reflex scaffolding, initial schema migration, replaces create_all() |
+| Observability | Done | Log Analytics workspace, diagnostic settings for App Service + PostgreSQL |
+| Azure IaC | Done | Bicep: Storage, ACR, PostgreSQL, App Service, ACI, Key Vault, Log Analytics |
 | Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, `.env.example`, pixi tasks |
-| Tests | 382 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 37 test files |
+| Tests | 398 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 37 test files |
 | CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
 | Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
 | Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
@@ -55,15 +57,16 @@ All extractors tested against real Microsoft Graph API with a live Entra app reg
 | Contacts delta endpoint rejects `$select`/`$top` | Removed unsupported params from contacts extractor | Live validation session |
 | Null `from` field in email crashes `_write_email` | Added `or {}` guard pattern | Live validation session |
 
-### What's Missing (Roadmap Phase 5B–5F)
+### What's Missing (Roadmap Phase 5D–5F)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| Phase 5A | Local web service testing | Done (2026-03-24) — OAuth2 login, user creation, health endpoint verified |
-| Phase 5B | Reflex admin dashboard MVP | Done (2026-03-24) — 5 SQLModel tables, 4 state classes, 6 pages, sidebar, services, 74 admin tests |
-| Phase 5C | Daemon integration + sync visibility | Done — daemon.py, TokenServiceAdapter, SyncRecord writes, CLI `daemon` command, health file |
-| Phase 5D | Security + RBAC | Not started — admin vs user roles, rate limiting, audit logging |
-| Phase 5E | Azure deployment | In progress — Dockerfiles fixed, Bicep complete, CI/CD triggers on merge, OIDC + secrets pending |
+| Phase 5A | Local web service testing | Done (2026-03-24) |
+| Phase 5B | Reflex admin dashboard MVP | Done (2026-03-24) |
+| Phase 5C | Daemon integration + sync visibility | Done (2026-03-25) |
+| Phase 5E | Azure deployment (dev) | Done (2026-03-25) — end-to-end working |
+| Phase 5E | Azure deployment (prod) | Pending — Entra redirect URI, GitHub secrets, tag v0.3.0. See roadmap for checklist. |
+| Phase 5D | Security + RBAC | Not started — Key Vault integration, rate limiting, audit logging, session timeout |
 | Phase 5F | Graph webhooks | Not started — deferred, polling sufficient for current scale |
 | Future | MCP server integration | Not started |
 
@@ -90,12 +93,13 @@ The app (`workflow-read`) requires delegated Graph API permissions. Some require
 
 The codebase follows the workspace engineering principles well:
 
-- **No defaults**: All config from YAML, crashes on missing values
-- **Fail fast**: `SystemExit(1)` with clear messages on config errors
+- **No defaults**: All config from YAML, crashes on missing values. No default function arguments.
+- **Fail fast**: `ConfigError` with clear messages on config errors. Narrow exception catches (GraphApiError, ExtractorError).
 - **Modular**: Each extractor is a standalone module; storage backends are pluggable via protocol
-- **Frozen dataclasses**: Config immutability enforced at the type level
-- **Config package split**: `config.py` refactored into `config/` package (loader.py + schema.py) to stay under the 300-line limit
+- **Frozen pydantic models**: Config immutability enforced at the type level, including typed ConvertersConfig
+- **Composable config**: 10 YAML fragments in `config/`, deep-merge loader, eliminates 95% duplication across environments
 - **Shared helpers**: `_message_helpers.py` extracted for Teams extractors, `_execute_with_retry` extracted for retry logic in graph_client.py
+- **File size discipline**: All source files under 200 lines (cli.py split into cli + dry_run + continuous; frontmatter.py split into per-type package)
 - **Deferred imports**: Optional deps (azure-storage-blob, obsidian-import) imported at call time
 - **Token provider abstraction**: GraphClient decoupled from auth flow
 - **Delta sync**: Incremental sync via Graph API delta tokens, state persisted in JSON
@@ -107,7 +111,7 @@ The codebase follows the workspace engineering principles well:
 
 | Dimension | m365-extract | Reference repos |
 |-----------|-------------|-----------------|
-| Docker | Dockerfile.web + Dockerfile.daemon + docker-compose.yaml (with azurite profile) | None |
+| Docker | Dockerfile + docker-compose.yaml (with azurite profile) | None |
 | IaC (Bicep) | Storage Account + params per env | None |
 | Dev scripts | dev-setup.sh, deploy-infra.sh, teardown-dev.sh | None |
 | Multi-backend storage | Local + Azure Blob + factory | Single backend |
@@ -175,7 +179,7 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 | `_last_sync` in-memory | Done | SyncRecord table persists sync history; UI reads from database |
 | No audit logging | Medium | No trail of auth/admin actions |
 | No rate limiting | Medium | Auth endpoints vulnerable to brute force |
-| No DB migrations | Medium | Schema evolution requires manual intervention |
+| ~~No DB migrations~~ | ~~Medium~~ | Done — Alembic migrations via Reflex scaffolding |
 | No secrets rotation | Low | Fernet key, session secret — no rotation strategy |
 
 ### Hardening Roadmap

@@ -20,6 +20,7 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | `m365_extract/state.py` | Sync state persistence (delta tokens, atomic writes) |
 | `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
 | `m365_admin/` | Reflex admin dashboard (OAuth, preferences, admin, sync status) |
+| `m365_admin/daemon_runner.py` | Background daemon thread (started on Reflex app boot) |
 | `m365_admin/auth_state.py` | Entra OAuth2 flow via Reflex state |
 | `m365_admin/services/` | TokenService (Fernet), AdminService (config CRUD) |
 | `m365_admin/pages/` | Login, callback, dashboard, settings, admin pages |

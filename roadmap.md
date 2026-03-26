@@ -163,32 +163,76 @@ Connect the sync daemon to the database so the UI shows real sync data.
 
 Harden for multi-user production use.
 
-1. Role-based access: admin vs user (Entra app roles or first-user-is-admin)
-2. Admin-only routes (user management, global config)
-3. Rate limiting on auth endpoints
-4. Audit logging (structured events for auth/admin/sync actions)
-5. Session timeout enforcement
+**6a. Key Vault integration** (half day)
+- Store secrets in Key Vault via Bicep (`Microsoft.KeyVault/vaults/secrets`)
+- App Service: replace appSettings values with Key Vault references (`@Microsoft.KeyVault(SecretUri=...)`)
+- ACI: keep secrets in env vars (ACI doesn't support KV references natively)
+- Prerequisite: Key Vault RBAC assignment for App Service managed identity
 
-### Phase 5E: Azure Deployment -- IN PROGRESS
+**6b. Rate limiting** (2 hours)
+- Add `slowapi` or Reflex middleware for auth endpoints
+- Config: `web.rate_limit_per_minute: 10` for login/callback
+
+**6c. Audit logging** (half day)
+- Structured events for: login, logout, extractor toggle, sync trigger, user enable/disable
+- Write to structlog (flows to Log Analytics via WP3)
+- New `AuditEvent` SQLModel table: `user_id, action, details_json, timestamp`
+
+**6d. Session timeout enforcement** (1 hour)
+- `web.session_timeout_minutes` already in config but not enforced in Reflex state
+- Add expiry check in `AuthState.on_load()`
+
+### Phase 5E: Azure Deployment -- DONE (dev), PENDING (prod)
 
 Deploy the Reflex app to Azure App Service.
 
 **Completed (2026-03-25)**:
-- `Dockerfile.web` fixed: Node.js in runtime stage for `reflex run --env prod` (serves frontend + backend)
-- `Dockerfile.daemon` fixed: real health check via `scripts/daemon_healthcheck.py` (reads `state/daemon_health.json`)
-- `docker-compose.yaml` for full-stack local testing with PostgreSQL
-- `infra/main.bicep` updated: 13 app settings on App Service, 10 on Container Instance (all secrets + config)
-- Key Vault RBAC role assignment removed from Bicep (requires Owner — documented manual step)
-- `deploy.yml` updated: push to main → dev, tag push → prod, all secrets passed to Bicep
-- `scripts/deploy-infra.sh` updated: validates + passes all new Bicep parameters
-- Base `Dockerfile` fixed: missing `README.md` COPY for hatchling metadata
+- `Dockerfile.web` fixed: Caddy reverse proxy + Reflex backend, single-port deployment
+- `Dockerfile.daemon` fixed: real health check via `scripts/daemon_healthcheck.py`
+- `docker-compose.yaml` for full-stack local testing with PostgreSQL + Azurite profile
+- `infra/main.bicep`: Storage, ACR, PostgreSQL, App Service, Container Instance, Key Vault, Log Analytics, diagnostic settings
+- `deploy.yml`: push to main → dev, tag push → prod, all secrets passed to Bicep
+- Dev environment deployed and working end-to-end (OAuth login, dashboard, daemon sync to blob)
 
-**Remaining (Phase 3: OIDC + Phase 5: First Deploy)**:
-1. Create service principal `sp-m365-extract-deploy` with OIDC federated credentials
-2. Configure GitHub secrets (8 secrets) and environments (dev, prod)
-3. Add production redirect URI to Entra app
-4. First deployment: `bash scripts/deploy-infra.sh dev` + `bash scripts/build-and-push.sh dev`
-5. Smoke test and OAuth verification on Azure
+**Completed (2026-03-26 — config + code quality refactor)**:
+- Composable config: 5 monolithic YAML files replaced with 10 composable fragments in `config/`
+- Constitution alignment: bare exceptions narrowed, prints replaced with ConfigError, overlong files split, default args removed
+- Observability: Log Analytics workspace + diagnostic settings for App Service and PostgreSQL
+- DB migrations: Alembic initialized via Reflex, initial schema migration, replaces `create_all()`
+- Simplification: base Dockerfile deleted, docker-compose consolidated with Azurite profile
+- Typed converters config: `ConvertersConfig` pydantic model with `slug_max_length`, `hash_length`
+
+**Remaining — Prod deployment checklist**:
+
+1. **Entra redirect URI**: Add `https://app-m365-admin-prod.azurewebsites.net/callback` to the Entra app registration. Use `az ad app update --id <app-id> --web-redirect-uris` — this **replaces** all URIs, so include all existing ones:
+   ```bash
+   az ad app update --id <client-id> \
+     --web-redirect-uris \
+       "http://localhost:8000/callback" \
+       "https://app-m365-admin-dev.azurewebsites.net/callback" \
+       "https://app-m365-admin-prod.azurewebsites.net/callback"
+   ```
+
+2. **GitHub prod secrets**: Create a `prod` environment in GitHub repo settings. Set environment-level secrets:
+   - `POSTGRES_ADMIN_PASSWORD` — different from dev
+   - `SECRET_KEY` — generate: `python -c "import secrets; print(secrets.token_hex(32))"`
+   - `FERNET_KEY` — generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   - Non-secret vars (`ENTRA_CLIENT_ID`, `AZURE_TENANT_ID`, `ADMIN_EMAIL`) can be shared or per-environment
+
+3. **Deploy**: Tag and push to trigger the prod deploy workflow:
+   ```bash
+   git tag v0.3.0
+   git push origin v0.3.0
+   ```
+   `deploy.yml` triggers on `v*` tags with `environment=prod` and uses `infra/params.prod.bicepparam` (90-day log retention).
+
+4. **Post-deploy verification**:
+   - OAuth login on `https://app-m365-admin-prod.azurewebsites.net`
+   - Daemon logs: `az container logs --name ci-m365-daemon-prod --resource-group rg-m365-extract-prod`
+   - Sync history visible in dashboard
+   - Log Analytics receiving data: `az monitor log-analytics query --workspace <id> --analytics-query "AppServiceConsoleLogs | take 5"`
+
+5. **DNS/custom domain**: Optional — `*.azurewebsites.net` works. Custom domain if needed later.
 
 ### Phase 5F: Graph Webhooks (deferred)
 

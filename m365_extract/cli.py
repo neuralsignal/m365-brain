@@ -11,7 +11,6 @@ Commands:
 from __future__ import annotations
 
 import json
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -148,50 +147,3 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run_flag: bool, e
         run_extractors(config, token_provider, storage, sync_state, names)
     elif continuous:
         run_continuous(config, token_provider, storage, sync_state, names)
-
-
-@main.command()
-@click.option("--poll-interval", "poll_interval", type=int, help="Seconds between daemon cycles (overrides config)")
-@click.pass_context
-def daemon(ctx: click.Context, poll_interval: int | None) -> None:
-    """Run the multi-user daemon: sync all enabled users from the database."""
-    # Deferred imports — daemon mode requires sqlmodel + admin deps
-    from alembic.config import Config as AlembicConfig
-    from sqlmodel import create_engine
-
-    from alembic import command as alembic_command
-    from m365_extract.daemon import run_daemon_cycle, write_health_file
-
-    config = load_config(ctx.obj["config_path"])
-    configure_logging(config.service.log_level, config.service.json_logs)
-
-    if config.web is None:
-        raise click.UsageError("daemon mode requires a config file with a 'web:' section (e.g., config.web.yaml)")
-
-    engine = create_engine(config.web.db_url)
-
-    # Run Alembic migrations to HEAD instead of create_all()
-    alembic_ini = str(Path(__file__).resolve().parent.parent / "alembic.ini")
-    alembic_cfg = AlembicConfig(alembic_ini)
-    alembic_cfg.set_main_option("sqlalchemy.url", config.web.db_url)
-    alembic_command.upgrade(alembic_cfg, "head")
-    log.info("daemon.migrations_applied")
-
-    from m365_admin.services.token_service import TokenService, TokenServiceAdapter
-
-    token_service = TokenService(fernet_key=config.web.fernet_key)
-    token_adapter = TokenServiceAdapter(token_service=token_service, engine=engine)
-
-    first_config = ctx.obj["config_path"].split(",")[0].strip()
-    state_dir = str(Path(first_config).resolve().parent / "state")
-    interval = poll_interval if poll_interval is not None else config.service.continuous_poll_seconds
-
-    log.info("daemon.started", poll_interval=interval, state_dir=state_dir)
-
-    try:
-        while True:
-            run_daemon_cycle(config, engine, token_adapter, state_dir)
-            write_health_file(state_dir)
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        log.info("daemon.stopped")

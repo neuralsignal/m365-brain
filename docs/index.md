@@ -11,7 +11,7 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **MSAL authentication** -- device code flow with automatic token caching and refresh
 - **Config-driven** -- single `config.yaml` controls all behavior; environment variable expansion for secrets
 - **CLI** -- `m365-extract auth login`, `sync --once`, `sync --continuous`
-- **Docker** -- Dockerfile.web + Dockerfile.daemon (multi-stage, non-root); Docker Compose with Azurite profile for local dev
+- **Docker** -- Single Dockerfile (multi-stage, non-root); Docker Compose with Azurite profile for local dev
 - **Bicep IaC** -- Azure Storage Account deployment templates for dev and prod
 
 ## Quick Example

@@ -12,7 +12,6 @@ docker-compose*.yaml
 *.egg-info/
 docs/
 scripts/
-!scripts/daemon_healthcheck.py
 .github/
 .git/
 .ruff_cache/

@@ -27,7 +27,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.web
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,17 +37,6 @@ services:
     environment:
       DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
       M365_ADMIN_CONFIG: config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml,config/env/local.yaml
-
-  daemon:
-    build:
-      context: .
-      dockerfile: Dockerfile.daemon
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest

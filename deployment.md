@@ -17,12 +17,8 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
    az provider register --namespace Microsoft.DBforPostgreSQL
    az provider register --namespace Microsoft.Web
    az provider register --namespace Microsoft.KeyVault
-   az provider register --namespace Microsoft.ContainerInstance
    ```
-   Wait until all show `Registered` before proceeding:
-   ```bash
-   az provider show --namespace Microsoft.ContainerInstance --query registrationState -o tsv
-   ```
+   Wait until all show `Registered` before proceeding.
 
 ### Phase 2: Identity Setup
 
@@ -37,7 +33,7 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 
 ### Phase 4: Build and Push Images FIRST
 
-**Critical: Push images before the first Bicep deploy.** ACI will fail to pull if the images do not exist yet in ACR. On the very first deploy, manually create the ACR and push images before running Bicep:
+**Critical: Push the image before the first Bicep deploy.** App Service will fail to pull if the image does not exist yet in ACR. On the very first deploy, manually create the ACR and push the image before running Bicep:
 
 9. **Create resource group and ACR manually** (first time only):
    ```bash
@@ -52,7 +48,7 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 
 ### Phase 5: Infrastructure Deployment
 
-11. **Deploy Bicep** (creates all remaining resources -- PostgreSQL, App Service, Container Instance, Key Vault, Storage):
+11. **Deploy Bicep** (creates all remaining resources -- PostgreSQL, App Service, Key Vault, Storage):
     ```bash
     bash scripts/deploy-infra.sh dev
     ```
@@ -67,25 +63,18 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
       --container-image-name acrm365extdev.azurecr.io/m365-admin:<your-tag>
     az webapp restart --name app-m365-admin-dev --resource-group rg-m365-extract-dev
     ```
-14. **Restart daemon Container Instance** (if needed):
-    ```bash
-    az container restart --name ci-m365-daemon-dev --resource-group rg-m365-extract-dev
-    ```
-15. **Smoke test**:
+14. **Smoke test**:
     - `https://app-m365-admin-dev.azurewebsites.net/ping` returns 200
     - `https://app-m365-admin-dev.azurewebsites.net/` returns 200 (frontend)
     - OAuth login flow completes to `/dashboard`
-    - Daemon Container Instance state: Running
 
 ### Subsequent Deploys (CI/CD or Manual)
 
 For updates after the initial deployment:
 
-1. Build and push images with a **unique tag** (timestamp or SHA)
-2. Re-deploy Bicep (idempotent) or use `az webapp config container set` / `az container create` with explicit image + credentials
-3. Restart App Service and Container Instance
-
-**Never rely on `:latest` for ACI updates** -- see [ACI Image Caching](#aci--bicep) gotcha.
+1. Build and push the image with a **unique tag** (timestamp or SHA)
+2. Re-deploy Bicep (idempotent) or use `az webapp config container set` with explicit image + credentials
+3. Restart App Service
 
 ---
 

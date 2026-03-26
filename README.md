@@ -14,7 +14,7 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **Document conversion** via [obsidian-import](https://pypi.org/project/obsidian-import/) (PDF, DOCX, PPTX, XLSX to markdown)
 - **MSAL device code authentication** with persistent token caching
 - **Frozen dataclass config** with strict validation and environment variable expansion
-- **CLI**: `auth login`, `sync --once`, `sync --continuous`, `daemon`
+- **CLI**: `auth login`, `sync --once`, `sync --continuous`
 - **Bicep IaC** for Azure Storage (dev/prod parameter files)
 - **Docker** + Docker Compose with Azurite profile for local development
 
@@ -56,15 +56,6 @@ m365-extract --config config.yaml sync --continuous
 ```
 
 Each extractor runs on its own `poll_interval_minutes`. The scheduler checks every 30 seconds.
-
-### Multi-user daemon mode
-
-```bash
-m365-extract --config config.web.yaml daemon
-m365-extract --config config.web.yaml daemon --poll-interval 60
-```
-
-Daemon mode reads enabled users from the database and syncs each on a schedule. Requires a config file with a `web:` section (database URL, Fernet key, admin emails).
 
 ### Filter extractors
 
@@ -256,7 +247,7 @@ The template creates:
 ### Full stack (local dev)
 
 ```bash
-docker compose up --build          # web + daemon + postgres
+docker compose up --build            # web + postgres (daemon runs inside web)
 docker compose --profile azurite up  # include Azurite blob emulator
 ```
 

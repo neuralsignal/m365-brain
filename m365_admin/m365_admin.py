@@ -1,4 +1,7 @@
-"""App entry point — registers pages and defines the root route."""
+"""App entry point — registers pages, defines the root route, starts daemon."""
+
+import os
+from pathlib import Path
 
 import reflex as rx
 
@@ -21,3 +24,29 @@ def index() -> rx.Component:
 
 
 app = rx.App()
+
+# --- Start background daemon thread on Reflex app boot ---
+# Guard: `reflex export` (Docker build stage) imports this module to discover
+# pages but has no env vars, .env, or database. M365_ADMIN_CONFIG is always set
+# at runtime (docker-compose, App Service, or .env) so its absence reliably
+# indicates a build context. If config is broken at runtime, get_config() crashes
+# loud — no silent swallowing.
+if os.environ.get("M365_ADMIN_CONFIG"):
+    from m365_admin.config_loader import get_config, get_config_path, get_engine
+    from m365_admin.daemon_runner import start_daemon
+    from m365_admin.services.token_service import TokenService, TokenServiceAdapter
+
+    _config = get_config()
+    _engine = get_engine()
+
+    _token_service = TokenService(fernet_key=_config.web.fernet_key)
+    _token_adapter = TokenServiceAdapter(token_service=_token_service, engine=_engine)
+
+    _config_path = get_config_path()
+    _first_config = _config_path.split(",")[0].strip()
+    _state_dir = str(Path(_first_config).resolve().parent / "state")
+    _interval = _config.service.continuous_poll_seconds
+
+    _daemon_stop = start_daemon(_config, _engine, _token_adapter, _state_dir, _interval)
+else:
+    _daemon_stop = None

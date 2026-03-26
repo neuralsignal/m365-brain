@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "15400642926248976943"
+      "templateHash": "15786488723724556459"
     }
   },
   "parameters": {
@@ -91,11 +91,47 @@
         "description": "Docker image tag for the web container"
       }
     },
-    "daemonImageTag": {
-      "type": "string",
-      "defaultValue": "latest",
+    "secretKey": {
+      "type": "securestring",
       "metadata": {
-        "description": "Docker image tag for the daemon container"
+        "description": "Application secret key for session signing"
+      }
+    },
+    "fernetKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Fernet key for token encryption"
+      }
+    },
+    "entraClientSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Entra app client secret"
+      }
+    },
+    "entraClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra app client ID"
+      }
+    },
+    "entraTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra tenant ID"
+      }
+    },
+    "adminEmail": {
+      "type": "string",
+      "metadata": {
+        "description": "Admin email address for the UI"
+      }
+    },
+    "logRetentionDays": {
+      "type": "int",
+      "defaultValue": 30,
+      "metadata": {
+        "description": "Log retention in days (30 for dev, 90 for prod)"
       }
     }
   },
@@ -106,8 +142,8 @@
     "postgresDbName": "m365extract",
     "appServicePlanName": "[format('asp-m365-extract-{0}', parameters('environment'))]",
     "webAppName": "[format('app-m365-admin-{0}', parameters('environment'))]",
-    "daemonContainerGroupName": "[format('ci-m365-daemon-{0}', parameters('environment'))]",
-    "keyVaultName": "[format('kv-m365-ext-{0}', parameters('environment'))]"
+    "keyVaultName": "[format('kv-m365-ext-{0}', parameters('environment'))]",
+    "logAnalyticsName": "[format('log-m365-extract-{0}', parameters('environment'))]"
   },
   "resources": [
     {
@@ -267,8 +303,56 @@
               "value": "false"
             },
             {
+              "name": "WEBSITES_PORT",
+              "value": "8000"
+            },
+            {
               "name": "DATABASE_URL",
               "value": "[format('postgresql://{0}:{1}@{2}:5432/{3}?sslmode=require', parameters('postgresAdminUser'), parameters('postgresAdminPassword'), reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName')), '2023-12-01-preview').fullyQualifiedDomainName, variables('postgresDbName'))]"
+            },
+            {
+              "name": "SECRET_KEY",
+              "value": "[parameters('secretKey')]"
+            },
+            {
+              "name": "FERNET_KEY",
+              "value": "[parameters('fernetKey')]"
+            },
+            {
+              "name": "AZURE_CLIENT_ID",
+              "value": "[parameters('entraClientId')]"
+            },
+            {
+              "name": "AZURE_TENANT_ID",
+              "value": "[parameters('entraTenantId')]"
+            },
+            {
+              "name": "AZURE_CLIENT_SECRET",
+              "value": "[parameters('entraClientSecret')]"
+            },
+            {
+              "name": "M365_ADMIN_REDIRECT_URI",
+              "value": "[format('https://{0}.azurewebsites.net/callback', variables('webAppName'))]"
+            },
+            {
+              "name": "AZURE_STORAGE_CONNECTION_STRING",
+              "value": "[if(not(equals(listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value, '')), format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value), '')]"
+            },
+            {
+              "name": "AZURE_STORAGE_CONTAINER",
+              "value": "[parameters('containerName')]"
+            },
+            {
+              "name": "AZURE_STORAGE_PREFIX",
+              "value": "[format('{0}/', parameters('environment'))]"
+            },
+            {
+              "name": "M365_ADMIN_CONFIG",
+              "value": "config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/web.yaml,config/env/dev.yaml"
+            },
+            {
+              "name": "ADMIN_EMAIL",
+              "value": "[parameters('adminEmail')]"
             }
           ]
         },
@@ -277,62 +361,77 @@
       "dependsOn": [
         "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
         "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
-        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName'))]"
+        "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
       ]
     },
     {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-      "name": "[guid(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), resourceId('Microsoft.Web/sites', variables('webAppName')), '4633458b-17de-408a-b874-0445c86b69e6')]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('webAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.ContainerInstance/containerGroups",
-      "apiVersion": "2023-05-01",
-      "name": "[variables('daemonContainerGroupName')]",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('logAnalyticsName')]",
       "location": "[parameters('location')]",
       "properties": {
-        "osType": "Linux",
-        "restartPolicy": "Always",
-        "containers": [
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": "[parameters('logRetentionDays')]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Web/sites', variables('webAppName'))]",
+      "name": "send-to-log-analytics",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+        "logs": [
           {
-            "name": "m365-daemon",
-            "properties": {
-              "image": "[format('{0}/m365-daemon:{1}', reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer, parameters('daemonImageTag'))]",
-              "resources": {
-                "requests": {
-                  "cpu": 1,
-                  "memoryInGB": 1
-                }
-              },
-              "environmentVariables": [
-                {
-                  "name": "DATABASE_URL",
-                  "secureValue": "[format('postgresql://{0}:{1}@{2}:5432/{3}?sslmode=require', parameters('postgresAdminUser'), parameters('postgresAdminPassword'), reference(resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName')), '2023-12-01-preview').fullyQualifiedDomainName, variables('postgresDbName'))]"
-                }
-              ]
-            }
+            "category": "AppServiceHTTPLogs",
+            "enabled": true
+          },
+          {
+            "category": "AppServiceConsoleLogs",
+            "enabled": true
+          },
+          {
+            "category": "AppServiceAppLogs",
+            "enabled": true
           }
         ],
-        "imageRegistryCredentials": [
+        "metrics": [
           {
-            "server": "[reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer]",
-            "username": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').username]",
-            "password": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').passwords[0].value]"
+            "category": "AllMetrics",
+            "enabled": true
           }
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('webAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName'))]",
+      "name": "send-to-log-analytics",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+        "logs": [
+          {
+            "category": "PostgreSQLLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
         "[resourceId('Microsoft.DBforPostgreSQL/flexibleServers', variables('postgresServerName'))]"
       ]
     }
@@ -381,6 +480,14 @@
     "keyVaultUri": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2023-07-01').vaultUri]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "value": "[variables('logAnalyticsName')]"
     }
   }
 }

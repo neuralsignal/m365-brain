@@ -1,6 +1,6 @@
 // m365-extract Azure infrastructure.
 //
-// Phase A: Storage + ACR + PostgreSQL + App Service + Container Instance + Key Vault + Log Analytics
+// Phase A: Storage + ACR + PostgreSQL + App Service + Key Vault + Log Analytics
 // Phase B (future): VNet + private endpoints + custom domain
 
 @description('Environment name used for resource naming (dev, test, prod)')
@@ -44,9 +44,6 @@ param appServicePlanSku string = 'B1'
 @description('Docker image tag for the web container')
 param webImageTag string = 'latest'
 
-@description('Docker image tag for the daemon container')
-param daemonImageTag string = 'latest'
-
 // --- App secrets (passed via CLI --parameters override) ---
 @secure()
 @description('Application secret key for session signing')
@@ -81,7 +78,6 @@ var postgresServerName = 'psql-m365-extract-${environment}'
 var postgresDbName = 'm365extract'
 var appServicePlanName = 'asp-m365-extract-${environment}'
 var webAppName = 'app-m365-admin-${environment}'
-var daemonContainerGroupName = 'ci-m365-daemon-${environment}'
 var keyVaultName = 'kv-m365-ext-${environment}'
 var logAnalyticsName = 'log-m365-extract-${environment}'
 
@@ -157,7 +153,7 @@ resource postgresServer 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-pr
     highAvailability: {
       mode: 'Disabled'
     }
-    // Allow Azure services (App Service, Container Instances) to connect
+    // Allow Azure services (App Service) to connect
     network: {
       publicNetworkAccess: 'Enabled'
     }
@@ -315,86 +311,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       ]
     }
     httpsOnly: true
-  }
-}
-
-// ============================================================================
-// Container Instance — Sync Daemon
-// ============================================================================
-
-resource daemonContainer 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
-  name: daemonContainerGroupName
-  location: location
-  properties: {
-    osType: 'Linux'
-    restartPolicy: 'Always'
-    containers: [
-      {
-        name: 'm365-daemon'
-        properties: {
-          image: '${acr.properties.loginServer}/m365-daemon:${daemonImageTag}'
-          resources: {
-            requests: {
-              cpu: 1
-              memoryInGB: 1
-            }
-          }
-          environmentVariables: [
-            {
-              name: 'DATABASE_URL'
-              secureValue: databaseUrl
-            }
-            {
-              name: 'SECRET_KEY'
-              secureValue: secretKey
-            }
-            {
-              name: 'FERNET_KEY'
-              secureValue: fernetKey
-            }
-            {
-              name: 'AZURE_CLIENT_ID'
-              value: entraClientId
-            }
-            {
-              name: 'AZURE_TENANT_ID'
-              value: entraTenantId
-            }
-            {
-              name: 'AZURE_CLIENT_SECRET'
-              secureValue: entraClientSecret
-            }
-            {
-              name: 'AZURE_STORAGE_CONNECTION_STRING'
-              secureValue: storageAccount.listKeys().keys[0].value != '' ? 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net' : ''
-            }
-            {
-              name: 'AZURE_STORAGE_CONTAINER'
-              value: containerName
-            }
-            {
-              name: 'AZURE_STORAGE_PREFIX'
-              value: '${environment}/'
-            }
-            {
-              name: 'M365_ADMIN_CONFIG'
-              value: 'config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/web.yaml,config/env/dev.yaml'
-            }
-            {
-              name: 'ADMIN_EMAIL'
-              value: adminEmail
-            }
-          ]
-        }
-      }
-    ]
-    imageRegistryCredentials: [
-      {
-        server: acr.properties.loginServer
-        username: acr.listCredentials().username
-        password: acr.listCredentials().passwords[0].value
-      }
-    ]
   }
 }
 
