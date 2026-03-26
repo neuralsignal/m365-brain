@@ -39,3 +39,7 @@ web:
   db_url: "${DATABASE_URL}"
   admin_emails:
     - "${ADMIN_EMAIL}"
+
+worker:
+  max_concurrent_jobs: 4
+  poll_interval_seconds: 30

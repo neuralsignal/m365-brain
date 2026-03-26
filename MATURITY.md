@@ -1,10 +1,10 @@
 # m365-extract Maturity Assessment
 
-_2026-03-26 — v0.2.2+ (Phases 1-6 complete, Phase 5A-5C done, 5E dev deployed, prod pending)_
+_2026-03-26 — v0.2.2+ (Phases 1-6 complete, Phase 5A-5C+5G done, 5E dev deployed, prod pending)_
 
 ## Current State
 
-40+ source modules, 8 extractors, 2 storage backends, 398 tests (37 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-6 of the roadmap are implemented. Phase 5A-5C done. Phase 5E dev environment deployed and working end-to-end (OAuth login, dashboard, daemon sync to blob). Prod deployment pending (Entra redirect URI + GitHub secrets + tag). Live validated against real Graph API (2026-03-24). Config refactored to composable fragments. Alembic DB migrations replace create_all(). Log Analytics observability added to Bicep.
+40+ source modules, 8 extractors, 2 storage backends, 386 tests (35 test files), 9 Azurite integration tests, 18 GitHub Actions workflows, MkDocs site, pytest-cov at 94%. Phases 1-6 of the roadmap are implemented. Phase 5A-5C+5G done. Phase 5E dev environment deployed and working end-to-end (OAuth login, dashboard, worker sync to blob). Prod deployment pending (Entra redirect URI + GitHub secrets + tag). Live validated against real Graph API (2026-03-24). Config refactored to composable fragments. Alembic DB migrations replace create_all(). Log Analytics observability added to Bicep. Worker refactored from monolithic daemon to per-(user, extractor) jobs with ThreadPoolExecutor and PostgreSQL advisory locks.
 
 ### What's Implemented
 
@@ -15,14 +15,15 @@ _2026-03-26 — v0.2.2+ (Phases 1-6 complete, Phase 5A-5C done, 5E dev deployed,
 | Extractors | 8/8 | email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
 | Storage | Done | Local + Azure Blob backends, factory dispatch, StorageBackend protocol |
 | Document conversion | Done | obsidian-import pass-through config, deferred import |
-| CLI | Done | `auth login`, `auth status`, `sync --once`, `sync --continuous`, `sync --dry-run`, `--extractors` filter |
+| CLI | Done | `auth login`, `auth status`, `sync --once`, `worker`, `sync --dry-run`, `--extractors` filter |
+| Worker | Done | Independent per-(user, extractor) jobs, ThreadPoolExecutor, PostgreSQL advisory locks, per-extractor state files |
 | Web service | Done | FastAPI app, auth code flow, token store, scheduler, per-user storage isolation, access control middleware |
 | Config | Done | Composable YAML fragments in config/, deep-merge loader, frozen pydantic models, env var expansion |
 | DB migrations | Done | Alembic via Reflex scaffolding, initial schema migration, replaces create_all() |
 | Observability | Done | Log Analytics workspace, diagnostic settings for App Service + PostgreSQL |
 | Azure IaC | Done | Bicep: Storage, ACR, PostgreSQL, App Service, ACI, Key Vault, Log Analytics |
 | Dev workflow | Done | Azurite + Docker Compose, `.env.dev`, `.env.example`, pixi tasks |
-| Tests | 398 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 37 test files |
+| Tests | 386 pass | Unit + mock + Azurite integration (9 skip when no Azurite), 35 test files |
 | CI/CD | Done | 18 GitHub Actions workflows (CI, release-please, dark factory loop) |
 | Linting | Done | ruff (E,F,W,I,UP,B,SIM), pre-commit hooks |
 | Docs site | Done | MkDocs + Material theme, GitHub Pages deploy |
@@ -64,6 +65,7 @@ All extractors tested against real Microsoft Graph API with a live Entra app reg
 | Phase 5A | Local web service testing | Done (2026-03-24) |
 | Phase 5B | Reflex admin dashboard MVP | Done (2026-03-24) |
 | Phase 5C | Daemon integration + sync visibility | Done (2026-03-25) |
+| Phase 5G | Worker refactor | Done (2026-03-26) — daemon replaced by independent worker |
 | Phase 5E | Azure deployment (dev) | Done (2026-03-25) — end-to-end working |
 | Phase 5E | Azure deployment (prod) | Pending — Entra redirect URI, GitHub secrets, tag v0.3.0. See roadmap for checklist. |
 | Phase 5D | Security + RBAC | Not started — Key Vault integration, rate limiting, audit logging, session timeout |
@@ -99,7 +101,8 @@ The codebase follows the workspace engineering principles well:
 - **Frozen pydantic models**: Config immutability enforced at the type level, including typed ConvertersConfig
 - **Composable config**: 10 YAML fragments in `config/`, deep-merge loader, eliminates 95% duplication across environments
 - **Shared helpers**: `_message_helpers.py` extracted for Teams extractors, `_execute_with_retry` extracted for retry logic in graph_client.py
-- **File size discipline**: All source files under 200 lines (cli.py split into cli + dry_run + continuous; frontmatter.py split into per-type package)
+- **File size discipline**: All source files under 200 lines (cli.py split into cli + dry_run + worker; frontmatter.py split into per-type package)
+- **Worker isolation**: Each (user, extractor) pair runs as an independent job with its own token, storage, and state file — eliminates concurrent write races
 - **Deferred imports**: Optional deps (azure-storage-blob, obsidian-import) imported at call time
 - **Token provider abstraction**: GraphClient decoupled from auth flow
 - **Delta sync**: Incremental sync via Graph API delta tokens, state persisted in JSON
@@ -164,7 +167,7 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 - OAuth2 login flow with Entra (authorization code + PKCE)
 - Per-user token encryption at rest (Fernet + SQLite)
 - Per-user storage isolation (`vault/{user_id}/`)
-- Background sync scheduler (APScheduler, per-user jobs)
+- Background sync worker (ThreadPoolExecutor, per-(user, extractor) jobs with PostgreSQL advisory locks)
 - Admin user management (list, enable, disable, delete)
 - Session-based access control (user can only trigger own sync)
 - Thread-safe token refresh with locking
@@ -175,7 +178,7 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 |-----|----------|--------|
 | Admin endpoints unauthenticated | Critical | Partially addressed — `admin_emails` config restricts admin pages in Reflex UI |
 | No RBAC | Medium | Basic admin/user distinction via `admin_emails`; full RBAC (roles, middleware) deferred to Phase 5D |
-| Sync state shared | Done | Per-user sync state via `state/{user_id}/sync_state.json` (daemon.py) |
+| Sync state shared | Done | Per-extractor state files at `state/{user_id}/{extractor_name}.json` (worker.py) |
 | `_last_sync` in-memory | Done | SyncRecord table persists sync history; UI reads from database |
 | No audit logging | Medium | No trail of auth/admin actions |
 | No rate limiting | Medium | Auth endpoints vulnerable to brute force |
@@ -188,7 +191,9 @@ Between 2026-03-17 and 2026-03-23, autonomous Claude agents made 50+ commits acr
 
 **Phase 5B (Reflex dashboard MVP)**: Scaffold `web-ui/` Reflex project, Entra OAuth2 via Reflex state + MSAL, dashboard with extractor toggles + sync trigger, admin user list.
 
-**Phase 5C (sync visibility)**: Sync history SQLite table + UI, per-user scheduling, persistent `_last_sync`, real-time WebSocket updates.
+**Phase 5C (sync visibility)**: Sync history SQLite table + UI, per-user scheduling, persistent `_last_sync`, real-time WebSocket updates. Daemon thread wired into Reflex app.
+
+**Phase 5G (worker refactor)**: Done. Daemon thread replaced by independent worker with per-(user, extractor) jobs. Dashboard shows per-extractor status grid.
 
 **Phase 5D (security + RBAC)**: Admin vs user roles, admin-only routes, rate limiting, audit logging, session timeouts.
 

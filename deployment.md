@@ -263,8 +263,7 @@ gh secret set SECRET_NAME --repo neuralsignal/m365-extract
 
 | Image | Dockerfile | Purpose | Size |
 |-------|-----------|---------|------|
-| `m365-admin` | `Dockerfile.web` | Reflex admin UI (Caddy + backend) | ~457MB |
-| `m365-daemon` | `Dockerfile.daemon` | Sync daemon | ~357MB |
+| `m365-admin` | `Dockerfile` | Reflex admin UI (Caddy + backend) + sync worker thread | ~457MB |
 
 ### Architecture: Web Image
 
@@ -288,21 +287,14 @@ Caddy routes `/_event/*`, `/ping`, `/_upload/*` to the Python backend. Everythin
 | Image | Check | Interval | Details |
 |-------|-------|----------|---------|
 | `m365-admin` | `curl -f http://localhost:8000/ping` | 30s, 3 retries | Hits Caddy -> backend |
-| `m365-daemon` | `python scripts/daemon_healthcheck.py` | 60s, 3 retries | Reads `state/daemon_health.json`, fails if last cycle >5min ago |
 
 ### Build commands (local)
 
 ```bash
 cd ~/Brain/external/m365-extract
 
-# Build web image
-docker build -t m365-admin:local -f Dockerfile.web .
-
-# Build daemon image
-docker build -t m365-daemon:local -f Dockerfile.daemon .
-
-# Build base CLI image
-docker build -t m365-extract:local .
+# Build image
+docker build -t m365-admin:local .
 ```
 
 ## Local Testing
@@ -321,16 +313,15 @@ cd ~/Brain/external/m365-extract
 pixi run -e admin dev
 # -> http://localhost:3000
 
-# Terminal 2 -- Sync daemon
+# Terminal 2 -- Sync worker (optional, runs as thread in Reflex by default)
 cd ~/Brain/external/m365-extract
-pixi run -e admin daemon
-# Polls every config.service.continuous_poll_seconds (30s in config.web.yaml)
+pixi run -e admin m365-extract --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml worker
 ```
 
 ### Docker Compose (PostgreSQL, matching production)
 
 ```bash
-# Full-stack (postgres + web + daemon)
+# Full-stack (postgres + web + worker)
 docker compose up --build
 
 # Just PostgreSQL (for local dev against pg)
@@ -346,18 +337,17 @@ docker compose down -v
 2. Click login -- Entra OAuth flow -- callback -- `/dashboard`
 3. `/settings` -- toggle extractors on/off
 4. `/admin` -- see user table with your user, toggle enabled
-5. Watch daemon terminal -- should pick up your user on next cycle
-6. Refresh `/dashboard` -- should show SyncRecord with status + timestamp
+5. Watch worker logs -- should pick up your user on next cycle
+6. Refresh `/dashboard` -- should show per-extractor status
 
 ### Verified working (2026-03-25)
 
 - [x] `pixi run -e admin dev` starts without errors on port 3000/8000
 - [x] Frontend HTTP 200 on `http://localhost:3000/`
 - [x] Backend HTTP 200 on `http://localhost:8000/ping`
-- [x] Daemon starts and syncs -- email (100 items), calendar (37 events), teams chats (28 chats)
-- [x] `pixi run -e admin test-all` -- 383 tests pass
-- [x] `docker build -f Dockerfile.web .` -- succeeds (457MB)
-- [x] `docker build -f Dockerfile.daemon .` -- succeeds (357MB)
+- [x] Worker starts and syncs -- email (100 items), calendar (37 events), teams chats (28 chats)
+- [x] `pixi run -e admin test-all` -- 386 tests pass
+- [x] `docker build .` -- succeeds (~457MB)
 
 ## Azure Infrastructure (Bicep)
 
@@ -374,7 +364,6 @@ Resource group: `rg-m365-extract-{env}`
 | PostgreSQL Database | `databases` | `m365extract` | App database |
 | App Service Plan | `serverfarms` | `asp-m365-extract-{env}` | Linux container hosting |
 | App Service | `sites` | `app-m365-admin-{env}` | Reflex admin UI (system-assigned managed identity) |
-| Container Instance | `containerGroups` | `ci-m365-daemon-{env}` | Sync daemon (always-on) |
 | Key Vault | `vaults` | `kv-m365-ext-{env}` | Secrets (FERNET_KEY, SECRET_KEY, client_secret) |
 
 ### Environment parameters
@@ -389,21 +378,18 @@ Resource group: `rg-m365-extract-{env}`
 
 ### Environment variables injected by Bicep
 
-| Env Var | App Service | Container Instance | Secure? |
-|---------|-------------|-------------------|---------|
-| `DATABASE_URL` | Yes | Yes | Yes |
-| `SECRET_KEY` | Yes | Yes | Yes |
-| `FERNET_KEY` | Yes | Yes | Yes |
-| `AZURE_CLIENT_ID` | Yes | Yes | No |
-| `AZURE_TENANT_ID` | Yes | Yes | No |
-| `AZURE_CLIENT_SECRET` | Yes | Yes | Yes |
-| `M365_ADMIN_REDIRECT_URI` | Yes (derived from app hostname) | No | No |
-| `M365_ADMIN_CONFIG` | Yes | Yes | No |
-| `ADMIN_EMAIL` | Yes | Yes | No |
-| `AZURE_STORAGE_CONNECTION_STRING` | No | Yes | Yes |
-| `AZURE_STORAGE_CONTAINER` | No | Yes | No |
-| `AZURE_STORAGE_PREFIX` | No | Yes | No |
-| `WEBSITES_PORT` | Yes | No | No |
+| Env Var | App Service | Secure? |
+|---------|-------------|---------|
+| `DATABASE_URL` | Yes | Yes |
+| `SECRET_KEY` | Yes | Yes |
+| `FERNET_KEY` | Yes | Yes |
+| `AZURE_CLIENT_ID` | Yes | No |
+| `AZURE_TENANT_ID` | Yes | No |
+| `AZURE_CLIENT_SECRET` | Yes | Yes |
+| `M365_ADMIN_REDIRECT_URI` | Yes (derived from app hostname) | No |
+| `M365_ADMIN_CONFIG` | Yes | No |
+| `ADMIN_EMAIL` | Yes | No |
+| `WEBSITES_PORT` | Yes | No |
 
 ### Deploy infrastructure (manual)
 
@@ -439,15 +425,8 @@ The deploy script:
 ### Build and push Docker images (manual)
 
 ```bash
-# Build + push both images with unique tag (recommended)
+# Build + push image with unique tag
 bash scripts/build-and-push.sh dev --tag $(date +%Y%m%d%H%M%S)
-
-# Custom tag
-bash scripts/build-and-push.sh dev --tag v0.2.2
-
-# Web only / Daemon only
-bash scripts/build-and-push.sh dev --web-only
-bash scripts/build-and-push.sh dev --daemon-only
 ```
 
 ### Key Vault RBAC (manual, post-deployment)
@@ -485,11 +464,10 @@ az role assignment create \
 | Manual dispatch | User choice | User input or SHA |
 
 Pipeline steps:
-1. Build + push Docker images to ACR (unique tag per deploy)
+1. Build + push Docker image to ACR (unique tag per deploy)
 2. Deploy Bicep infrastructure (idempotent)
 3. Update App Service container image + restart
-4. Restart daemon Container Instance
-5. Smoke test (`/ping` endpoint, 30s wait)
+4. Smoke test (`/ping` endpoint, 30s wait)
 
 ---
 
@@ -573,7 +551,69 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 ### Config Split
 
-30. **Two config files: `config.web.yaml` vs `config.deploy.yaml`** -- `config.web.yaml` uses `storage.backend: "local"` (no blob env vars needed). `config.deploy.yaml` uses `storage.backend: "azure_blob"` with `${AZURE_STORAGE_CONNECTION_STRING}` etc. The config loader eagerly expands ALL `${VAR}` references at load time — even sections the caller doesn't use. So the **web app must use `config.web.yaml`** (it doesn't have storage env vars and doesn't need them). Only the **daemon uses `config.deploy.yaml`** (it has the storage env vars via Bicep). Both Dockerfiles copy both config files. Bicep sets `M365_ADMIN_CONFIG=./config.web.yaml` for App Service and `M365_ADMIN_CONFIG=./config.deploy.yaml` for Container Instance.
+30. **Config split: web config vs deploy config** -- The config loader eagerly expands ALL `${VAR}` references at load time — even sections the caller doesn't use. The **web app** (App Service) runs with a config that uses `storage.backend: "local"` or omits storage env vars if the worker thread uses a separate config. If the worker runs as a thread inside the Reflex app (single-container deployment), the App Service container may also need storage env vars (e.g., `AZURE_STORAGE_CONNECTION_STRING`) since the worker thread shares the same process and config. Set `M365_ADMIN_CONFIG` appropriately and ensure all env vars referenced in the active config are injected by Bicep.
+
+31. **Daemon replaced by independent worker** -- The monolithic daemon thread (running all extractors sequentially for all users) was replaced by a worker with per-(user, extractor) jobs. The worker runs as a thread inside the Reflex app (single-container deployment) or as a separate process (`m365-extract worker`). Per-extractor state files (`state/{user_id}/{extractor_name}.json`) eliminate concurrent write races. PostgreSQL advisory locks prevent duplicate runs. `SyncRecord` (full history) replaced by `ExtractorStatus` (single row per user+extractor).
+
+---
+
+## Log Analytics Querying (Admin)
+
+App Service and PostgreSQL logs are sent to Log Analytics via diagnostic settings (configured in Bicep).
+
+### Access via Azure Portal
+
+1. Go to `rg-m365-extract-{env}` → `log-m365-extract-{env}` (Log Analytics workspace)
+2. Click **Logs** in the left nav
+3. Use KQL queries below
+
+### Useful KQL Queries
+
+**Recent worker activity:**
+```kql
+AppServiceConsoleLogs
+| where ResultDescription contains "worker."
+| order by TimeGenerated desc
+| take 50
+```
+
+**Worker job failures:**
+```kql
+AppServiceConsoleLogs
+| where ResultDescription contains "worker.job_failed"
+| order by TimeGenerated desc
+| take 20
+```
+
+**App startup errors:**
+```kql
+AppServiceConsoleLogs
+| where ResultDescription contains "ERROR" or ResultDescription contains "Traceback"
+| order by TimeGenerated desc
+| take 20
+```
+
+**HTTP request errors:**
+```kql
+AppServiceHTTPLogs
+| where ScStatus >= 400
+| order by TimeGenerated desc
+| take 50
+```
+
+### CLI Access
+
+```bash
+# Query via CLI (requires workspace ID)
+WORKSPACE_ID=$(az monitor log-analytics workspace show \
+  --name log-m365-extract-dev \
+  --resource-group rg-m365-extract-dev \
+  --query customerId -o tsv)
+
+az monitor log-analytics query \
+  --workspace "$WORKSPACE_ID" \
+  --analytics-query "AppServiceConsoleLogs | where ResultDescription contains 'worker.' | order by TimeGenerated desc | take 10"
+```
 
 ---
 
@@ -581,25 +621,23 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 ### Phase A -- Minimum viable deployment (2026-03-25)
 
-- [x] Docker images build successfully (`Dockerfile.web` 457MB, `Dockerfile.daemon` 357MB)
+- [x] Docker image builds successfully (`Dockerfile` ~457MB)
 - [x] `docker-compose.yaml` for full-stack local testing with PostgreSQL
-- [x] Bicep template compiles with all env vars (15 App Service settings, 10 Container Instance vars)
+- [x] Bicep template compiles with all env vars (App Service settings)
 - [x] `deploy.yml` triggers on push to main (-> dev) and tag push (-> prod)
-- [x] Daemon health check reads `state/daemon_health.json` (written after each cycle)
 - [x] Service principal `sp-m365-extract-deploy` created (`e31a8416-...`)
 - [x] SP Contributor role assigned on subscription
 - [x] 3 OIDC federated credentials (main, dev env, prod env)
 - [x] All 9 GitHub secrets configured
 - [x] GitHub environments created (dev, prod)
 - [x] Production redirect URI added to Entra app
-- [x] 383 tests pass
-- [x] First deployment: Bicep deployed all 7 resources to `rg-m365-extract-dev`
+- [x] 386 tests pass
+- [x] First deployment: Bicep deployed all resources to `rg-m365-extract-dev`
 - [x] Images pushed to ACR (`acrm365extdev.azurecr.io`)
 - [x] Smoke test: `https://app-m365-admin-dev.azurewebsites.net/ping` returns 200
 - [x] Frontend: `https://app-m365-admin-dev.azurewebsites.net/` returns 200
-- [x] Daemon Container Instance state: Running
 - [ ] OAuth login works on Azure (production redirect URI)
-- [ ] Daemon syncs with PostgreSQL (verify in `/dashboard`)
+- [ ] Worker syncs (per-extractor status visible in `/dashboard`)
 - [ ] Key Vault RBAC assigned to App Service managed identity
 
 ### Phase B -- Production hardening
@@ -607,5 +645,4 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 - [ ] Managed Identity -> Key Vault access (resolve RBAC limitation)
 - [ ] VNet + private endpoints for PostgreSQL and Storage
 - [ ] Custom domain + TLS cert on App Service
-- [ ] Log Analytics workspace for container logs
 - [ ] Prod environment: add required reviewer protection rule

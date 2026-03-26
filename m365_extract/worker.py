@@ -179,11 +179,8 @@ def run_single_extractor(
 def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
     """Main worker loop. Polls for due jobs, submits to thread pool."""
     worker_config = config.worker
-    if worker_config is None:
-        raise ConfigError("worker section missing from config — required for `m365-extract worker`")
-
-    max_workers = worker_config.max_concurrent_jobs
-    poll_interval = worker_config.poll_interval_seconds
+    max_workers = worker_config.max_concurrent_jobs if worker_config else 4
+    poll_interval = worker_config.poll_interval_seconds if worker_config else config.service.continuous_poll_seconds
 
     log.info("worker.started", max_workers=max_workers, poll_interval=poll_interval, state_dir=state_dir)
     Path(state_dir).mkdir(parents=True, exist_ok=True)
@@ -239,14 +236,12 @@ def start_worker_thread(
     Used by the Reflex app for single-container deployment.
     """
     worker_config = config.worker
-    if worker_config is None:
-        raise ConfigError("worker section missing from config — required for worker thread")
+    poll_interval = worker_config.poll_interval_seconds if worker_config else config.service.continuous_poll_seconds
+    max_workers = worker_config.max_concurrent_jobs if worker_config else 4
 
     stop = threading.Event()
 
     def _loop() -> None:
-        max_workers = worker_config.max_concurrent_jobs
-        poll_interval = worker_config.poll_interval_seconds
         log.info("worker.thread_started", max_workers=max_workers, poll_interval=poll_interval)
         Path(state_dir).mkdir(parents=True, exist_ok=True)
 

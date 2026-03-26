@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **worker refactor**: replaced monolithic daemon thread with independent sync worker (`m365_extract/worker.py`)
+  - Per-(user, extractor) jobs via `ThreadPoolExecutor` with configurable concurrency
+  - PostgreSQL advisory locks prevent duplicate job runs
+  - `ExtractorStatus` model replaces `SyncRecord` (single row per user+extractor pair)
+  - New CLI command `m365-extract worker` for standalone multi-user sync
+  - `start_worker_thread()` bridge for single-container deployment
+  - Per-extractor state files eliminate concurrent write races
+  - Dashboard shows per-extractor status grid
+  - `WorkerConfig` section added to config schema
+  - docker-compose updated with separate `worker` service
+  - Alembic migration: `syncrecord` → `extractorstatus`
+
+### Breaking Changes
+
+* CLI `sync --continuous` removed (replaced by `worker` command)
+* `SyncRecord` model replaced by `ExtractorStatus`
+* `daemon.py`, `daemon_runner.py`, `continuous.py` deleted
+
 ## [0.2.2](https://github.com/neuralsignal/m365-extract/compare/v0.2.1...v0.2.2) (2026-03-20)
 
 

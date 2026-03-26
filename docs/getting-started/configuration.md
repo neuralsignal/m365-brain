@@ -153,7 +153,7 @@ Per-extractor configuration. Each extractor has an `enabled` flag and extractor-
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the email extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `folders` | `list[str]` | Mail folders to sync. Valid values: `Inbox`, `SentItems`, `Drafts`, `Archive`, `DeletedItems`, `JunkEmail`. |
 | `lookback_days` | `int` | Number of days to look back on first sync (before any delta link exists). |
 | `max_items_per_sync` | `int` | Maximum number of emails to write per sync cycle per folder. |
@@ -173,7 +173,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the calendar extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `lookback_days` | `int` | Number of days to look back for past events. Future events are always fetched up to 90 days ahead. |
 
 ```yaml
@@ -189,7 +189,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the Teams chats extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `max_messages_per_chat` | `int` | Maximum number of messages to fetch per chat. |
 
 ```yaml
@@ -205,7 +205,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the Teams channels extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 
 ```yaml
 extractors:
@@ -219,7 +219,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the OneDrive extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `eager_convert_patterns` | `list[str]` | Glob patterns for files to convert immediately on sync (e.g., `["*.docx", "Reports/*.xlsx"]`). |
 | `convertible_extensions` | `list[str]` | File extensions eligible for document conversion. |
 | `max_file_size_mb` | `int` | Maximum file size in MB to download and convert. |
@@ -239,7 +239,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the SharePoint extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `eager_convert_patterns` | `list[str]` | Glob patterns for files to convert immediately on sync. |
 | `convertible_extensions` | `list[str]` | File extensions eligible for document conversion. |
 | `max_file_size_mb` | `int` | Maximum file size in MB to download and convert. |
@@ -259,7 +259,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the contacts extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 
 ```yaml
 extractors:
@@ -273,7 +273,7 @@ extractors:
 | Key | Type | Description |
 |-----|------|-------------|
 | `enabled` | `bool` | Enable or disable the directory extractor. |
-| `poll_interval_minutes` | `int` | Interval between syncs in continuous mode. |
+| `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 
 ```yaml
 extractors:

@@ -80,12 +80,12 @@ Creates:
 
 - **Storage Account** (`StorageV2`, TLS 1.2, HTTPS-only, no public blob access)
 - **Blob Container** (for storing synced markdown vaults)
-- **Azure Container Registry** (Docker images for web + daemon)
+- **Azure Container Registry** (Docker image for web + worker)
 - **PostgreSQL Flexible Server** (v16, Burstable B1ms, 32GB)
 - **Key Vault** (RBAC-enabled, soft delete)
 - **App Service Plan** (Linux, B1)
 - **App Service** (Reflex admin UI, system-managed identity)
-- **Container Instance** (sync daemon, always restart)
+- **App Service** includes sync worker thread (no separate container needed)
 - **Log Analytics Workspace** (PerGB2018 pricing, 30d dev / 90d prod retention)
 - **Diagnostic Settings** (App Service + PostgreSQL logs and metrics → Log Analytics)
 
@@ -96,7 +96,7 @@ See `roadmap.md` Phase 5E for the full step-by-step checklist. Summary:
 1. Add prod redirect URI to Entra app registration (replaces, not appends)
 2. Create `prod` GitHub environment with separate secrets
 3. Tag and push: `git tag v0.3.0 && git push origin v0.3.0`
-4. Verify OAuth login, daemon logs, sync history, Log Analytics
+4. Verify OAuth login, worker logs, per-extractor status, Log Analytics
 
 ### Deploy: Development
 

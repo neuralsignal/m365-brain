@@ -147,7 +147,7 @@ Connect the sync daemon to the database so the UI shows real sync data.
 - `m365_extract/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record, write_health_file)
 - `TokenStoreProtocol` in `token_provider.py` — replaces deleted `TokenStore` import with Protocol
 - `TokenServiceAdapter` in `token_service.py` — bridges TokenService to TokenStoreProtocol for daemon
-- CLI `daemon` command — `m365-extract --config config.web.yaml daemon`
+- CLI `daemon` command — `m365-extract --config config.web.yaml daemon` (replaced by `worker` command in Phase 5G)
 - Per-user sync state: `state/{user_id}/sync_state.json`
 - SyncRecord written at start (running) and completion (completed/failed)
 - `seed_admin_config()` call at engine startup (idempotent)
@@ -158,6 +158,8 @@ Connect the sync daemon to the database so the UI shows real sync data.
 1. Per-user scheduling (interval override per user, stored in user preferences)
 2. Real-time sync progress via Reflex WebSocket state updates
 3. Sync history UI filtering and error details
+
+**Superseded:** The daemon architecture from Phase 5C was replaced in Phase 5G by an independent worker with per-(user, extractor) jobs.
 
 ### Phase 5D: Security + RBAC
 
@@ -201,6 +203,7 @@ Deploy the Reflex app to Azure App Service.
 - DB migrations: Alembic initialized via Reflex, initial schema migration, replaces `create_all()`
 - Simplification: base Dockerfile deleted, docker-compose consolidated with Azurite profile
 - Typed converters config: `ConvertersConfig` pydantic model with `slug_max_length`, `hash_length`
+- Unified Dockerfile: `Dockerfile.web` and `Dockerfile.daemon` consolidated into single `Dockerfile` with worker support
 
 **Remaining — Prod deployment checklist**:
 
@@ -228,11 +231,45 @@ Deploy the Reflex app to Azure App Service.
 
 4. **Post-deploy verification**:
    - OAuth login on `https://app-m365-admin-prod.azurewebsites.net`
-   - Daemon logs: `az container logs --name ci-m365-daemon-prod --resource-group rg-m365-extract-prod`
+   - App Service logs: `az webapp log tail --name app-m365-admin-prod --resource-group rg-m365-extract-prod` (no separate daemon container — worker runs as a thread within the App Service)
    - Sync history visible in dashboard
    - Log Analytics receiving data: `az monitor log-analytics query --workspace <id> --analytics-query "AppServiceConsoleLogs | take 5"`
 
 5. **DNS/custom domain**: Optional — `*.azurewebsites.net` works. Custom domain if needed later.
+
+### Phase 5G: Worker Refactor -- DONE
+
+Replaced the monolithic daemon thread with an independent sync worker.
+
+**Completed (2026-03-26)**:
+- `m365_extract/worker.py` — independent worker with per-(user, extractor) jobs via `ThreadPoolExecutor`
+- Each (user, extractor) pair runs as a separate job with its own token provider, storage, and sync state
+- PostgreSQL advisory locks prevent duplicate runs across worker instances
+- `ExtractorStatus` model replaces `SyncRecord` — single row per (user, extractor) showing latest status
+- `WorkerConfig` added to config schema (`max_concurrent_jobs`, `poll_interval_seconds`)
+- New CLI command: `m365-extract worker` — standalone worker process for multi-user scheduling
+- `start_worker_thread()` bridge for single-container Azure App Service deployment
+- Dashboard shows per-extractor status grid instead of sync history log
+- docker-compose updated with separate `worker` service
+- 12 new worker tests, 386 total tests passing
+
+**Deleted**:
+- `m365_extract/daemon.py` — replaced by `worker.py`
+- `m365_extract/continuous.py` — replaced by `worker` command
+- `m365_admin/daemon_runner.py` — replaced by `worker.start_worker_thread()`
+- `SyncRecord` model — replaced by `ExtractorStatus`
+- CLI `--continuous` flag — replaced by `worker` command
+
+**Architecture**:
+```
+Reflex App (UI only)     PostgreSQL (shared)     Worker Process
+- User OAuth          -> user, tokenrecord    <- m365-extract worker
+- Preferences         -> extractorpreference  <- Poll loop
+- Status grid         -> extractorstatus      <- ThreadPoolExecutor
+- Admin panel                                 <- Per (user, extractor) jobs
+```
+
+**Future path**: When extraction gets compute-heavy (OCR, ML models), replace `ThreadPoolExecutor` with Celery + Redis workers. The job interface (`run_single_extractor` with serializable args) is designed for this migration.
 
 ### Phase 5F: Graph Webhooks (deferred)
 
@@ -241,6 +278,8 @@ Polling is sufficient for current scale. Webhooks add complexity without proport
 1. Graph change notification subscriptions
 2. Webhook endpoint to receive push notifications
 3. Subscription renewal lifecycle
+
+The worker architecture (Phase 5G) provides the foundation — webhook notifications would trigger individual (user, extractor) jobs instead of the current polling approach.
 
 ---
 
@@ -280,7 +319,7 @@ Not part of the original roadmap. The dark factory loop (scan → triage → imp
 - CLAUDE.md, README.md, CHANGELOG.md, LICENSE
 - Config package split, shared helpers extraction, dead code removal
 - Path traversal protection, token cache hardening, CVE fix
-- Test count: 158 → 247 across 23 test files
+- Test count: 158 → 247 → 386 across 37 test files
 
 ---
 

@@ -83,15 +83,15 @@ Output:
 
 Your synced markdown files will appear in the configured storage location (default: `./vault/`).
 
-## Continuous Sync
+## Multi-User Worker
 
-Run extractors on their configured poll intervals:
+For multi-user deployments (web mode with database), run the sync worker:
 
 ```bash
-m365-extract --config config.yaml sync --continuous
+m365-extract --config config/base.yaml,config/auth.yaml,config/service/web.yaml worker
 ```
 
-Each extractor runs on its own interval (configured via `poll_interval_minutes`). The process runs in the foreground and can be stopped with `Ctrl+C`.
+The worker polls the database for enabled users and their extractor preferences, then runs each (user, extractor) pair as an independent job on its configured `poll_interval_minutes`. Press `Ctrl+C` to stop.
 
 ## Extractor Selection
 

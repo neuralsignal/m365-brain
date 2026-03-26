@@ -10,7 +10,7 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **Document conversion** -- convert Office documents (DOCX, PPTX, XLSX, PDF) to markdown via [obsidian-import](https://github.com/neuralsignal/obsidian-import)
 - **MSAL authentication** -- device code flow with automatic token caching and refresh
 - **Config-driven** -- single `config.yaml` controls all behavior; environment variable expansion for secrets
-- **CLI** -- `m365-extract auth login`, `sync --once`, `sync --continuous`
+- **CLI** -- `m365-extract auth login`, `sync --once`, `worker`
 - **Docker** -- Single Dockerfile (multi-stage, non-root); Docker Compose with Azurite profile for local dev
 - **Bicep IaC** -- Azure Storage Account deployment templates for dev and prod
 
@@ -23,8 +23,8 @@ m365-extract --config config.yaml auth login
 # Run all enabled extractors once
 m365-extract --config config.yaml sync --once
 
-# Run continuously on configured intervals
-m365-extract --config config.yaml sync --continuous
+# Run multi-user sync worker (per-extractor jobs)
+m365-extract --config config/base.yaml,config/auth.yaml,config/service/web.yaml worker
 ```
 
 ## Pipeline
