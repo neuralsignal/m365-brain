@@ -80,9 +80,9 @@ RUN cat > /etc/caddy/Caddyfile <<'CADDYEOF'
 CADDYEOF
 
 RUN useradd --create-home appuser && \
-    mkdir -p /app/state /app/.web/build /app/.states /data/caddy /config/caddy && \
+    mkdir -p /app/state /app/config/state /app/.web/build /app/.states /data/caddy /config/caddy && \
     cp -r /srv /app/.web/build/client && \
-    chown -R appuser:appuser /app/state /app/.web /app/.states /data/caddy /config/caddy /etc/caddy
+    chown -R appuser:appuser /app/state /app/config/state /app/.web /app/.states /data/caddy /config/caddy /etc/caddy
 
 USER appuser
 
