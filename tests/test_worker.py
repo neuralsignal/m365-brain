@@ -48,20 +48,20 @@ class TestGetEnabledUsers:
 
 
 class TestGetUserExtractors:
-    def test_returns_enabled(self, seeded_engine, full_config):
+    def test_returns_enabled(self, seeded_engine):
         with Session(seeded_engine) as session:
             session.add(ExtractorPreference(user_id="u-1", extractor_name="email", enabled=True))
             session.add(ExtractorPreference(user_id="u-1", extractor_name="calendar", enabled=False))
             session.add(ExtractorPreference(user_id="u-1", extractor_name="contacts", enabled=True))
             session.commit()
 
-        names = get_user_extractors(seeded_engine, "u-1", full_config)
+        names = get_user_extractors(seeded_engine, "u-1")
         assert sorted(names) == ["contacts", "email"]
 
-    def test_no_prefs_falls_back_to_config(self, seeded_engine, full_config):
-        names = get_user_extractors(seeded_engine, "u-1", full_config)
-        assert len(names) > 0
-        assert "email" in names
+    def test_no_prefs_returns_empty(self, seeded_engine):
+        """No ExtractorPreference rows = nothing enabled, no fallback."""
+        names = get_user_extractors(seeded_engine, "u-1")
+        assert names == []
 
 
 class TestUpsertExtractorStatus:

@@ -97,18 +97,14 @@ def get_enabled_users(engine) -> list[User]:
         return list(session.exec(statement).all())
 
 
-def get_user_extractors(engine, user_id: str, config: Config) -> list[str]:
-    """Return extractor names enabled for a user. Falls back to config-enabled extractors."""
+def get_user_extractors(engine, user_id: str) -> list[str]:
+    """Return extractor names explicitly enabled for a user. No fallback — no preferences = nothing runs."""
     with Session(engine) as session:
         statement = select(ExtractorPreference.extractor_name).where(
             ExtractorPreference.user_id == user_id,
             ExtractorPreference.enabled == True,  # noqa: E712
         )
-        names = list(session.exec(statement).all())
-
-    if not names:
-        names = [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
-    return names
+        return list(session.exec(statement).all())
 
 
 def get_due_jobs(engine, config: Config) -> list[tuple[User, str]]:
@@ -118,7 +114,7 @@ def get_due_jobs(engine, config: Config) -> list[tuple[User, str]]:
     now = datetime.now(tz=UTC)
 
     for user in users:
-        extractor_names = get_user_extractors(engine, user.user_id, config)
+        extractor_names = get_user_extractors(engine, user.user_id)
         for ext_name in extractor_names:
             if ext_name not in EXTRACTORS:
                 continue

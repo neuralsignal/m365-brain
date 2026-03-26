@@ -7,20 +7,15 @@ import json
 from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
-from m365_admin.config_loader import get_session
+from m365_admin.config_loader import get_config, get_session
 from m365_extract.models import ExtractorPreference
+from m365_extract.sync import EXTRACTORS
 
-# All 8 extractors in display order
-EXTRACTOR_NAMES = [
-    "email",
-    "calendar",
-    "teams_chats",
-    "teams_channels",
-    "onedrive",
-    "sharepoint",
-    "contacts",
-    "directory",
-]
+
+def _get_available_extractors() -> list[str]:
+    """Return extractor names that are enabled in config (available for users to toggle)."""
+    config = get_config()
+    return [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
 
 
 class PreferencesState(AuthState):
@@ -30,9 +25,14 @@ class PreferencesState(AuthState):
     preferences: list[dict] = []
 
     def load_preferences(self) -> None:
-        """Load extractor preferences for the current user from DB."""
+        """Load extractor preferences for the current user from DB.
+
+        Only shows extractors that are enabled in the deployment config.
+        """
         if not self.user_id:
             return
+
+        available = _get_available_extractors()
 
         session = get_session()
         try:
@@ -42,7 +42,7 @@ class PreferencesState(AuthState):
             existing_map = {p.extractor_name: p for p in existing}
 
             prefs = []
-            for name in EXTRACTOR_NAMES:
+            for name in available:
                 if name in existing_map:
                     p = existing_map[name]
                     prefs.append(
