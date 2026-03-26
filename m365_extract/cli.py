@@ -4,8 +4,8 @@ Commands:
   m365-extract auth login       — Authenticate via device code flow
   m365-extract auth status      — Show cached token info
   m365-extract sync --once      — Run all enabled extractors once
-  m365-extract sync --continuous — Run extractors on their configured intervals
   m365-extract sync --dry-run   — Validate auth + scopes without writing files
+  m365-extract worker           — Run the sync worker (multi-user, per-extractor jobs)
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from dotenv import find_dotenv, load_dotenv
 from m365_extract.auth.device_code import DeviceCodeAuth
 from m365_extract.auth.token_provider import make_cli_token_provider
 from m365_extract.config import load_config
-from m365_extract.continuous import run_continuous
 from m365_extract.dry_run import dry_run
 from m365_extract.logging_config import configure_logging
 from m365_extract.state import SyncState
@@ -111,16 +110,15 @@ def status(ctx: click.Context) -> None:
 
 @main.command()
 @click.option("--once", is_flag=True, help="Run all enabled extractors once and exit")
-@click.option("--continuous", is_flag=True, help="Run extractors on their configured intervals")
 @click.option(
     "--dry-run", "dry_run_flag", is_flag=True, help="Validate auth and probe each extractor without writing files"
 )
 @click.option("--extractors", "extractor_names", type=str, help="Comma-separated list of extractors to run")
 @click.pass_context
-def sync(ctx: click.Context, once: bool, continuous: bool, dry_run_flag: bool, extractor_names: str | None) -> None:
-    """Sync Microsoft 365 data."""
-    if not once and not continuous and not dry_run_flag:
-        raise click.UsageError("Specify --once, --continuous, or --dry-run")
+def sync(ctx: click.Context, once: bool, dry_run_flag: bool, extractor_names: str | None) -> None:
+    """Sync Microsoft 365 data (single user, CLI mode)."""
+    if not once and not dry_run_flag:
+        raise click.UsageError("Specify --once or --dry-run")
 
     config = load_config(ctx.obj["config_path"])
 
@@ -128,12 +126,9 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run_flag: bool, e
 
     token_provider = make_cli_token_provider(config.auth)
 
-    # Determine which extractors to run
     if extractor_names:
-        # Explicit --extractors flag: trust the user's choice, no config filtering
         names = [n.strip() for n in extractor_names.split(",")]
     else:
-        # No flag: run only extractors enabled in config
         names = [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
 
     if dry_run_flag:
@@ -143,7 +138,31 @@ def sync(ctx: click.Context, once: bool, continuous: bool, dry_run_flag: bool, e
     storage = create_storage(config.storage)
     sync_state = SyncState(config.state.state_file_path)
 
-    if once:
-        run_extractors(config, token_provider, storage, sync_state, names)
-    elif continuous:
-        run_continuous(config, token_provider, storage, sync_state, names)
+    run_extractors(config, token_provider, storage, sync_state, names)
+
+
+@main.command()
+@click.pass_context
+def worker(ctx: click.Context) -> None:
+    """Run the sync worker — processes (user, extractor) jobs from the database."""
+    from sqlmodel import create_engine
+
+    from m365_admin.services.token_service import TokenService, TokenServiceAdapter
+    from m365_extract.worker import worker_loop
+
+    config = load_config(ctx.obj["config_path"])
+    configure_logging(config.service.log_level, config.service.json_logs)
+
+    if config.web is None:
+        raise click.UsageError("worker requires a config with a 'web' section (db_url, fernet_key)")
+
+    engine = create_engine(config.web.db_url)
+
+    token_service = TokenService(fernet_key=config.web.fernet_key)
+    token_adapter = TokenServiceAdapter(token_service=token_service, engine=engine)
+
+    config_path = ctx.obj["config_path"]
+    first_config = config_path.split(",")[0].strip()
+    state_dir = str(Path(first_config).resolve().parent / "state")
+
+    worker_loop(config, engine, token_adapter, state_dir)

@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
 from m365_admin.config_loader import get_session
-from m365_extract.models import SyncRecord, User
+from m365_extract.models import ExtractorStatus, User
 
 
 class AdminState(AuthState):
@@ -21,8 +21,10 @@ class AdminState(AuthState):
             rows = session.exec(select(User).order_by(User.user_id)).all()
             self.users = []
             for u in rows:
-                latest_sync = session.exec(
-                    select(SyncRecord).where(SyncRecord.user_id == u.user_id).order_by(SyncRecord.started_at.desc())  # type: ignore[attr-defined]
+                latest_status = session.exec(
+                    select(ExtractorStatus)
+                    .where(ExtractorStatus.user_id == u.user_id)
+                    .order_by(ExtractorStatus.last_run_at.desc())  # type: ignore[union-attr]
                 ).first()
 
                 self.users.append(
@@ -32,8 +34,10 @@ class AdminState(AuthState):
                         "email": u.email,
                         "enabled": u.enabled,
                         "created_at": u.created_at.isoformat() if u.created_at else "",
-                        "last_sync": latest_sync.started_at.isoformat() if latest_sync else "Never",
-                        "last_sync_status": latest_sync.status if latest_sync else "",
+                        "last_sync": latest_status.last_run_at.isoformat()
+                        if latest_status and latest_status.last_run_at
+                        else "Never",
+                        "last_sync_status": latest_status.status if latest_status else "",
                     }
                 )
         finally:

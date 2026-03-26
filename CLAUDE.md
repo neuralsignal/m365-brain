@@ -8,9 +8,10 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 |------|---------|
 | `m365_extract/` | Source package |
 | `m365_extract/auth/` | MSAL device code + auth code flow, token provider |
-| `m365_extract/models.py` | SQLModel tables shared between admin UI and daemon |
-| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once/--continuous`) |
-| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + daemon) |
+| `m365_extract/models.py` | SQLModel tables shared between admin UI and worker |
+| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once`, `worker`) |
+| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + worker) |
+| `m365_extract/worker.py` | Sync worker — per-(user, extractor) jobs via ThreadPoolExecutor |
 | `m365_extract/config/` | Frozen dataclass config loader with env var expansion |
 | `m365_extract/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
 | `m365_extract/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
@@ -20,12 +21,11 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | `m365_extract/state.py` | Sync state persistence (delta tokens, atomic writes) |
 | `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
 | `m365_admin/` | Reflex admin dashboard (OAuth, preferences, admin, sync status) |
-| `m365_admin/daemon_runner.py` | Background daemon thread (started on Reflex app boot) |
 | `m365_admin/auth_state.py` | Entra OAuth2 flow via Reflex state |
 | `m365_admin/services/` | TokenService (Fernet), AdminService (config CRUD) |
 | `m365_admin/pages/` | Login, callback, dashboard, settings, admin pages |
 | `m365_admin/components/` | Sidebar, layout wrapper |
-| `tests/` | 369 tests (pytest + hypothesis) |
+| `tests/` | 386 tests (pytest + hypothesis) |
 | `infra/` | Bicep IaC (main.bicep, params.dev.bicepparam, params.prod.bicepparam) |
 | `scripts/` | Dev setup, deploy, teardown scripts |
 | `vault/` | Local sync output directory (emails, calendar, onedrive, sharepoint, teams-chats) |
@@ -252,21 +252,26 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 
 ### Architecture
 
-- **Models**: `m365_extract/models.py` — plain SQLModel tables shared between Reflex and the sync daemon
+- **Models**: `m365_extract/models.py` — plain SQLModel tables shared between Reflex and the sync worker
 - **Services**: `m365_admin/services/` — `TokenService` (Fernet encrypt/decrypt), `AdminService` (config CRUD, role check)
-- **State classes**: `auth_state.py` (OAuth), `preferences_state.py` (extractor toggles), `admin_state.py` (user mgmt + config), `sync_state.py` (read-only sync history)
+- **State classes**: `auth_state.py` (OAuth), `preferences_state.py` (extractor toggles), `admin_state.py` (user mgmt + config), `sync_state.py` (read-only per-extractor status)
 - **Pages**: `/login`, `/callback`, `/dashboard`, `/settings`, `/admin`
 - **Components**: `components/sidebar.py` (nav), `components/layout.py` (page wrapper)
-- **Database**: SQLModel with 5 tables (`user`, `tokenrecord`, `extractorpreference`, `adminconfig`, `syncrecord`). SQLite locally, PostgreSQL in production. Configured via `DATABASE_URL` env var.
+- **Database**: SQLModel with 5 tables (`user`, `tokenrecord`, `extractorpreference`, `adminconfig`, `extractorstatus`). SQLite locally, PostgreSQL in production. Configured via `DATABASE_URL` env var.
 - **Admin role**: Emails in `config.web.admin_emails` list. Checked via `AuthState.is_admin` computed var.
-- **Write boundaries**: UI writes users/tokens/preferences/config. Daemon writes sync records. Neither overwrites the other's data.
+- **Write boundaries**: UI writes users/tokens/preferences/config. Worker writes extractor status. Neither overwrites the other's data.
+- **Worker**: `m365_extract/worker.py` — runs per-(user, extractor) jobs via ThreadPoolExecutor. Can run as a separate process (`m365-extract worker`) or as a thread within the Reflex app. Communicates with the UI only through PostgreSQL.
 
-### Deleted modules (Phase 5B cleanup)
+### Deleted modules
 
-- `m365_extract/web/` — replaced by Reflex admin UI
-- `m365_extract/user_manager.py` — replaced by `User` SQLModel + `rx.session()`
-- `m365_extract/auth/token_store.py` — replaced by `TokenRecord` SQLModel + `TokenService`
-- CLI `serve` command — replaced by `pixi run -e admin dev`
+- `m365_extract/web/` — replaced by Reflex admin UI (Phase 5B)
+- `m365_extract/user_manager.py` — replaced by `User` SQLModel + `rx.session()` (Phase 5B)
+- `m365_extract/auth/token_store.py` — replaced by `TokenRecord` SQLModel + `TokenService` (Phase 5B)
+- CLI `serve` command — replaced by `pixi run -e admin dev` (Phase 5B)
+- `m365_extract/daemon.py` — replaced by `m365_extract/worker.py` (per-extractor jobs)
+- `m365_extract/continuous.py` — replaced by `worker` command
+- `m365_admin/daemon_runner.py` — replaced by `worker.start_worker_thread()`
+- `m365_extract/models.SyncRecord` — replaced by `ExtractorStatus` (per-extractor status)
 
 ### Gotchas
 

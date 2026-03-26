@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-# Skip test_admin/ and test_daemon.py when sqlmodel/reflex is not installed (default env)
+# Skip test_admin/ and test_worker.py when sqlmodel/reflex is not installed (default env)
 try:
     import reflex  # noqa: F401
 except ImportError:
-    collect_ignore_glob = ["test_admin/test_*.py", "test_daemon.py"]
+    collect_ignore_glob = ["test_admin/test_*.py", "test_worker.py"]
 
 from m365_extract.config import (
     AuthConfig,
@@ -33,6 +33,7 @@ from m365_extract.config import (
     TeamsChannelsExtractorConfig,
     TeamsChatsExtractorConfig,
     WebConfig,
+    WorkerConfig,
 )
 from m365_extract.storage.local import LocalBackend
 
@@ -213,6 +214,7 @@ def full_config(tmp_path):
             hash_length=6,
         ),
         web=None,
+        worker=WorkerConfig(max_concurrent_jobs=2, poll_interval_seconds=5),
     )
 
 
@@ -321,4 +323,5 @@ def full_web_config(tmp_path, web_config):
             hash_length=6,
         ),
         web=web_config,
+        worker=WorkerConfig(max_concurrent_jobs=2, poll_interval_seconds=5),
     )

@@ -38,6 +38,18 @@ services:
       DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
       M365_ADMIN_CONFIG: config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml,config/env/local.yaml
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: m365-extract --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml,config/env/local.yaml worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://m365admin:localdev@postgres:5432/m365extract
+
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
     profiles: ["azurite"]

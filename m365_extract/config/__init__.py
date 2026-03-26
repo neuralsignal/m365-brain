@@ -24,6 +24,7 @@ from m365_extract.config.schema import (
     TeamsChannelsExtractorConfig,
     TeamsChatsExtractorConfig,
     WebConfig,
+    WorkerConfig,
 )
 
 __all__ = [
@@ -49,5 +50,6 @@ __all__ = [
     "TeamsChannelsExtractorConfig",
     "TeamsChatsExtractorConfig",
     "WebConfig",
+    "WorkerConfig",
     "load_config",
 ]

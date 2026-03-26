@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import SyncRecord, User
+from m365_extract.models import ExtractorStatus, User
 
 pytestmark = pytest.mark.admin
 
@@ -42,33 +41,31 @@ class TestUserManagement:
         refreshed = session.get(User, "u-1")
         assert refreshed.enabled is False
 
-    def test_user_with_sync_record(self, session):
+    def test_user_with_extractor_status(self, session):
         session.add(User(user_id="u-1", display_name="Alice", email="a@b.com", enabled=True))
         session.commit()
 
         now = datetime.now(tz=UTC)
         session.add(
-            SyncRecord(
+            ExtractorStatus(
                 user_id="u-1",
-                started_at=now,
-                status="completed",
-                extractors_run=json.dumps(["email"]),
+                extractor_name="email",
+                status="success",
+                last_run_at=now,
                 items_synced=10,
             )
         )
         session.commit()
 
         latest = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
+            select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1").order_by(ExtractorStatus.last_run_at.desc())  # type: ignore[union-attr]
         ).first()
         assert latest is not None
-        assert latest.status == "completed"
+        assert latest.status == "success"
 
-    def test_user_without_sync_record(self, session):
+    def test_user_without_extractor_status(self, session):
         session.add(User(user_id="u-1", display_name="Alice", email="a@b.com", enabled=True))
         session.commit()
 
-        latest = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
-        ).first()
+        latest = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1")).first()
         assert latest is None

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import pytest
@@ -12,7 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from m365_extract.models import (
     ExtractorPreference,
-    SyncRecord,
+    ExtractorStatus,
     TokenRecord,
     User,
 )
@@ -128,24 +127,24 @@ class TestExtractorPreference:
         assert len(results) == 3
 
 
-class TestSyncRecord:
+class TestExtractorStatus:
     def test_create_and_read(self, session):
         session.add(User(user_id="u-1", display_name="A", email="a@b.com", enabled=True))
         session.commit()
 
         now = datetime.now(tz=UTC)
-        record = SyncRecord(
+        status = ExtractorStatus(
             user_id="u-1",
-            started_at=now,
-            status="completed",
-            extractors_run=json.dumps(["email", "calendar"]),
+            extractor_name="email",
+            status="success",
+            last_run_at=now,
             items_synced=42,
         )
-        session.add(record)
+        session.add(status)
         session.commit()
 
-        results = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-1")).all()
+        results = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1")).all()
         assert len(results) == 1
-        assert results[0].status == "completed"
+        assert results[0].status == "success"
         assert results[0].items_synced == 42
-        assert json.loads(results[0].extractors_run) == ["email", "calendar"]
+        assert results[0].extractor_name == "email"

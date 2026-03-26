@@ -1,14 +1,13 @@
-"""Tests for sync state logic (DB operations, not Reflex state)."""
+"""Tests for ExtractorStatus DB operations."""
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import SyncRecord, User
+from m365_extract.models import ExtractorStatus, User
 
 pytestmark = pytest.mark.admin
 
@@ -23,116 +22,72 @@ def session():
         yield s
 
 
-class TestSyncRecordQuery:
-    def test_latest_sync_for_user(self, session):
+class TestExtractorStatusQuery:
+    def test_status_for_user(self, session):
         now = datetime.now(tz=UTC)
         session.add(
-            SyncRecord(
+            ExtractorStatus(
                 user_id="u-1",
-                started_at=now,
-                status="completed",
-                extractors_run=json.dumps(["email"]),
+                extractor_name="email",
+                status="success",
+                last_run_at=now,
                 items_synced=10,
             )
         )
         session.commit()
 
-        latest = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
-        ).first()
-        assert latest is not None
-        assert latest.status == "completed"
-        assert latest.items_synced == 10
-
-    def test_no_syncs_returns_none(self, session):
-        latest = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
-        ).first()
-        assert latest is None
-
-    def test_multiple_syncs_returns_latest(self, session):
-        from datetime import timedelta
-
-        now = datetime.now(tz=UTC)
-        old = now - timedelta(hours=1)
-
-        session.add(
-            SyncRecord(
-                user_id="u-1",
-                started_at=old,
-                status="completed",
-                extractors_run=json.dumps(["email"]),
-                items_synced=5,
+        row = session.exec(
+            select(ExtractorStatus).where(
+                ExtractorStatus.user_id == "u-1",
+                ExtractorStatus.extractor_name == "email",
             )
+        ).first()
+        assert row is not None
+        assert row.status == "success"
+        assert row.items_synced == 10
+
+    def test_no_status_returns_none(self, session):
+        row = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1")).first()
+        assert row is None
+
+    def test_multiple_extractors(self, session):
+        now = datetime.now(tz=UTC)
+        session.add(
+            ExtractorStatus(user_id="u-1", extractor_name="email", status="success", last_run_at=now, items_synced=10)
         )
         session.add(
-            SyncRecord(
-                user_id="u-1",
-                started_at=now,
-                status="failed",
-                extractors_run=json.dumps(["calendar"]),
-                items_synced=0,
-                error_message="Connection timeout",
+            ExtractorStatus(
+                user_id="u-1", extractor_name="calendar", status="failed", last_run_at=now, error_message="timeout"
             )
         )
         session.commit()
 
-        latest = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc())
-        ).first()
-        assert latest.status == "failed"
-        assert latest.error_message == "Connection timeout"
-
-    def test_history_limit(self, session):
-        now = datetime.now(tz=UTC)
-        from datetime import timedelta
-
-        for i in range(25):
-            session.add(
-                SyncRecord(
-                    user_id="u-1",
-                    started_at=now - timedelta(hours=i),
-                    status="completed",
-                    items_synced=i,
-                )
-            )
-        session.commit()
-
-        records = session.exec(
-            select(SyncRecord).where(SyncRecord.user_id == "u-1").order_by(SyncRecord.started_at.desc()).limit(20)
+        rows = session.exec(
+            select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1").order_by(ExtractorStatus.extractor_name)
         ).all()
-        assert len(records) == 20
+        assert len(rows) == 2
+        assert rows[0].extractor_name == "calendar"
+        assert rows[0].status == "failed"
+        assert rows[1].extractor_name == "email"
+        assert rows[1].status == "success"
 
-    def test_sync_records_isolated_per_user(self, session):
+    def test_status_isolated_per_user(self, session):
         session.add(User(user_id="u-2", display_name="Bob", email="b@b.com", enabled=True))
         session.commit()
 
         now = datetime.now(tz=UTC)
-        session.add(SyncRecord(user_id="u-1", started_at=now, status="completed", items_synced=10))
-        session.add(SyncRecord(user_id="u-2", started_at=now, status="failed", items_synced=0))
-        session.commit()
-
-        u1_records = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-1")).all()
-        u2_records = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-2")).all()
-
-        assert len(u1_records) == 1
-        assert u1_records[0].status == "completed"
-        assert len(u2_records) == 1
-        assert u2_records[0].status == "failed"
-
-    def test_extractors_run_json_roundtrip(self, session):
-        now = datetime.now(tz=UTC)
-        extractors = ["email", "calendar", "teams_chats"]
         session.add(
-            SyncRecord(
-                user_id="u-1",
-                started_at=now,
-                status="completed",
-                extractors_run=json.dumps(extractors),
-                items_synced=42,
-            )
+            ExtractorStatus(user_id="u-1", extractor_name="email", status="success", last_run_at=now, items_synced=10)
+        )
+        session.add(
+            ExtractorStatus(user_id="u-2", extractor_name="email", status="failed", last_run_at=now, items_synced=0)
         )
         session.commit()
 
-        record = session.exec(select(SyncRecord).where(SyncRecord.user_id == "u-1")).first()
-        assert json.loads(record.extractors_run) == extractors
+        u1_rows = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1")).all()
+        u2_rows = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-2")).all()
+
+        assert len(u1_rows) == 1
+        assert u1_rows[0].status == "success"
+        assert len(u2_rows) == 1
+        assert u2_rows[0].status == "failed"

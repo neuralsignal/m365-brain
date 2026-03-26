@@ -1,9 +1,12 @@
-# Reflex admin UI + sync daemon — single-port production deployment.
-# The sync daemon runs as a background thread inside the Reflex process.
+# Reflex admin UI + sync worker — single-port production deployment.
+# The sync worker runs as a background thread inside the Reflex process (single-container)
+# or as a separate process via `m365-extract worker` (docker-compose / Container Apps).
 # Caddy serves static frontend and reverse-proxies to Reflex backend, all on one port.
 #
-# Build:  docker build -t m365-admin:latest .
-# Run:    docker run -p 8000:8000 --env-file .env m365-admin:latest
+# Build:   docker build -t m365-admin:latest .
+# Run web: docker run -p 8000:8000 --env-file .env m365-admin:latest
+# Run worker (separate): docker run --env-file .env m365-admin:latest \
+#            m365-extract --config ${M365_ADMIN_CONFIG} worker
 
 # --- Build stage: compile frontend ---
 FROM python:3.12 AS builder

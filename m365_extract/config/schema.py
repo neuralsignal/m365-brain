@@ -167,6 +167,12 @@ class WebConfig(BaseModel):
     admin_emails: list[str]
 
 
+class WorkerConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    max_concurrent_jobs: int
+    poll_interval_seconds: int
+
+
 class Config(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
     auth: AuthConfig
@@ -177,3 +183,4 @@ class Config(BaseModel):
     extractors: ExtractorsConfig
     converters: ConvertersConfig
     web: WebConfig | None = None
+    worker: WorkerConfig | None = None

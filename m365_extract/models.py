@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -42,14 +43,15 @@ class ExtractorPreference(SQLModel, table=True):
     settings_json: str = Field(default="{}")
 
 
-class SyncRecord(SQLModel, table=True):
-    """Sync run history — written by daemon, read by UI."""
+class ExtractorStatus(SQLModel, table=True):
+    """Per-(user, extractor) sync status. Single row per pair, upserted after each run."""
+
+    __table_args__ = (UniqueConstraint("user_id", "extractor_name"),)
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(foreign_key="user.user_id")
-    started_at: datetime
-    completed_at: datetime | None = None
-    status: str  # pending, running, completed, failed
-    extractors_run: str = Field(default="[]")  # JSON list
+    extractor_name: str
+    status: str  # idle, running, success, failed
+    last_run_at: datetime | None = None
     items_synced: int = Field(default=0)
     error_message: str | None = None
