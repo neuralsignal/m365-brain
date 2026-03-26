@@ -239,6 +239,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     siteConfig: {
       linuxFxVersion: 'DOCKER|${acr.properties.loginServer}/m365-admin:${webImageTag}'
       alwaysOn: true
+      webSocketsEnabled: true
       appSettings: [
         {
           name: 'DOCKER_REGISTRY_SERVER_URL'

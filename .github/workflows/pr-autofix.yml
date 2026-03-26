@@ -103,7 +103,7 @@ jobs:
 
       - name: Checkout PR branch
         if: steps.pr.outputs.skip != 'true' && steps.retry.outputs.exhausted != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0

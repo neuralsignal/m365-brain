@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "15786488723724556459"
+      "templateHash": "394822553759730349"
     }
   },
   "parameters": {
@@ -285,6 +285,7 @@
         "siteConfig": {
           "linuxFxVersion": "[format('DOCKER|{0}/m365-admin:{1}', reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer, parameters('webImageTag'))]",
           "alwaysOn": true,
+          "webSocketsEnabled": true,
           "appSettings": [
             {
               "name": "DOCKER_REGISTRY_SERVER_URL",
