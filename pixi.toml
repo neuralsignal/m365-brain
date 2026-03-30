@@ -19,6 +19,7 @@ markdownify = ">=0.14, <1"
 structlog = ">=25.0, <26"
 click = ">=8.1, <9"
 python-dotenv = ">=1.0, <2"
+cryptography = ">=46.0.6, <49"
 sqlmodel = ">=0.0.22,<1"
 m365-extract = {path = ".", editable = true, extras = ["azure"]}
 obsidian-import = {version = ">=1.0.1,<2", extras = ["markitdown"]}
