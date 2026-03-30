@@ -103,7 +103,7 @@ class TestRunExtractors:
 
         mock_mod.run.assert_called_once()
         call_args = mock_mod.run.call_args[0]
-        assert call_args[4] == config.converters
+        assert call_args[4] == config.converters.model_dump()
 
     def test_successful_run_saves_state(self, full_config):
         mock_mod = _make_mock_extractor(return_value=({"delta": "abc"}, 7))
