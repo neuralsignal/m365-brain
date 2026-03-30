@@ -32,6 +32,7 @@ dependencies = [
     "structlog>=25.0,<26",
     "click>=8.1,<9",
     "python-dotenv>=1.0,<2",
+    "cryptography>=46.0.6,<49",
 ]
 
 [project.optional-dependencies]
