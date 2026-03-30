@@ -8,6 +8,7 @@ version = "0.2.2" # x-release-please-version
 python = ">=3.12,<3.13"
 python-build = ">=1.4.0,<2"
 hatchling = ">=1.28.0,<2"
+setuptools = ">=78.1.1,<79"
 
 [pypi-dependencies]
 msal = ">=1.34, <2"
