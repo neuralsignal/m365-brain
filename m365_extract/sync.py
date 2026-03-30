@@ -63,7 +63,9 @@ def run_extractors(
 
             try:
                 if needs_converters:
-                    updated_state, count = module.run(client, storage, state, ext_config, config.converters)
+                    updated_state, count = module.run(
+                        client, storage, state, ext_config, config.converters.model_dump()
+                    )
                 else:
                     updated_state, count = module.run(client, storage, state, ext_config)
                 sync_state.save(ext_name, updated_state)
