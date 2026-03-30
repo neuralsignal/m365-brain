@@ -172,6 +172,43 @@ def run_single_extractor(
         release_advisory_lock(engine, user.user_id, extractor_name)
 
 
+def _run_cycle(
+    config: Config,
+    engine,
+    token_adapter: TokenStoreProtocol,
+    state_dir: str,
+    max_workers: int,
+) -> None:
+    """Execute one polling cycle: get due jobs, acquire locks, submit to pool, collect results."""
+    due = get_due_jobs(engine, config)
+    if not due:
+        return
+
+    log.info("worker.jobs_due", count=len(due))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {}
+        for user, ext_name in due:
+            if try_advisory_lock(engine, user.user_id, ext_name):
+                future = pool.submit(
+                    run_single_extractor,
+                    config,
+                    engine,
+                    token_adapter,
+                    user,
+                    ext_name,
+                    state_dir,
+                )
+                futures[future] = (user.user_id, ext_name)
+            else:
+                log.debug("worker.job_locked", user_id=user.user_id, extractor=ext_name)
+        for future in as_completed(futures):
+            uid, ext = futures[future]
+            try:
+                future.result()
+            except Exception:
+                log.exception("worker.job_unexpected_error", user_id=uid, extractor=ext)
+
+
 def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
     """Main worker loop. Polls for due jobs, submits to thread pool."""
     worker_config = config.worker
@@ -184,35 +221,8 @@ def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state
     try:
         while True:
             try:
-                due = get_due_jobs(engine, config)
-                if due:
-                    log.info("worker.jobs_due", count=len(due))
-                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                        futures = {}
-                        for user, ext_name in due:
-                            if try_advisory_lock(engine, user.user_id, ext_name):
-                                future = pool.submit(
-                                    run_single_extractor,
-                                    config,
-                                    engine,
-                                    token_adapter,
-                                    user,
-                                    ext_name,
-                                    state_dir,
-                                )
-                                futures[future] = (user.user_id, ext_name)
-                            else:
-                                log.debug("worker.job_locked", user_id=user.user_id, extractor=ext_name)
-                        for future in as_completed(futures):
-                            uid, ext = futures[future]
-                            try:
-                                future.result()
-                            except Exception:
-                                log.exception("worker.job_unexpected_error", user_id=uid, extractor=ext)
+                _run_cycle(config, engine, token_adapter, state_dir, max_workers)
             except Exception:
-                # Broad catch at loop level for worker resilience.
-                # Inner run_single_extractor catches domain errors.
-                # This guards against DB connectivity issues, unexpected bugs, etc.
                 log.exception("worker.cycle_failed")
 
             time.sleep(poll_interval)
@@ -243,29 +253,7 @@ def start_worker_thread(
 
         while not stop.is_set():
             try:
-                due = get_due_jobs(engine, config)
-                if due:
-                    log.info("worker.jobs_due", count=len(due))
-                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                        futures = {}
-                        for user, ext_name in due:
-                            if try_advisory_lock(engine, user.user_id, ext_name):
-                                future = pool.submit(
-                                    run_single_extractor,
-                                    config,
-                                    engine,
-                                    token_adapter,
-                                    user,
-                                    ext_name,
-                                    state_dir,
-                                )
-                                futures[future] = (user.user_id, ext_name)
-                        for future in as_completed(futures):
-                            uid, ext = futures[future]
-                            try:
-                                future.result()
-                            except Exception:
-                                log.exception("worker.job_unexpected_error", user_id=uid, extractor=ext)
+                _run_cycle(config, engine, token_adapter, state_dir, max_workers)
             except Exception:
                 log.exception("worker.cycle_failed")
             stop.wait(timeout=poll_interval)
