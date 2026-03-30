@@ -181,7 +181,7 @@ class TestOneDriveExtractor:
                         "lastModifiedDateTime": "2026-03-12T10:00:00Z",
                         "lastModifiedBy": {"user": {"displayName": "Alice"}},
                         "webUrl": "https://example.com/important.docx",
-                        "@microsoft.graph.downloadUrl": "https://download.example.com/eager",
+                        "@microsoft.graph.downloadUrl": "https://tenant.sharepoint.com/sites/docs/eager",
                     }
                 ],
                 "@odata.deltaLink": "https://delta?token=eager",
@@ -190,7 +190,7 @@ class TestOneDriveExtractor:
 
         # Mock the download
         httpx_mock.add_response(
-            url="https://download.example.com/eager",
+            url="https://tenant.sharepoint.com/sites/docs/eager",
             content=b"fake docx bytes",
         )
 
