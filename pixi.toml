@@ -6,6 +6,7 @@ version = "0.2.2" # x-release-please-version
 
 [dependencies]
 python = ">=3.12,<3.13"
+pip = ">=26.0,<28"
 python-build = ">=1.4.0,<2"
 hatchling = ">=1.28.0,<2"
 setuptools = ">=78.1.1,<79"
