@@ -41,6 +41,9 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 _ERROR_MESSAGE_MAX_LENGTH = 200
 
+# Upper bound for Retry-After wait to prevent server-side DoS via large values.
+_MAX_RETRY_AFTER_SECONDS = 300.0
+
 # Maps Graph error codes to actionable CLI hints.
 _ERROR_HINTS: dict[str, str] = {
     "Authorization_RequestDenied": (
@@ -203,7 +206,15 @@ class GraphClient:
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After", "5")
-                    wait = float(retry_after)
+                    try:
+                        wait = min(float(retry_after), _MAX_RETRY_AFTER_SECONDS)
+                    except (ValueError, TypeError):
+                        wait = self._backoff_base_seconds * (2**attempt)
+                        log.warning(
+                            "graph.invalid_retry_after",
+                            retry_after=retry_after,
+                            fallback_wait=wait,
+                        )
                 else:
                     wait = self._backoff_base_seconds * (2**attempt)
 
