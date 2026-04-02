@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Security
+
+* Pin `pyopenssl>=26.0,<27` to fix CVE-2026-27448 (TLS callback bypass) and CVE-2026-27459 (buffer overflow)
+
 ### Features
 
 * **worker refactor**: replaced monolithic daemon thread with independent sync worker (`m365_extract/worker.py`)
