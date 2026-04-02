@@ -48,6 +48,8 @@ class GraphConfig(BaseModel):
     backoff_base_ms: int
     timeout_seconds: int
     max_pages: int
+    max_retry_after_seconds: float
+    error_message_max_length: int
 
 
 class StateConfig(BaseModel):

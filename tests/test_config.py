@@ -38,6 +38,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -139,6 +141,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -229,6 +233,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -314,6 +320,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -403,6 +411,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -491,6 +501,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -578,6 +590,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -667,6 +681,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -754,6 +770,8 @@ class TestLoadConfig:
               backoff_base_ms: 2000
               timeout_seconds: 30
               max_pages: 100
+              max_retry_after_seconds: 300.0
+              error_message_max_length: 200
             state:
               state_file_path: "./state/sync_state.json"
             extractors:
@@ -837,6 +855,8 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       backoff_base_ms: 2000
       timeout_seconds: 30
       max_pages: 100
+      max_retry_after_seconds: 300.0
+      error_message_max_length: 200
     state:
       state_file_path: "./state/sync_state.json"
     extractors:

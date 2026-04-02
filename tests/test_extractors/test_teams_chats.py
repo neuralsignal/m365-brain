@@ -33,6 +33,8 @@ def graph_config():
         backoff_base_ms=10,
         timeout_seconds=5,
         max_pages=10,
+        max_retry_after_seconds=300.0,
+        error_message_max_length=200,
     )
 
 

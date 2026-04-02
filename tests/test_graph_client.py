@@ -25,6 +25,8 @@ def graph_config():
         backoff_base_ms=10,
         timeout_seconds=5,
         max_pages=10,
+        max_retry_after_seconds=300.0,
+        error_message_max_length=200,
     )
 
 
@@ -306,7 +308,7 @@ class TestExtractGraphError:
                 }
             }
         )
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "InvalidAuthenticationToken"
         assert message == "Access token has expired or is not yet valid."
 
@@ -319,19 +321,19 @@ class TestExtractGraphError:
                 }
             }
         )
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "BadRequest"
         assert len(message) <= 200
 
     def test_non_json_body_returns_unknown(self):
         body = "<html>Internal Server Error with user@company.com PII data</html>"
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "unknown"
         assert message == "non-json response"
 
     def test_missing_error_key_returns_unknown(self):
         body = json.dumps({"status": "failed", "detail": "user pii@example.com"})
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "unknown"
         assert message == "non-json response"
 
@@ -405,6 +407,41 @@ class TestDefensiveBehavior:
         )
         result = client.get("/me/messages")
         assert result == {"value": []}
+
+    def test_429_retry_after_capped_at_maximum(self, httpx_mock: HTTPXMock, client, monkeypatch):
+        """429 with excessively large Retry-After should be capped at _MAX_RETRY_AFTER_SECONDS."""
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("m365_extract.graph_client.time.sleep", lambda s: sleep_calls.append(s))
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            status_code=429,
+            headers={"Retry-After": "999999999"},
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={"value": []},
+        )
+        result = client.get("/me/messages")
+        assert result == {"value": []}
+        assert sleep_calls == [300.0]
+
+    def test_429_retry_after_non_numeric_falls_back_to_backoff(self, httpx_mock: HTTPXMock, client, monkeypatch):
+        """429 with non-numeric Retry-After (e.g. HTTP-date) should fall back to exponential backoff."""
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("m365_extract.graph_client.time.sleep", lambda s: sleep_calls.append(s))
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            status_code=429,
+            headers={"Retry-After": "Wed, 21 Oct 2025 07:28:00 GMT"},
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={"value": []},
+        )
+        result = client.get("/me/messages")
+        assert result == {"value": []}
+        # First attempt (attempt=0): backoff_base_ms=10 -> 0.01s * 2^0 = 0.01
+        assert sleep_calls == [0.01]
 
     def test_410_gone_raises_immediately(self, httpx_mock: HTTPXMock, client):
         """410 Gone (expired delta token) is not retryable — should raise immediately."""
