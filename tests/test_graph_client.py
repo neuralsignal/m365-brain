@@ -9,7 +9,6 @@ from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
 from m365_extract.graph_client import (
-    _MAX_RETRY_AFTER_SECONDS,
     GRAPH_BASE_URL,
     GraphApiError,
     GraphClient,
@@ -26,6 +25,8 @@ def graph_config():
         backoff_base_ms=10,
         timeout_seconds=5,
         max_pages=10,
+        max_retry_after_seconds=300.0,
+        error_message_max_length=200,
     )
 
 
@@ -307,7 +308,7 @@ class TestExtractGraphError:
                 }
             }
         )
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "InvalidAuthenticationToken"
         assert message == "Access token has expired or is not yet valid."
 
@@ -320,19 +321,19 @@ class TestExtractGraphError:
                 }
             }
         )
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "BadRequest"
         assert len(message) <= 200
 
     def test_non_json_body_returns_unknown(self):
         body = "<html>Internal Server Error with user@company.com PII data</html>"
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "unknown"
         assert message == "non-json response"
 
     def test_missing_error_key_returns_unknown(self):
         body = json.dumps({"status": "failed", "detail": "user pii@example.com"})
-        code, message = _extract_graph_error(body)
+        code, message = _extract_graph_error(body, 200)
         assert code == "unknown"
         assert message == "non-json response"
 
@@ -422,7 +423,7 @@ class TestDefensiveBehavior:
         )
         result = client.get("/me/messages")
         assert result == {"value": []}
-        assert sleep_calls == [_MAX_RETRY_AFTER_SECONDS]
+        assert sleep_calls == [300.0]
 
     def test_429_retry_after_non_numeric_falls_back_to_backoff(self, httpx_mock: HTTPXMock, client, monkeypatch):
         """429 with non-numeric Retry-After (e.g. HTTP-date) should fall back to exponential backoff."""

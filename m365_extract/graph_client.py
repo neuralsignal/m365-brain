@@ -39,11 +39,6 @@ class GraphApiError(Exception):
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
-_ERROR_MESSAGE_MAX_LENGTH = 200
-
-# Upper bound for Retry-After wait to prevent server-side DoS via large values.
-_MAX_RETRY_AFTER_SECONDS = 300.0
-
 # Maps Graph error codes to actionable CLI hints.
 _ERROR_HINTS: dict[str, str] = {
     "Authorization_RequestDenied": (
@@ -68,21 +63,21 @@ _ERROR_HINTS: dict[str, str] = {
 }
 
 
-def _extract_graph_error(body: str) -> tuple[str, str]:
+def _extract_graph_error(body: str, max_message_length: int) -> tuple[str, str]:
     """Extract error code and message from a Graph API error response.
 
     Parses the standard ``{"error": {"code": "...", "message": "..."}}``
     envelope. Returns ``("unknown", "non-json response")`` if the body
     is not valid JSON or lacks the expected structure.
 
-    The message is truncated to ``_ERROR_MESSAGE_MAX_LENGTH`` characters
+    The message is truncated to ``max_message_length`` characters
     to prevent PII leakage through verbose error descriptions.
     """
     try:
         data = json.loads(body)
         error = data["error"]
         code = error["code"]
-        message = error["message"][:_ERROR_MESSAGE_MAX_LENGTH]
+        message = error["message"][:max_message_length]
         return code, message
     except (json.JSONDecodeError, KeyError, TypeError):
         return "unknown", "non-json response"
@@ -122,6 +117,8 @@ class GraphClient:
         self._max_retries = graph_config.max_retries
         self._backoff_base_seconds = graph_config.backoff_base_ms / 1000.0
         self._max_pages = graph_config.max_pages
+        self._max_retry_after_seconds = graph_config.max_retry_after_seconds
+        self._error_message_max_length = graph_config.error_message_max_length
         self._client = httpx.Client(
             base_url=GRAPH_BASE_URL,
             timeout=graph_config.timeout_seconds,
@@ -185,7 +182,7 @@ class GraphClient:
                 if attempt == 0:
                     log.info("graph.token_expired, refreshing")
                     continue
-                error_code, error_message = _extract_graph_error(response.text)
+                error_code, error_message = _extract_graph_error(response.text, self._error_message_max_length)
                 log.error(
                     "graph.401_after_retry",
                     path=log_ref,
@@ -196,7 +193,7 @@ class GraphClient:
 
             if response.status_code in RETRYABLE_STATUS_CODES:
                 if attempt == self._max_retries:
-                    error_code, error_message = _extract_graph_error(response.text)
+                    error_code, error_message = _extract_graph_error(response.text, self._error_message_max_length)
                     log.error(
                         "graph.max_retries_exceeded",
                         status=response.status_code,
@@ -207,7 +204,7 @@ class GraphClient:
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After", "5")
                     try:
-                        wait = min(float(retry_after), _MAX_RETRY_AFTER_SECONDS)
+                        wait = min(float(retry_after), self._max_retry_after_seconds)
                     except (ValueError, TypeError):
                         wait = self._backoff_base_seconds * (2**attempt)
                         log.warning(
@@ -227,7 +224,7 @@ class GraphClient:
                 time.sleep(wait)
                 continue
 
-            error_code, error_message = _extract_graph_error(response.text)
+            error_code, error_message = _extract_graph_error(response.text, self._error_message_max_length)
             log.error(
                 "graph.request_failed",
                 status=response.status_code,
