@@ -237,7 +237,12 @@ class GraphClient:
         msg = f"Graph API request failed after {self._max_retries} retries: {log_ref}"
         raise GraphApiError(msg)
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> dict:
+    @property
+    def max_pages(self) -> int:
+        """Return the configured maximum number of pages for paginated requests."""
+        return self._max_pages
+
+    def get(self, path: str, params: dict[str, Any] | None) -> dict:
         """Execute a GET request against Graph API. Returns the JSON response."""
         return self._execute_with_retry(
             url=path,
@@ -269,8 +274,8 @@ class GraphClient:
     def get_paginated(
         self,
         path: str,
-        params: dict[str, Any] | None = None,
-        max_pages: int | None = None,
+        params: dict[str, Any] | None,
+        max_pages: int,
     ) -> Iterator[dict]:
         """Iterate over paginated Graph API results.
 
@@ -280,7 +285,7 @@ class GraphClient:
         """
         url = path
         page = 0
-        limit = max_pages if max_pages is not None else self._max_pages
+        limit = max_pages
 
         while url and page < limit:
             data = self.get(url, params=params if page == 0 else None)
@@ -301,8 +306,8 @@ class GraphClient:
         self,
         path: str,
         delta_link: str | None,
-        params: dict[str, Any] | None = None,
-        max_pages: int | None = None,
+        params: dict[str, Any] | None,
+        max_pages: int,
     ) -> tuple[list[dict], str | None]:
         """Execute a delta query. Returns (items, new_delta_link).
 
@@ -310,7 +315,7 @@ class GraphClient:
         """
         url = delta_link if delta_link else path
         page = 0
-        limit = max_pages if max_pages is not None else self._max_pages
+        limit = max_pages
         items: list[dict] = []
         new_delta_link: str | None = None
 

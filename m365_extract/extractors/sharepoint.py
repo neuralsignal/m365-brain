@@ -41,7 +41,7 @@ def run(
     Returns (updated_state, items_written).
     """
     # Discover followed sites
-    sites = list(client.get_paginated("/me/followedSites", params={"$top": "100"}))
+    sites = list(client.get_paginated("/me/followedSites", params={"$top": "100"}, max_pages=client.max_pages))
     log.info("sharepoint.fetched_sites", count=len(sites))
 
     written = 0
@@ -55,6 +55,7 @@ def run(
                 client.get_paginated(
                     f"/sites/{site_id}/drives",
                     params={"$top": "100"},
+                    max_pages=client.max_pages,
                 )
             )
         except GraphApiError as exc:
@@ -106,7 +107,7 @@ def _sync_drive(
     }
 
     try:
-        items, new_delta_link = client.get_delta(path, delta_link, params=params)
+        items, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
     except GraphApiError as exc:
         log.warning(
             "sharepoint.delta_failed",

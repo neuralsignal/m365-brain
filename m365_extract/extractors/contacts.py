@@ -71,7 +71,9 @@ def _sync_contact_folders(
     max_items: int,
 ) -> int:
     """Sync contacts from all contact sub-folders."""
-    folders = list(client.get_paginated("/me/contactFolders", params={"$select": "id,displayName"}))
+    folders = list(
+        client.get_paginated("/me/contactFolders", params={"$select": "id,displayName"}, max_pages=client.max_pages)
+    )
     written = 0
 
     for folder in folders:
@@ -108,7 +110,7 @@ def _sync_contacts(
     """Sync contacts from a single delta endpoint. Returns (items_written, new_delta_link)."""
     # Contacts delta endpoint rejects $select, $top, $filter, etc.
     # Only pass params on non-delta (initial) requests via get_paginated fallback.
-    contacts, new_delta_link = client.get_delta(path, delta_link)
+    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=client.max_pages)
 
     written = 0
     for contact in contacts[:max_items]:

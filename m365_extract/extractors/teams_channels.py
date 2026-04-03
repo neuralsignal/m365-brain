@@ -34,7 +34,7 @@ def run(
     Returns (updated_state, items_written).
     """
     # Discover teams the user is a member of
-    teams = list(client.get_paginated("/me/joinedTeams"))
+    teams = list(client.get_paginated("/me/joinedTeams", params=None, max_pages=client.max_pages))
     log.info("teams_channels.fetched_teams", count=len(teams))
 
     written = 0
@@ -46,6 +46,7 @@ def run(
             client.get_paginated(
                 f"/teams/{team_id}/channels",
                 params={"$top": "50"},
+                max_pages=client.max_pages,
             )
         )
 
@@ -80,6 +81,7 @@ def _process_channel(
             f"/teams/{team_id}/channels/{channel_id}/messages/delta",
             delta_link,
             params={"$top": "50"},
+            max_pages=client.max_pages,
         )
     except GraphApiError as exc:
         log.warning(

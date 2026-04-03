@@ -46,7 +46,7 @@ def run(
         "$select": "id,name,size,file,folder,parentReference,lastModifiedDateTime,lastModifiedBy,webUrl,@microsoft.graph.downloadUrl"
     }
 
-    items, new_delta_link = client.get_delta(path, delta_link, params=params)
+    items, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 
     if new_delta_link:
         state["delta_link"] = new_delta_link
