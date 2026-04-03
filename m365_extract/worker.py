@@ -32,6 +32,10 @@ from m365_extract.sync import EXTRACTORS, run_extractors
 
 log = structlog.get_logger()
 
+# Exceptions that worker jobs are known to raise.
+# Used in catch blocks to distinguish expected failures from unexpected ones.
+_KNOWN_ERRORS = (GraphApiError, ExtractorError, ConfigError, TokenRefreshError)
+
 
 def _lock_key(user_id: str, extractor_name: str) -> int:
     """Derive a stable int64 key for PostgreSQL advisory locks."""
@@ -205,8 +209,14 @@ def _run_cycle(
             uid, ext = futures[future]
             try:
                 future.result()
+            except _KNOWN_ERRORS:
+                # run_single_extractor handles these internally; reaching here
+                # means the finally block or another path re-raised.
+                log.error("worker.job_error", user_id=uid, extractor=ext, exc_info=True)
             except Exception:
-                log.exception("worker.job_unexpected_error", user_id=uid, extractor=ext)
+                # Safety net: prevent one unhandled thread-pool error from
+                # aborting result collection for remaining futures.
+                log.critical("worker.job_unhandled_error", user_id=uid, extractor=ext, exc_info=True)
 
 
 def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
@@ -222,8 +232,12 @@ def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state
         while True:
             try:
                 _run_cycle(config, engine, token_adapter, state_dir, max_workers)
+            except _KNOWN_ERRORS:
+                log.error("worker.cycle_failed", exc_info=True)
             except Exception:
-                log.exception("worker.cycle_failed")
+                # Daemon resilience: log and continue so a single unexpected
+                # failure (e.g. transient DB error) does not kill the worker.
+                log.critical("worker.cycle_unhandled_error", exc_info=True)
 
             time.sleep(poll_interval)
     except KeyboardInterrupt:
@@ -254,8 +268,12 @@ def start_worker_thread(
         while not stop.is_set():
             try:
                 _run_cycle(config, engine, token_adapter, state_dir, max_workers)
+            except _KNOWN_ERRORS:
+                log.error("worker.cycle_failed", exc_info=True)
             except Exception:
-                log.exception("worker.cycle_failed")
+                # Daemon resilience: log and continue so a single unexpected
+                # failure (e.g. transient DB error) does not kill the worker.
+                log.critical("worker.cycle_unhandled_error", exc_info=True)
             stop.wait(timeout=poll_interval)
 
         log.info("worker.thread_stopped")
