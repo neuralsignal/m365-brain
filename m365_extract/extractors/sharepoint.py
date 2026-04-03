@@ -7,12 +7,14 @@ Requires Sites.Read.All permission.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
 
 from m365_extract.config import SharePointExtractorConfig
 from m365_extract.extractors._file_helpers import (
+    FileProcessingConfig,
     build_storage_path,
     extract_parent_path,
     handle_removed_item,
@@ -24,6 +26,17 @@ from m365_extract.markdown_writer import slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
+
+
+@dataclass(frozen=True)
+class SiteDriveRef:
+    """Identifies a specific drive within a SharePoint site."""
+
+    site_id: str
+    site_name: str
+    drive_id: str
+    drive_name: str
+
 
 name = "sharepoint"
 required_scopes = ["Sites.Read.All"]
@@ -44,6 +57,13 @@ def run(
     sites = list(client.get_paginated("/me/followedSites", params={"$top": "100"}))
     log.info("sharepoint.fetched_sites", count=len(sites))
 
+    file_config = FileProcessingConfig(
+        eager_patterns=config.eager_convert_patterns,
+        convertible_extensions=config.convertible_extensions,
+        max_file_size_mb=config.max_file_size_mb,
+        converters_config=converters_config,
+    )
+
     written = 0
     for site in sites:
         site_id = site.get("id", "")
@@ -62,19 +82,19 @@ def run(
             continue
 
         for drive in drives:
-            drive_id = drive.get("id", "")
-            drive_name = drive.get("name", "Documents")
+            drive_ref = SiteDriveRef(
+                site_id=site_id,
+                site_name=site_name,
+                drive_id=drive.get("id", ""),
+                drive_name=drive.get("name", "Documents"),
+            )
 
             count = _sync_drive(
                 client=client,
                 storage=storage,
                 state=state,
-                config=config,
-                converters_config=converters_config,
-                site_id=site_id,
-                site_name=site_name,
-                drive_id=drive_id,
-                drive_name=drive_name,
+                drive_ref=drive_ref,
+                file_config=file_config,
             )
             written += count
 
@@ -87,20 +107,16 @@ def _sync_drive(
     client: GraphClient,
     storage: StorageBackend,
     state: dict,
-    config: SharePointExtractorConfig,
-    converters_config: dict,
-    site_id: str,
-    site_name: str,
-    drive_id: str,
-    drive_name: str,
+    drive_ref: SiteDriveRef,
+    file_config: FileProcessingConfig,
 ) -> int:
     """Sync a single SharePoint drive using delta queries. Returns items written."""
-    delta_key = f"delta_{site_id}_{drive_id}"
-    file_paths_key = f"file_paths_{site_id}_{drive_id}"
+    delta_key = f"delta_{drive_ref.site_id}_{drive_ref.drive_id}"
+    file_paths_key = f"file_paths_{drive_ref.site_id}_{drive_ref.drive_id}"
     delta_link = state.get(delta_key)
     file_paths: dict[str, str] = state.get(file_paths_key, {})
 
-    path = f"/drives/{drive_id}/root/delta"
+    path = f"/drives/{drive_ref.drive_id}/root/delta"
     params = {
         "$select": "id,name,size,file,folder,parentReference,lastModifiedDateTime,lastModifiedBy,webUrl,@microsoft.graph.downloadUrl"
     }
@@ -110,8 +126,8 @@ def _sync_drive(
     except GraphApiError as exc:
         log.warning(
             "sharepoint.delta_failed",
-            site=site_name,
-            drive=drive_name,
+            site=drive_ref.site_name,
+            drive=drive_ref.drive_name,
             error=str(exc),
         )
         return 0
@@ -119,8 +135,8 @@ def _sync_drive(
     if new_delta_link:
         state[delta_key] = new_delta_link
 
-    site_slug = slugify(site_name, 80)
-    drive_slug = slugify(drive_name, 80)
+    site_slug = slugify(drive_ref.site_name, 80)
+    drive_slug = slugify(drive_ref.drive_name, 80)
     prefix = f"sharepoint/{site_slug}/{drive_slug}"
 
     written = 0
@@ -166,8 +182,8 @@ def _sync_drive(
             modified_by=modified_by,
             parent_path=parent_path,
             web_url=web_url,
-            site_name=site_name,
-            drive_name=drive_name,
+            site_name=drive_ref.site_name,
+            drive_name=drive_ref.drive_name,
             conversion_status="pending",
         )
 
@@ -177,10 +193,7 @@ def _sync_drive(
             item=item,
             storage_path=storage_path,
             frontmatter=fm,
-            eager_patterns=config.eager_convert_patterns,
-            convertible_extensions=config.convertible_extensions,
-            max_file_size_mb=config.max_file_size_mb,
-            converters_config=converters_config,
+            file_config=file_config,
         ):
             written += 1
 

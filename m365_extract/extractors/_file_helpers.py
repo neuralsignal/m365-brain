@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,16 @@ from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
+
+
+@dataclass(frozen=True)
+class FileProcessingConfig:
+    """Groups file-processing parameters passed together through extractors."""
+
+    eager_patterns: list[str]
+    convertible_extensions: list[str]
+    max_file_size_mb: int
+    converters_config: dict
 
 
 def extract_parent_path(parent_reference: dict) -> str:
@@ -65,10 +76,7 @@ def process_drive_item(
     item: dict,
     storage_path: str,
     frontmatter: dict,
-    eager_patterns: list[str],
-    convertible_extensions: list[str],
-    max_file_size_mb: int,
-    converters_config: dict,
+    file_config: FileProcessingConfig,
 ) -> bool:
     """Process a single drive item: download, convert if eager, or write a stub.
 
@@ -77,22 +85,24 @@ def process_drive_item(
     file_name = item.get("name", "")
     extension = ("." + file_name.rsplit(".", 1)[-1].lower()) if "." in file_name else ""
 
-    is_convertible = extension in convertible_extensions
-    is_eager = should_eager_convert(file_name, eager_patterns)
+    is_convertible = extension in file_config.convertible_extensions
+    is_eager = should_eager_convert(file_name, file_config.eager_patterns)
 
     if is_convertible and is_eager:
         # Pre-download size check using Graph metadata
         file_size_bytes = item.get("size", 0)
         file_size_mb = file_size_bytes / (1024 * 1024)
-        if file_size_mb > max_file_size_mb:
+        if file_size_mb > file_config.max_file_size_mb:
             log.warning(
                 "file_helpers.file_too_large",
                 file=file_name,
                 size_mb=round(file_size_mb, 1),
-                limit_mb=max_file_size_mb,
+                limit_mb=file_config.max_file_size_mb,
             )
             frontmatter["conversion_status"] = "error_too_large"
-            body = f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {max_file_size_mb} MB."
+            body = (
+                f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {file_config.max_file_size_mb} MB."
+            )
             content = dumps_markdown(frontmatter, body)
             storage.write_file(storage_path, content)
             return True
@@ -141,7 +151,7 @@ def process_drive_item(
         try:
             markdown_text = convert_document(
                 file_path=tmp_path,
-                converters_config=converters_config,
+                converters_config=file_config.converters_config,
             )
             frontmatter["conversion_status"] = "converted"
             body = f"# {file_name}\n\n{markdown_text}"
