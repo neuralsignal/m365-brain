@@ -12,6 +12,7 @@ import structlog
 
 from m365_extract.config import OneDriveExtractorConfig
 from m365_extract.extractors._file_helpers import (
+    FileProcessingConfig,
     build_storage_path,
     extract_parent_path,
     handle_removed_item,
@@ -38,6 +39,13 @@ def run(
 
     Returns (updated_state, items_written).
     """
+    file_config = FileProcessingConfig(
+        eager_patterns=config.eager_convert_patterns,
+        convertible_extensions=config.convertible_extensions,
+        max_file_size_mb=config.max_file_size_mb,
+        converters_config=converters_config,
+    )
+
     delta_link = state.get("delta_link")
     file_paths: dict[str, str] = state.get("file_paths", {})
 
@@ -103,10 +111,7 @@ def run(
             item=item,
             storage_path=storage_path,
             frontmatter=fm,
-            eager_patterns=config.eager_convert_patterns,
-            convertible_extensions=config.convertible_extensions,
-            max_file_size_mb=config.max_file_size_mb,
-            converters_config=converters_config,
+            file_config=file_config,
         ):
             written += 1
 

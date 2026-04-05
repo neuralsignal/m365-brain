@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from m365_extract.extractors._file_helpers import (
+    FileProcessingConfig,
     build_storage_path,
     extract_parent_path,
     handle_removed_item,
@@ -131,10 +132,12 @@ class TestProcessDriveItem:
             item=item,
             storage_path="onedrive/doc.md",
             frontmatter=fm,
-            eager_patterns=[],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=[],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
@@ -156,10 +159,12 @@ class TestProcessDriveItem:
             item=item,
             storage_path="onedrive/image.md",
             frontmatter=fm,
-            eager_patterns=["*.png"],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=["*.png"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
@@ -189,10 +194,12 @@ class TestProcessDriveItem:
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
             )
 
         assert result is True
@@ -216,10 +223,12 @@ class TestProcessDriveItem:
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            eager_patterns=["*.docx"],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
@@ -243,10 +252,12 @@ class TestProcessDriveItem:
             item=item,
             storage_path="onedrive/huge.md",
             frontmatter=fm,
-            eager_patterns=["*.docx"],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
@@ -281,10 +292,12 @@ class TestProcessDriveItem:
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            eager_patterns=["*.docx"],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
