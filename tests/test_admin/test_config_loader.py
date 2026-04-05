@@ -44,6 +44,8 @@ def _write_config_yaml(tmp_path, full_web_config):
             "backoff_base_ms": 2000,
             "timeout_seconds": 30,
             "max_pages": 100,
+            "max_retry_after_seconds": 300.0,
+            "error_message_max_length": 200,
         },
         "state": {"state_file_path": str(tmp_path / "state.json")},
         "extractors": {
@@ -212,6 +214,8 @@ class TestGetConfig:
                 "backoff_base_ms": 2000,
                 "timeout_seconds": 30,
                 "max_pages": 100,
+                "max_retry_after_seconds": 300.0,
+                "error_message_max_length": 200,
             },
             "state": {"state_file_path": str(tmp_path / "state.json")},
             "extractors": {
