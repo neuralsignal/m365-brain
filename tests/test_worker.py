@@ -357,7 +357,7 @@ class TestWorkerLoop:
             worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
 
     def test_cycle_exception_resilience(self, full_config, engine):
-        """worker_loop survives one cycle exception and continues."""
+        """worker_loop survives one unexpected exception and continues."""
         call_count = 0
 
         def fake_get_due_jobs(eng, cfg):
@@ -365,6 +365,24 @@ class TestWorkerLoop:
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("db gone")
+            raise KeyboardInterrupt
+
+        with (
+            patch("m365_extract.worker.get_due_jobs", side_effect=fake_get_due_jobs),
+            patch("m365_extract.worker.time.sleep"),
+        ):
+            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+        assert call_count == 2
+
+    def test_cycle_known_error_resilience(self, full_config, engine):
+        """worker_loop survives a known error and continues."""
+        call_count = 0
+
+        def fake_get_due_jobs(eng, cfg):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise GraphApiError("rate limited")
             raise KeyboardInterrupt
 
         with (
