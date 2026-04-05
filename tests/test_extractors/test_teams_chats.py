@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
 from m365_extract.extractors import teams_chats
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
+from m365_extract.markdown_writer import dumps_markdown
 from m365_extract.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -391,3 +393,79 @@ class TestTeamsChatsExtractor:
         assert count == 0
         assert storage.list_files("teams-chats") == []
         client.close()
+
+
+class TestProcessChat:
+    """Tests for _process_chat covering missed coverage paths."""
+
+    @pytest.fixture()
+    def chat(self):
+        return {
+            "id": "chat-1",
+            "chatType": "oneOnOne",
+            "topic": None,
+            "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
+        }
+
+    def test_returns_false_on_graph_api_error(self, chat):
+        """When get_paginated raises GraphApiError, _process_chat returns False."""
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.get_paginated.side_effect = GraphApiError("403 Forbidden")
+        mock_storage = MagicMock()
+
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+
+        assert result is False
+        mock_storage.write_file.assert_not_called()
+
+    def test_skips_write_when_last_message_unchanged(self, chat):
+        """When existing file has same last_message_time, returns False without writing."""
+        last_msg_time = "2026-03-12T10:00:00Z"
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.get_paginated.return_value = iter(
+            [
+                {
+                    "id": "msg-1",
+                    "messageType": "message",
+                    "createdDateTime": last_msg_time,
+                    "from": {"user": {"displayName": "Alice", "id": "u1"}},
+                    "body": {"contentType": "text", "content": "Hello"},
+                },
+            ]
+        )
+
+        existing_fm = {"last_message_time": last_msg_time}
+        existing_content = dumps_markdown(existing_fm, "# old body")
+
+        mock_storage = MagicMock()
+        mock_storage.file_exists.return_value = True
+        mock_storage.read_file.return_value = existing_content
+
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+
+        assert result is False
+        mock_storage.write_file.assert_not_called()
+
+    def test_continues_write_on_existing_file_parse_failure(self, chat):
+        """When loads_markdown raises ValueError, logs warning and writes the file."""
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.get_paginated.return_value = iter(
+            [
+                {
+                    "id": "msg-1",
+                    "messageType": "message",
+                    "createdDateTime": "2026-03-12T10:00:00Z",
+                    "from": {"user": {"displayName": "Alice", "id": "u1"}},
+                    "body": {"contentType": "text", "content": "Hello"},
+                },
+            ]
+        )
+
+        mock_storage = MagicMock()
+        mock_storage.file_exists.return_value = True
+        mock_storage.read_file.side_effect = ValueError("invalid frontmatter")
+
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+
+        assert result is True
+        mock_storage.write_file.assert_called_once()
