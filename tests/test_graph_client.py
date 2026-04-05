@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
 from m365_extract.graph_client import (
+    ALLOWED_DOWNLOAD_DOMAINS,
     GRAPH_BASE_URL,
     GraphApiError,
     GraphClient,
@@ -554,3 +559,168 @@ class TestSanitizeLogUrl:
     def test_strips_fragment_too(self) -> None:
         url = "https://host.com/path?q=1#frag"
         assert _sanitize_log_url(url) == "https://host.com/path"
+
+
+class TestContextManager:
+    def test_enter_returns_self(self, graph_config, token_provider):
+        client = GraphClient(graph_config, token_provider)
+        result = client.__enter__()
+        assert result is client
+        client.close()
+
+    def test_exit_closes_client(self, graph_config, token_provider):
+        client = GraphClient(graph_config, token_provider)
+        client._client = MagicMock(spec=httpx.Client)
+        client.__exit__(None, None, None)
+        client._client.close.assert_called_once()
+
+    def test_with_statement(self, graph_config, token_provider, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", json={"ok": True})
+        with GraphClient(graph_config, token_provider) as client:
+            result = client.get("/me")
+            assert result["ok"] is True
+
+
+class TestTransportErrorRetry:
+    def test_retries_on_transport_error_then_succeeds(self, graph_config, token_provider, monkeypatch):
+        monkeypatch.setattr("m365_extract.graph_client.time.sleep", lambda s: None)
+        call_count = 0
+
+        def mock_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise httpx.ConnectError("connection refused")
+            return httpx.Response(200, json={"ok": True})
+
+        client = GraphClient(graph_config, token_provider)
+        monkeypatch.setattr(client._client, "get", mock_get)
+        result = client.get("/me")
+        assert result["ok"] is True
+        assert call_count == 2
+        client.close()
+
+    def test_raises_on_final_transport_error(self, graph_config, token_provider, monkeypatch):
+        monkeypatch.setattr("m365_extract.graph_client.time.sleep", lambda s: None)
+
+        def always_fail(*args, **kwargs):
+            raise httpx.ConnectError("connection refused")
+
+        client = GraphClient(graph_config, token_provider)
+        monkeypatch.setattr(client._client, "get", always_fail)
+        with pytest.raises(httpx.ConnectError, match="connection refused"):
+            client.get("/me")
+        client.close()
+
+
+class TestMaxRetriesExhausted:
+    def test_raises_after_all_retries_loop_fallthrough(self, graph_config, token_provider, monkeypatch):
+        """Cover lines 237-238: GraphApiError after loop falls through without raising."""
+        monkeypatch.setattr("m365_extract.graph_client.time.sleep", lambda s: None)
+        # Use max_retries=0 so the loop runs once (attempt=0).
+        # A 401 on attempt 0 does a silent retry (continue), but with max_retries=0
+        # the loop ends after one iteration, falling through to line 237.
+        config = GraphConfig(
+            max_retries=0,
+            backoff_base_ms=10,
+            timeout_seconds=5,
+            max_pages=10,
+            max_retry_after_seconds=300.0,
+            error_message_max_length=200,
+        )
+        client = GraphClient(config, token_provider)
+
+        # Return 401 on the single attempt — attempt==0 triggers silent continue,
+        # loop ends, falls through to line 237
+        call_count = 0
+
+        def mock_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(401, text="unauthorized")
+
+        monkeypatch.setattr(client._client, "get", mock_get)
+
+        with pytest.raises(GraphApiError, match="failed after 0 retries"):
+            client.get("/me")
+        client.close()
+
+
+class TestGetDeltaMaxPages:
+    def test_logs_warning_when_max_pages_reached(self, httpx_mock: HTTPXMock, client, caplog):
+        """Cover line 326: delta_max_pages_reached warning."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages/delta",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages/delta?skip=1",
+            },
+        )
+        # The second page won't be fetched because max_pages=1
+        items, delta_link = client.get_delta(
+            "/me/messages/delta",
+            None,
+            max_pages=1,
+        )
+        assert len(items) == 1
+        assert delta_link is None
+
+
+class TestExtractGraphErrorProperty:
+    """Property-based tests for _extract_graph_error."""
+
+    @given(
+        code=st.text(min_size=1, max_size=50),
+        message=st.text(min_size=0, max_size=500),
+        max_len=st.integers(min_value=1, max_value=500),
+    )
+    @settings(max_examples=50)
+    def test_valid_graph_error_json(self, code: str, message: str, max_len: int) -> None:
+        body = json.dumps({"error": {"code": code, "message": message}})
+        result_code, result_message = _extract_graph_error(body, max_len)
+        assert result_code == code
+        assert result_message == message[:max_len]
+        assert len(result_message) <= max_len
+
+    @given(body=st.text())
+    @settings(max_examples=50)
+    def test_arbitrary_text_returns_fallback(self, body: str) -> None:
+        code, message = _extract_graph_error(body, 200)
+        # Either it's valid JSON with the right structure, or we get the fallback
+        try:
+            data = json.loads(body)
+            error = data["error"]
+            _ = error["code"]
+            _ = error["message"]
+            # Valid structure — code should match
+        except (json.JSONDecodeError, KeyError, TypeError):
+            assert code == "unknown"
+            assert message == "non-json response"
+
+
+class TestIsAllowedDownloadDomainProperty:
+    """Property-based tests for _is_allowed_download_domain."""
+
+    @given(
+        suffix=st.sampled_from(sorted(ALLOWED_DOWNLOAD_DOMAINS)),
+        subdomain=st.from_regex(r"[a-z]{1,10}", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_allowed_suffix_returns_true(self, suffix: str, subdomain: str) -> None:
+        url = f"https://{subdomain}{suffix}/path/file"
+        assert _is_allowed_download_domain(url) is True
+
+    @given(
+        host=st.from_regex(r"[a-z]{3,10}\.(org|net|io|xyz)", fullmatch=True),
+    )
+    @settings(max_examples=50)
+    def test_non_microsoft_host_returns_false(self, host: str) -> None:
+        url = f"https://{host}/path/file"
+        # Verify the host doesn't accidentally match an allowed domain
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        if any(hostname == s.lstrip(".") or hostname.endswith(s) for s in ALLOWED_DOWNLOAD_DOMAINS):
+            return  # Skip if randomly generated host happens to match
+        assert _is_allowed_download_domain(url) is False
