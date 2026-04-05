@@ -17,6 +17,8 @@ from m365_extract.graph_client import (
     GRAPH_BASE_URL,
     GraphApiError,
     GraphClient,
+)
+from m365_extract.graph_helpers import (
     _extract_graph_error,
     _is_allowed_download_domain,
     _sanitize_log_url,
