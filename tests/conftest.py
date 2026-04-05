@@ -11,7 +11,7 @@ import pytest
 try:
     import reflex  # noqa: F401
 except ImportError:
-    collect_ignore_glob = ["test_admin/test_*.py", "test_worker.py"]
+    collect_ignore_glob = ["test_admin/test_*.py"]
 
 from m365_extract.config import (
     AuthConfig,
