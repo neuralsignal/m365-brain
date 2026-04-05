@@ -39,6 +39,7 @@ def run(
         client.get_paginated(
             "/me/chats",
             params={"$expand": "members", "$top": "50"},
+            max_pages=client.max_pages,
         )
     )
     log.info("teams_chats.fetched_chats", count=len(chats))

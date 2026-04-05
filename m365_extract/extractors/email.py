@@ -99,7 +99,7 @@ def _sync_folder(
         cutoff = cutoff - timedelta(days=lookback_days)
         params["$filter"] = f"receivedDateTime ge {cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
-    messages, new_delta_link = client.get_delta(path, delta_link, params=params)
+    messages, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 
     written = 0
     for msg in messages[:max_items]:

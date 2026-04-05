@@ -45,7 +45,7 @@ def run(
         "$orderby": "start/dateTime",
     }
 
-    events = list(client.get_paginated("/me/calendarView", params=params))
+    events = list(client.get_paginated("/me/calendarView", params=params, max_pages=client.max_pages))
     log.info("calendar.fetched", count=len(events))
 
     # Skip-unchanged: track event_id → lastModifiedDateTime

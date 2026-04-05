@@ -46,7 +46,7 @@ def run(
     if config.only_active_users and not delta_link:
         params["$filter"] = "accountEnabled eq true"
 
-    users, new_delta_link = client.get_delta(path, delta_link, params=params)
+    users, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 
     if new_delta_link:
         state["delta_link"] = new_delta_link
@@ -112,6 +112,7 @@ def _fetch_direct_reports_links(client: GraphClient, user_id: str) -> list[str]:
             client.get_paginated(
                 f"/users/{user_id}/directReports",
                 params={"$select": "id,displayName"},
+                max_pages=client.max_pages,
             )
         )
         links = []

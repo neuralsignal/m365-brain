@@ -53,7 +53,7 @@ class TestGet:
             url=f"{GRAPH_BASE_URL}/me",
             json={"displayName": "Test User"},
         )
-        result = client.get("/me")
+        result = client.get("/me", params=None)
         assert result["displayName"] == "Test User"
 
     def test_sends_auth_header(self, httpx_mock: HTTPXMock, client):
@@ -61,7 +61,7 @@ class TestGet:
             url=f"{GRAPH_BASE_URL}/me",
             json={"displayName": "Test User"},
         )
-        client.get("/me")
+        client.get("/me", params=None)
         request = httpx_mock.get_requests()[0]
         assert request.headers["Authorization"] == "Bearer test-token-abc"
 
@@ -84,7 +84,7 @@ class TestGet:
             json={"ok": True},
         )
 
-        result = c.get("/me")
+        result = c.get("/me", params=None)
         assert result["ok"] is True
         assert call_count == 2
         c.close()
@@ -99,7 +99,7 @@ class TestGet:
             url=f"{GRAPH_BASE_URL}/me",
             json={"ok": True},
         )
-        result = client.get("/me")
+        result = client.get("/me", params=None)
         assert result["ok"] is True
 
     def test_500_retries(self, httpx_mock: HTTPXMock, client):
@@ -111,7 +111,7 @@ class TestGet:
             url=f"{GRAPH_BASE_URL}/me",
             json={"ok": True},
         )
-        result = client.get("/me")
+        result = client.get("/me", params=None)
         assert result["ok"] is True
 
     def test_max_retries_exceeded_raises(self, httpx_mock: HTTPXMock, client):
@@ -121,7 +121,7 @@ class TestGet:
                 status_code=500,
             )
         with pytest.raises(GraphApiError, match="HTTP 500"):
-            client.get("/me")
+            client.get("/me", params=None)
 
     def test_404_raises_immediately(self, httpx_mock: HTTPXMock, client):
         httpx_mock.add_response(
@@ -129,7 +129,7 @@ class TestGet:
             status_code=404,
         )
         with pytest.raises(GraphApiError, match="HTTP 404"):
-            client.get("/me")
+            client.get("/me", params=None)
 
 
 class TestGetBytes:
@@ -189,7 +189,7 @@ class TestGetPaginated:
             url=f"{GRAPH_BASE_URL}/me/messages",
             json={"value": [{"id": "1"}, {"id": "2"}]},
         )
-        items = list(client.get_paginated("/me/messages"))
+        items = list(client.get_paginated("/me/messages", params=None, max_pages=10))
         assert len(items) == 2
         assert items[0]["id"] == "1"
 
@@ -205,7 +205,7 @@ class TestGetPaginated:
             url=f"{GRAPH_BASE_URL}/me/messages?$skip=1",
             json={"value": [{"id": "2"}]},
         )
-        items = list(client.get_paginated("/me/messages"))
+        items = list(client.get_paginated("/me/messages", params=None, max_pages=10))
         assert len(items) == 2
 
     def test_max_pages_limit(self, httpx_mock: HTTPXMock, client):
@@ -216,7 +216,7 @@ class TestGetPaginated:
                 "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
             },
         )
-        items = list(client.get_paginated("/me/messages", max_pages=1))
+        items = list(client.get_paginated("/me/messages", params=None, max_pages=1))
         assert len(items) == 1
 
     def test_absolute_nextlink_urls(self, httpx_mock: HTTPXMock, client):
@@ -233,7 +233,7 @@ class TestGetPaginated:
             url=absolute_next,
             json={"value": [{"id": "2"}]},
         )
-        items = list(client.get_paginated("/me/messages"))
+        items = list(client.get_paginated("/me/messages", params=None, max_pages=10))
         assert len(items) == 2
         assert items[1]["id"] == "2"
 
@@ -242,7 +242,7 @@ class TestGetPaginated:
             url=f"{GRAPH_BASE_URL}/me/messages",
             json={"value": []},
         )
-        items = list(client.get_paginated("/me/messages"))
+        items = list(client.get_paginated("/me/messages", params=None, max_pages=10))
         assert items == []
 
 
@@ -258,6 +258,8 @@ class TestGetDelta:
         items, delta_link = client.get_delta(
             "/me/mailFolders/Inbox/messages/delta",
             None,
+            params=None,
+            max_pages=10,
         )
         assert len(items) == 2
         assert delta_link == "https://graph.microsoft.com/delta?token=abc"
@@ -273,6 +275,8 @@ class TestGetDelta:
         items, delta_link = client.get_delta(
             "/me/mailFolders/Inbox/messages/delta",
             "https://graph.microsoft.com/delta?token=abc",
+            params=None,
+            max_pages=10,
         )
         assert len(items) == 1
         assert items[0]["id"] == "3"
@@ -296,6 +300,8 @@ class TestGetDelta:
         items, delta_link = client.get_delta(
             "/me/mailFolders/Inbox/messages/delta",
             None,
+            params=None,
+            max_pages=10,
         )
         assert len(items) == 2
         assert delta_link == "https://graph.microsoft.com/delta?token=final"
@@ -362,7 +368,7 @@ class TestExtractGraphError:
 
         c = GraphClient(graph_config, lambda: "test-token")
         with pytest.raises(GraphApiError, match="HTTP 401"):
-            c.get("/me")
+            c.get("/me", params=None)
         c.close()
 
     def test_404_with_pii_body_logs_sanitized(self, httpx_mock: HTTPXMock, client):
@@ -381,7 +387,7 @@ class TestExtractGraphError:
             text=pii_body,
         )
         with pytest.raises(GraphApiError, match="ResourceNotFound"):
-            client.get("/me/messages/123")
+            client.get("/me/messages/123", params=None)
 
 
 class TestDefensiveBehavior:
@@ -395,7 +401,7 @@ class TestDefensiveBehavior:
             text=json.dumps({"error": {"code": "Forbidden", "message": "Access denied."}}),
         )
         with pytest.raises(GraphApiError, match="HTTP 403"):
-            client.get("/me/messages")
+            client.get("/me/messages", params=None)
         # Only one request should have been made (no retries)
         assert len(httpx_mock.get_requests()) == 1
 
@@ -410,7 +416,7 @@ class TestDefensiveBehavior:
             url=f"{GRAPH_BASE_URL}/me/messages",
             json={"value": []},
         )
-        result = client.get("/me/messages")
+        result = client.get("/me/messages", params=None)
         assert result == {"value": []}
 
     def test_429_retry_after_capped_at_maximum(self, httpx_mock: HTTPXMock, client, monkeypatch):
@@ -426,7 +432,7 @@ class TestDefensiveBehavior:
             url=f"{GRAPH_BASE_URL}/me/messages",
             json={"value": []},
         )
-        result = client.get("/me/messages")
+        result = client.get("/me/messages", params=None)
         assert result == {"value": []}
         assert sleep_calls == [300.0]
 
@@ -443,7 +449,7 @@ class TestDefensiveBehavior:
             url=f"{GRAPH_BASE_URL}/me/messages",
             json={"value": []},
         )
-        result = client.get("/me/messages")
+        result = client.get("/me/messages", params=None)
         assert result == {"value": []}
         # First attempt (attempt=0): backoff_base_ms=10 -> 0.01s * 2^0 = 0.01
         assert sleep_calls == [0.01]
@@ -456,7 +462,7 @@ class TestDefensiveBehavior:
             text=json.dumps({"error": {"code": "ResyncRequired", "message": "Delta token expired."}}),
         )
         with pytest.raises(GraphApiError, match="HTTP 410"):
-            client.get("/me/contacts/delta")
+            client.get("/me/contacts/delta", params=None)
         assert len(httpx_mock.get_requests()) == 1
 
 
@@ -478,7 +484,7 @@ class TestFriendlyErrors:
             text=body,
         )
         with pytest.raises(GraphApiError, match="Hint:.*Entra.*API permissions") as exc_info:
-            client.get("/me/messages")
+            client.get("/me/messages", params=None)
         assert "Authorization_RequestDenied" in str(exc_info.value)
 
     def test_401_invalid_token_includes_hint(self, httpx_mock: HTTPXMock, graph_config):
@@ -495,7 +501,7 @@ class TestFriendlyErrors:
 
         c = GraphClient(graph_config, lambda: "expired-token")
         with pytest.raises(GraphApiError, match="Hint:.*auth login") as exc_info:
-            c.get("/me")
+            c.get("/me", params=None)
         assert "InvalidAuthenticationToken" in str(exc_info.value)
         c.close()
 
@@ -514,7 +520,7 @@ class TestFriendlyErrors:
             text=body,
         )
         with pytest.raises(GraphApiError) as exc_info:
-            client.get("/me")
+            client.get("/me", params=None)
         assert "Hint:" not in str(exc_info.value)
         assert "SomeNewError" in str(exc_info.value)
 
