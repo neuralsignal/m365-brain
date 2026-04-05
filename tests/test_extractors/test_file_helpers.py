@@ -78,6 +78,40 @@ class TestBuildStoragePath:
         assert "\x00" not in path
 
 
+class TestExtractParentPathProperty:
+    @given(
+        st.text(min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("L", "N", "P"))).filter(
+            lambda s: ":" not in s
+        ),
+        st.text(min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("L", "N", "P"))).filter(
+            lambda s: ":" not in s
+        ),
+    )
+    def test_strips_prefix_up_to_colon(self, prefix, suffix):
+        ref = {"path": f"{prefix}:{suffix}"}
+        result = extract_parent_path(ref)
+        # Result must not contain the prefix or colon
+        assert ":" not in result
+        # Result is the suffix with leading slashes stripped
+        assert result == suffix.lstrip("/")
+
+
+class TestBuildStoragePathProperty:
+    @given(
+        prefix=st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        file_name=st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
+        item_id=st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
+    )
+    def test_output_starts_with_prefix_ends_with_md_contains_hash(self, prefix, file_name, item_id):
+        from m365_extract.markdown_writer import short_hash
+
+        path = build_storage_path(prefix, "parent", file_name, item_id)
+        assert path.startswith(f"{prefix}/")
+        assert path.endswith(".md")
+        hsh = short_hash(item_id, 6)
+        assert hsh in path
+
+
 class TestShouldEagerConvert:
     def test_matches_glob_pattern(self):
         assert should_eager_convert("report.docx", ["*.docx"])
@@ -302,3 +336,124 @@ class TestProcessDriveItem:
 
         assert result is True
         assert fm["conversion_status"] == "error_download"
+
+
+class TestProcessDriveItemFallbackFetch:
+    def test_fetches_download_url_when_missing_from_delta(self, tmp_path):
+        """When item lacks downloadUrl, fetches it individually via client.get()."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock()
+        mock_client.get.return_value = {
+            "@microsoft.graph.downloadUrl": "https://download.example.com/fetched",
+        }
+        mock_client.get_bytes.return_value = b"fake docx content"
+
+        item = {
+            "name": "report.docx",
+            "id": "item-abc",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            # No @microsoft.graph.downloadUrl — triggers fallback fetch
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        with patch(
+            "m365_extract.extractors._file_helpers.convert_document",
+            return_value="# Converted",
+        ):
+            result = process_drive_item(
+                client=mock_client,
+                storage=storage,
+                item=item,
+                storage_path="onedrive/report.md",
+                frontmatter=fm,
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            )
+
+        assert result is True
+        assert fm["conversion_status"] == "converted"
+        mock_client.get.assert_called_once_with(
+            "/me/drive/items/item-abc",
+            params={"$select": "@microsoft.graph.downloadUrl"},
+        )
+        mock_client.get_bytes.assert_called_once_with("https://download.example.com/fetched")
+        content = storage.read_file("onedrive/report.md")
+        assert "Converted" in content
+
+    def test_handles_http_status_error_during_individual_fetch(self, tmp_path):
+        """When individual item fetch raises HTTPStatusError, logs warning and writes no-url stub."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_client.get.side_effect = httpx.HTTPStatusError(
+            "Not Found",
+            request=MagicMock(),
+            response=mock_response,
+        )
+
+        item = {
+            "name": "report.docx",
+            "id": "item-abc",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        result = process_drive_item(
+            client=mock_client,
+            storage=storage,
+            item=item,
+            storage_path="onedrive/report.md",
+            frontmatter=fm,
+            eager_patterns=["*.docx"],
+            convertible_extensions=[".docx"],
+            max_file_size_mb=100,
+            converters_config=SAMPLE_CONVERTERS_CONFIG,
+        )
+
+        assert result is True
+        assert fm["conversion_status"] == "error_no_download_url"
+        content = storage.read_file("onedrive/report.md")
+        assert "No download URL available" in content
+
+
+class TestProcessDriveItemConversionError:
+    def test_writes_error_stub_on_conversion_failure(self, tmp_path):
+        """When convert_document raises ValueError, writes error_conversion stub."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock()
+        mock_client.get_bytes.return_value = b"fake docx content"
+
+        item = {
+            "name": "report.docx",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "@microsoft.graph.downloadUrl": "https://download.example.com/file",
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        with patch(
+            "m365_extract.extractors._file_helpers.convert_document",
+            side_effect=ValueError("unsupported format"),
+        ):
+            result = process_drive_item(
+                client=mock_client,
+                storage=storage,
+                item=item,
+                storage_path="onedrive/report.md",
+                frontmatter=fm,
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            )
+
+        assert result is True
+        assert fm["conversion_status"] == "error_conversion"
+        content = storage.read_file("onedrive/report.md")
+        assert "Conversion failed" in content
+        assert "unsupported format" in content
