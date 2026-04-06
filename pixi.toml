@@ -28,6 +28,7 @@ sqlmodel = ">=0.0.22,<1"
 jinja2 = ">=3.1.6, <4"
 m365-extract = {path = ".", editable = true, extras = ["azure"]}
 obsidian-import = {version = ">=1.0.1,<2", extras = ["markitdown"]}
+pypdf = ">=6.9.2, <7"
 pytest = ">=8.0, <9"
 hypothesis = ">=6.100, <7"
 pytest-httpx = ">=0.35, <1"

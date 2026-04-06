@@ -367,10 +367,12 @@ class TestProcessDriveItemFallbackFetch:
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
             )
 
         assert result is True
@@ -409,10 +411,12 @@ class TestProcessDriveItemFallbackFetch:
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            eager_patterns=["*.docx"],
-            convertible_extensions=[".docx"],
-            max_file_size_mb=100,
-            converters_config=SAMPLE_CONVERTERS_CONFIG,
+            file_config=FileProcessingConfig(
+                eager_patterns=["*.docx"],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
         )
 
         assert result is True
@@ -446,10 +450,12 @@ class TestProcessDriveItemConversionError:
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
             )
 
         assert result is True
