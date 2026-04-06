@@ -13,12 +13,12 @@ from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig
 from m365_extract.graph_client import (
-    ALLOWED_DOWNLOAD_DOMAINS,
     GRAPH_BASE_URL,
     GraphApiError,
     GraphClient,
 )
 from m365_extract.graph_helpers import (
+    ALLOWED_DOWNLOAD_DOMAINS,
     _extract_graph_error,
     _is_allowed_download_domain,
     _sanitize_log_url,
@@ -585,7 +585,7 @@ class TestContextManager:
     def test_with_statement(self, graph_config, token_provider, httpx_mock: HTTPXMock):
         httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", json={"ok": True})
         with GraphClient(graph_config, token_provider) as client:
-            result = client.get("/me")
+            result = client.get("/me", params=None)
             assert result["ok"] is True
 
 
@@ -603,7 +603,7 @@ class TestTransportErrorRetry:
 
         client = GraphClient(graph_config, token_provider)
         monkeypatch.setattr(client._client, "get", mock_get)
-        result = client.get("/me")
+        result = client.get("/me", params=None)
         assert result["ok"] is True
         assert call_count == 2
         client.close()
@@ -617,7 +617,7 @@ class TestTransportErrorRetry:
         client = GraphClient(graph_config, token_provider)
         monkeypatch.setattr(client._client, "get", always_fail)
         with pytest.raises(httpx.ConnectError, match="connection refused"):
-            client.get("/me")
+            client.get("/me", params=None)
         client.close()
 
 
@@ -650,7 +650,7 @@ class TestMaxRetriesExhausted:
         monkeypatch.setattr(client._client, "get", mock_get)
 
         with pytest.raises(GraphApiError, match="failed after 0 retries"):
-            client.get("/me")
+            client.get("/me", params=None)
         client.close()
 
 
@@ -668,6 +668,7 @@ class TestGetDeltaMaxPages:
         items, delta_link = client.get_delta(
             "/me/messages/delta",
             None,
+            params=None,
             max_pages=1,
         )
         assert len(items) == 1
