@@ -7,6 +7,7 @@ Downloads and optionally converts email attachments.
 
 from __future__ import annotations
 
+import base64
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -212,10 +213,11 @@ def _download_attachments(
 ) -> None:
     """Download email attachments and optionally convert them to markdown."""
     path = f"/me/messages/{message_id}/attachments"
-    params = {
-        "$select": "id,name,contentType,size,isInline,@microsoft.graph.downloadUrl",
-        "$top": "20",
-    }
+    # No $select: returns all properties per attachment type, including contentBytes
+    # for fileAttachment (small files) and @microsoft.graph.downloadUrl (large files).
+    # Using $select on the collection endpoint fails for contentBytes because it is
+    # defined on microsoft.graph.fileAttachment, not the base attachment type.
+    params = {"$top": "20"}
     try:
         for att in client.get_paginated(path, params, max_pages=5):
             att_name = att.get("name", "")
@@ -228,11 +230,15 @@ def _download_attachments(
                 log.warning("email.attachment_too_large", name=att_name, size_mb=size // (1024 * 1024))
                 continue
             download_url = att.get("@microsoft.graph.downloadUrl")
-            if not download_url:
+            content_bytes_b64 = att.get("contentBytes")
+            if not download_url and not content_bytes_b64:
                 log.warning("email.attachment_no_download_url", name=att_name)
                 continue
             try:
-                data = client.get_bytes(download_url)
+                if download_url:
+                    data = client.get_bytes(download_url)
+                else:
+                    data = base64.b64decode(content_bytes_b64)
                 storage.write_bytes(f"{email_dir}/attachments/{att_name}", data)
                 ext = Path(att_name).suffix.lower()
                 if ext in config.attachment_convert_extensions:

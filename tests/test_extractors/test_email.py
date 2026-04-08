@@ -670,7 +670,7 @@ class TestEmailAttachments:
     def test_attachment_without_download_url_skipped(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config
     ):
-        """Attachment with no @microsoft.graph.downloadUrl is skipped (no crash)."""
+        """Attachment with no downloadUrl and no contentBytes is skipped (no crash)."""
         config = _attachment_config()
         httpx_mock.add_response(
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
@@ -689,7 +689,7 @@ class TestEmailAttachments:
                         "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         "size": 512,
                         "isInline": False,
-                        # No @microsoft.graph.downloadUrl
+                        # No @microsoft.graph.downloadUrl and no contentBytes
                     }
                 ]
             },
@@ -704,4 +704,48 @@ class TestEmailAttachments:
         all_files = storage.list_files("emails")
         att_paths = [f for f in all_files if "attachments/" in f]
         assert len(att_paths) == 0
+        client.close()
+
+    def test_attachment_content_bytes_fallback(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config
+    ):
+        """Attachment with contentBytes (base64) is decoded and written when no downloadUrl."""
+        import base64
+
+        config = _attachment_config()
+        fake_content = b"fake xlsx content"
+        encoded = base64.b64encode(fake_content).decode()
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._make_email_msg()],
+                "@odata.deltaLink": "https://delta?token=cb",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/messages/msg-with-attachment/attachments.*"),
+            json={
+                "value": [
+                    {
+                        "id": "att-cb",
+                        "name": "data.xlsx",
+                        "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "size": len(fake_content),
+                        "isInline": False,
+                        "contentBytes": encoded,
+                        # No @microsoft.graph.downloadUrl
+                    }
+                ]
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+        assert count == 1
+
+        all_files = storage.list_files("emails")
+        att_paths = [f for f in all_files if "attachments/data.xlsx" in f]
+        assert len(att_paths) == 1
         client.close()
