@@ -49,6 +49,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -152,6 +155,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -244,6 +250,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -331,6 +340,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -422,6 +434,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -512,6 +527,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -601,6 +619,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -692,6 +713,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -781,6 +805,9 @@ class TestLoadConfig:
                 folders: ["Inbox"]
                 lookback_days: 365
                 max_items_per_sync: 500
+                download_attachments: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               calendar:
                 enabled: true
                 poll_interval_minutes: 60
@@ -866,6 +893,9 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
         folders: ["Inbox"]
         lookback_days: 365
         max_items_per_sync: 500
+        download_attachments: false
+        max_attachment_size_mb: 25
+        attachment_convert_extensions: []
       calendar:
         enabled: true
         poll_interval_minutes: 60

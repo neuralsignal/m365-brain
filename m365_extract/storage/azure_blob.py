@@ -65,6 +65,11 @@ class AzureBlobBackend:
         prefix_len = len(self._prefix)
         return [blob.name[prefix_len:] for blob in blobs]
 
+    def write_bytes(self, path: str, content: bytes) -> None:
+        """Write binary content to a blob, overwriting if it exists."""
+        blob_name = self._blob_name(path)
+        self._container_client.upload_blob(blob_name, content, overwrite=True)
+
     def delete_file(self, path: str) -> None:
         """Delete a blob. No error if it does not exist."""
         import contextlib

@@ -64,6 +64,9 @@ class EmailExtractorConfig(BaseModel):
     folders: list[str]
     lookback_days: int
     max_items_per_sync: int
+    download_attachments: bool
+    max_attachment_size_mb: int
+    attachment_convert_extensions: list[str]
 
 
 class CalendarExtractorConfig(BaseModel):

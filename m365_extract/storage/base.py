@@ -28,3 +28,7 @@ class StorageBackend(Protocol):
     def delete_file(self, path: str) -> None:
         """Delete a file at the given relative path."""
         ...
+
+    def write_bytes(self, path: str, content: bytes) -> None:
+        """Write binary content to a file at the given relative path."""
+        ...

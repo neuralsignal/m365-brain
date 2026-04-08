@@ -95,6 +95,9 @@ def email_config():
         folders=["Inbox"],
         lookback_days=30,
         max_items_per_sync=100,
+        download_attachments=False,
+        max_attachment_size_mb=25,
+        attachment_convert_extensions=[],
     )
 
 
@@ -167,6 +170,9 @@ def full_config(tmp_path):
                 folders=["Inbox"],
                 lookback_days=30,
                 max_items_per_sync=100,
+                download_attachments=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
             ),
             calendar=CalendarExtractorConfig(
                 enabled=True,
@@ -278,6 +284,9 @@ def full_web_config(tmp_path, web_config):
                 folders=["Inbox"],
                 lookback_days=30,
                 max_items_per_sync=100,
+                download_attachments=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
             ),
             calendar=CalendarExtractorConfig(
                 enabled=True,

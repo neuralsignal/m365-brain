@@ -65,6 +65,24 @@ class TestLocalBackend:
         LocalBackend(str(base))
         assert base.exists()
 
+    def test_write_and_read_bytes(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        data = b"\x89PNG\r\n\x1a\n fake binary content"
+        backend.write_bytes("attachments/image.png", data)
+        full = tmp_path / "vault" / "attachments" / "image.png"
+        assert full.exists()
+        assert full.read_bytes() == data
+
+    def test_write_bytes_creates_parent_dirs(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        backend.write_bytes("emails/2026/03-12/slug-abc123/attachments/doc.pdf", b"%PDF")
+        assert backend.file_exists("emails/2026/03-12/slug-abc123/attachments/doc.pdf")
+
+    def test_write_bytes_rejects_traversal(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        with pytest.raises(PathTraversalError, match="Path traversal detected"):
+            backend.write_bytes("../outside.bin", b"pwned")
+
 
 class TestPathTraversalProtection:
     """Verify that all LocalBackend operations reject path traversal attempts."""

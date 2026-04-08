@@ -46,6 +46,11 @@ class LocalBackend:
                     results.append(str(p.relative_to(self._base)))
         return sorted(results)
 
+    def write_bytes(self, path: str, content: bytes) -> None:
+        full = self._safe_resolve(path)
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_bytes(content)
+
     def delete_file(self, path: str) -> None:
         full = self._safe_resolve(path)
         if full.exists():

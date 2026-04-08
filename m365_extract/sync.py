@@ -29,7 +29,7 @@ from m365_extract.storage.base import StorageBackend
 log = structlog.get_logger()
 
 EXTRACTORS: dict[str, tuple] = {
-    "email": (email, lambda cfg: cfg.extractors.email, False),
+    "email": (email, lambda cfg: cfg.extractors.email, True),
     "calendar": (calendar, lambda cfg: cfg.extractors.calendar, False),
     "teams_chats": (teams_chats, lambda cfg: cfg.extractors.teams_chats, False),
     "teams_channels": (teams_channels, lambda cfg: cfg.extractors.teams_channels, False),

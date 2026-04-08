@@ -2,15 +2,19 @@
 
 Reads from /me/mailFolders/{folder}/messages/delta for each configured folder.
 Writes Obsidian-compatible markdown files with YAML frontmatter.
+Downloads and optionally converts email attachments.
 """
 
 from __future__ import annotations
 
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import structlog
 
 from m365_extract.config import EmailExtractorConfig
+from m365_extract.converters.document import convert_document
 from m365_extract.converters.html_to_md import html_to_markdown
 from m365_extract.frontmatter import build_email_frontmatter
 from m365_extract.graph_client import GraphClient
@@ -38,12 +42,14 @@ def run(
     storage: StorageBackend,
     state: dict,
     config: EmailExtractorConfig,
+    converters_config: dict,
 ) -> tuple[dict, int]:
     """Extract emails from configured folders using delta queries.
 
     Returns (updated_state, total_items_written).
     """
     total_written = 0
+    seen_keys: set[tuple[str, str]] = set()
 
     for folder in config.folders:
         folder_key = f"delta_link_{folder}"
@@ -54,8 +60,9 @@ def run(
             storage,
             folder,
             delta_link,
-            config.max_items_per_sync,
-            config.lookback_days,
+            config,
+            converters_config,
+            seen_keys,
         )
 
         if new_delta_link:
@@ -73,8 +80,9 @@ def _sync_folder(
     storage: StorageBackend,
     folder: str,
     delta_link: str | None,
-    max_items: int,
-    lookback_days: int,
+    config: EmailExtractorConfig,
+    converters_config: dict,
+    seen_keys: set[tuple[str, str]],
 ) -> tuple[int, str | None]:
     """Sync a single mail folder. Returns (items_written, new_delta_link)."""
     folder_id = _FOLDER_IDS.get(folder, folder)
@@ -96,21 +104,29 @@ def _sync_folder(
             second=0,
             microsecond=0,
         )
-        cutoff = cutoff - timedelta(days=lookback_days)
+        cutoff = cutoff - timedelta(days=config.lookback_days)
         params["$filter"] = f"receivedDateTime ge {cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
     messages, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 
     written = 0
-    for msg in messages[:max_items]:
-        if _write_email(storage, msg, folder):
+    for msg in messages[: config.max_items_per_sync]:
+        if _write_email(storage, client, msg, folder, config, converters_config, seen_keys):
             written += 1
 
     log.info("email.folder_synced", folder=folder, sync_type=sync_type, fetched=len(messages), written=written)
     return written, new_delta_link
 
 
-def _write_email(storage: StorageBackend, msg: dict, folder: str) -> bool:
+def _write_email(
+    storage: StorageBackend,
+    client: GraphClient,
+    msg: dict,
+    folder: str,
+    config: EmailExtractorConfig,
+    converters_config: dict,
+    seen_keys: set[tuple[str, str]],
+) -> bool:
     """Write a single email to storage. Returns True if written."""
     message_id = msg.get("id", "")
     subject = msg.get("subject") or "(no subject)"
@@ -119,6 +135,14 @@ def _write_email(storage: StorageBackend, msg: dict, folder: str) -> bool:
     if not message_id or not received:
         log.warning("email.skipping_invalid", message_id=message_id)
         return False
+
+    # Dedup: skip same (minute, slug) pair within this sync run
+    slug = slugify(subject, 80)
+    key = (received[:16], slug)
+    if key in seen_keys:
+        log.info("email.skipped_duplicate", slug=slug, received=received[:16])
+        return False
+    seen_keys.add(key)
 
     # Extract sender
     from_field = (msg.get("from") or {}).get("emailAddress", {})
@@ -166,9 +190,77 @@ def _write_email(storage: StorageBackend, msg: dict, folder: str) -> bool:
     # Determine file path: emails/{year}/{date}/{slug}/index.md
     date_str = received[:10]
     year = date_str[:4]
-    slug = slugify(subject, 80)
     hsh = short_hash(message_id, 6)
-    file_path = f"emails/{year}/{date_str}/{slug}-{hsh}/index.md"
+    email_dir = f"emails/{year}/{date_str}/{slug}-{hsh}"
+    file_path = f"{email_dir}/index.md"
 
     storage.write_file(file_path, content)
+
+    if config.download_attachments and msg.get("hasAttachments"):
+        _download_attachments(client, storage, message_id, email_dir, config, converters_config)
+
     return True
+
+
+def _download_attachments(
+    client: GraphClient,
+    storage: StorageBackend,
+    message_id: str,
+    email_dir: str,
+    config: EmailExtractorConfig,
+    converters_config: dict,
+) -> None:
+    """Download email attachments and optionally convert them to markdown."""
+    path = f"/me/messages/{message_id}/attachments"
+    params = {
+        "$select": "id,name,contentType,size,isInline,@microsoft.graph.downloadUrl",
+        "$top": "20",
+    }
+    try:
+        for att in client.get_paginated(path, params, max_pages=5):
+            att_name = att.get("name", "")
+            if not att_name or ":" in att_name:  # skip Zone.Identifier artifacts
+                continue
+            if att.get("isInline", False):  # skip inline images embedded in HTML body
+                continue
+            size = att.get("size", 0)
+            if size > config.max_attachment_size_mb * 1024 * 1024:
+                log.warning("email.attachment_too_large", name=att_name, size_mb=size // (1024 * 1024))
+                continue
+            download_url = att.get("@microsoft.graph.downloadUrl")
+            if not download_url:
+                log.warning("email.attachment_no_download_url", name=att_name)
+                continue
+            try:
+                data = client.get_bytes(download_url)
+                storage.write_bytes(f"{email_dir}/attachments/{att_name}", data)
+                ext = Path(att_name).suffix.lower()
+                if ext in config.attachment_convert_extensions:
+                    _convert_and_store(storage, data, att_name, email_dir, converters_config)
+            except Exception as exc:
+                log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
+    except Exception as exc:
+        log.warning("email.attachments_fetch_failed", message_id=message_id, error=str(exc))
+
+
+def _convert_and_store(
+    storage: StorageBackend,
+    data: bytes,
+    att_name: str,
+    email_dir: str,
+    converters_config: dict,
+) -> None:
+    """Convert an attachment binary to markdown and write to storage."""
+    suffix = Path(att_name).suffix
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp_path.write_bytes(data)
+        md_content = convert_document(tmp_path, converters_config)
+        storage.write_file(f"{email_dir}/attachments_converted/{att_name}.md", md_content)
+    except Exception as exc:
+        log.warning("email.attachment_convert_failed", name=att_name, error=str(exc))
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
