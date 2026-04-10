@@ -18,6 +18,7 @@ from m365_extract.graph_client import GraphApiError
 from m365_extract.models import ExtractorPreference, ExtractorStatus, User
 from m365_extract.worker import (
     _lock_key,
+    _require_worker_config,
     get_due_jobs,
     get_enabled_users,
     get_user_extractors,
@@ -435,3 +436,15 @@ class TestWorkerLoop:
             worker_loop(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path))
 
         mock_run.assert_not_called()
+
+
+class TestRequireWorkerConfig:
+    def test_returns_worker_config(self, full_config):
+        result = _require_worker_config(full_config)
+        assert result.max_concurrent_jobs == 2
+        assert result.poll_interval_seconds == 5
+
+    def test_raises_config_error_when_none(self, full_config):
+        config_without_worker = full_config.model_copy(update={"worker": None})
+        with pytest.raises(ConfigError, match="'worker' section is required"):
+            _require_worker_config(config_without_worker)
