@@ -8,19 +8,22 @@ Downloads and optionally converts email attachments.
 from __future__ import annotations
 
 import base64
+import binascii
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import structlog
 
 from m365_extract.config import EmailExtractorConfig
 from m365_extract.converters.document import convert_document
 from m365_extract.converters.html_to_md import html_to_markdown
 from m365_extract.frontmatter import build_email_frontmatter
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
+from m365_extract.storage.exceptions import StorageError
 
 log = structlog.get_logger()
 
@@ -243,9 +246,9 @@ def _download_attachments(
                 ext = Path(att_name).suffix.lower()
                 if ext in config.attachment_convert_extensions:
                     _convert_and_store(storage, data, att_name, email_dir, converters_config)
-            except Exception as exc:
+            except (GraphApiError, httpx.TransportError, binascii.Error, StorageError, OSError) as exc:
                 log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
-    except Exception as exc:
+    except (GraphApiError, httpx.TransportError) as exc:
         log.warning("email.attachments_fetch_failed", message_id=message_id, error=str(exc))
 
 
@@ -265,7 +268,7 @@ def _convert_and_store(
             tmp_path.write_bytes(data)
         md_content = convert_document(tmp_path, converters_config)
         storage.write_file(f"{email_dir}/attachments_converted/{att_name}.md", md_content)
-    except Exception as exc:
+    except (OSError, ImportError, StorageError) as exc:
         log.warning("email.attachment_convert_failed", name=att_name, error=str(exc))
     finally:
         if tmp_path is not None and tmp_path.exists():
