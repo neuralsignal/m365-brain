@@ -55,6 +55,9 @@ def _write_config_yaml(tmp_path, full_web_config):
                 "folders": ["Inbox"],
                 "lookback_days": 30,
                 "max_items_per_sync": 100,
+                "download_attachments": False,
+                "max_attachment_size_mb": 25,
+                "attachment_convert_extensions": [],
             },
             "calendar": {
                 "enabled": False,

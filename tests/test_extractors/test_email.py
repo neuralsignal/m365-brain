@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -381,9 +381,7 @@ class TestEmailDedup:
             "parentFolderId": "inbox",
         }
 
-    def test_duplicate_within_run_is_skipped(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config
-    ):
+    def test_duplicate_within_run_is_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
         """Two messages with the same subject and same received-minute are deduplicated."""
         httpx_mock.add_response(
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
@@ -407,9 +405,7 @@ class TestEmailDedup:
         assert len(files) == 1
         client.close()
 
-    def test_different_minute_not_deduplicated(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config
-    ):
+    def test_different_minute_not_deduplicated(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
         """Same subject but different received-minute = two distinct emails."""
         httpx_mock.add_response(
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
@@ -429,9 +425,7 @@ class TestEmailDedup:
         assert count == 2
         client.close()
 
-    def test_different_subject_not_deduplicated(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config
-    ):
+    def test_different_subject_not_deduplicated(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
         """Different subjects at the same received-minute = two distinct emails."""
         httpx_mock.add_response(
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
@@ -485,9 +479,7 @@ class TestEmailAttachments:
             "parentFolderId": "inbox",
         }
 
-    def test_attachment_binary_written(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_attachment_binary_written(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Attachment bytes are written to attachments/ subdir."""
         config = _attachment_config()
         httpx_mock.add_response(
@@ -528,9 +520,7 @@ class TestEmailAttachments:
         assert len(att_paths) == 1
         client.close()
 
-    def test_zone_identifier_attachment_skipped(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_zone_identifier_attachment_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Attachments with ':' in name (Zone.Identifier artifacts) are skipped."""
         config = _attachment_config()
         httpx_mock.add_response(
@@ -568,9 +558,7 @@ class TestEmailAttachments:
         assert len(att_paths) == 0
         client.close()
 
-    def test_inline_attachment_skipped(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_inline_attachment_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Inline attachments (embedded images) are skipped."""
         config = _attachment_config()
         httpx_mock.add_response(
@@ -607,9 +595,7 @@ class TestEmailAttachments:
         assert len(att_paths) == 0
         client.close()
 
-    def test_oversized_attachment_skipped(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_oversized_attachment_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Attachments exceeding max_attachment_size_mb are skipped."""
         config = _attachment_config()
         httpx_mock.add_response(
@@ -646,9 +632,7 @@ class TestEmailAttachments:
         assert len(att_paths) == 0
         client.close()
 
-    def test_download_attachments_false_skips_fetch(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config
-    ):
+    def test_download_attachments_false_skips_fetch(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
         """When download_attachments=False, attachments endpoint is never called."""
         # email_config fixture has download_attachments=False
         httpx_mock.add_response(
@@ -667,9 +651,7 @@ class TestEmailAttachments:
         assert count == 1
         client.close()
 
-    def test_attachment_without_download_url_skipped(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_attachment_without_download_url_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Attachment with no downloadUrl and no contentBytes is skipped (no crash)."""
         config = _attachment_config()
         httpx_mock.add_response(
@@ -706,9 +688,7 @@ class TestEmailAttachments:
         assert len(att_paths) == 0
         client.close()
 
-    def test_attachment_content_bytes_fallback(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_attachment_content_bytes_fallback(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """Attachment with contentBytes (base64) is decoded and written when no downloadUrl."""
         import base64
 
