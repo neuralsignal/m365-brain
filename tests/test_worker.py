@@ -18,11 +18,14 @@ from m365_extract.graph_client import GraphApiError
 from m365_extract.models import ExtractorPreference, ExtractorStatus, User
 from m365_extract.worker import (
     _lock_key,
+    _run_cycle,
     get_due_jobs,
     get_enabled_users,
     get_user_extractors,
+    release_advisory_lock,
     run_single_extractor,
     start_worker_thread,
+    try_advisory_lock,
     upsert_extractor_status,
     worker_loop,
 )
@@ -435,3 +438,124 @@ class TestWorkerLoop:
             worker_loop(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path))
 
         mock_run.assert_not_called()
+
+
+class TestTryAdvisoryLock:
+    def test_executes_pg_try_advisory_lock_and_returns_bool(self):
+        """Executes SELECT pg_try_advisory_lock(:key) with the derived key."""
+        with patch("m365_extract.worker.Session") as mock_session_cls:
+            mock_session = mock_session_cls.return_value.__enter__.return_value
+            mock_session.exec.return_value.one.return_value = (True,)
+
+            result = try_advisory_lock("engine-stub", "u-1", "email")
+
+        assert result is True
+        mock_session.exec.assert_called_once()
+        stmt = mock_session.exec.call_args[0][0]
+        assert "pg_try_advisory_lock" in str(stmt)
+        assert stmt._bindparams["key"].value == _lock_key("u-1", "email")
+
+    def test_returns_false_when_lock_unavailable(self):
+        """Propagates False when the lock is already held."""
+        with patch("m365_extract.worker.Session") as mock_session_cls:
+            mock_session = mock_session_cls.return_value.__enter__.return_value
+            mock_session.exec.return_value.one.return_value = (False,)
+
+            result = try_advisory_lock("engine-stub", "u-1", "email")
+
+        assert result is False
+
+
+class TestReleaseAdvisoryLock:
+    def test_executes_pg_advisory_unlock(self):
+        """Executes SELECT pg_advisory_unlock(:key) with the derived key."""
+        with patch("m365_extract.worker.Session") as mock_session_cls:
+            mock_session = mock_session_cls.return_value.__enter__.return_value
+
+            result = release_advisory_lock("engine-stub", "u-1", "email")
+
+        assert result is None
+        mock_session.exec.assert_called_once()
+        stmt = mock_session.exec.call_args[0][0]
+        assert "pg_advisory_unlock" in str(stmt)
+        assert stmt._bindparams["key"].value == _lock_key("u-1", "email")
+
+
+class TestRunCycleFutureErrors:
+    def test_known_error_in_future_logs_job_error(self, seeded_engine, full_config, tmp_path):
+        """A _KNOWN_ERRORS raised from the thread pool logs worker.job_error."""
+        user = get_enabled_users(seeded_engine)[0]
+
+        with (
+            patch("m365_extract.worker.get_due_jobs", return_value=[(user, "email")]),
+            patch("m365_extract.worker.try_advisory_lock", return_value=True),
+            patch("m365_extract.worker.run_single_extractor", side_effect=GraphApiError("boom")),
+            patch("m365_extract.worker.log") as mock_log,
+        ):
+            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+
+        error_events = [c.args[0] for c in mock_log.error.call_args_list if c.args]
+        assert "worker.job_error" in error_events
+        critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
+        assert "worker.job_unhandled_error" not in critical_events
+
+    def test_unhandled_error_in_future_logs_critical(self, seeded_engine, full_config, tmp_path):
+        """An unexpected exception raised from the thread pool logs worker.job_unhandled_error critical."""
+        user = get_enabled_users(seeded_engine)[0]
+
+        with (
+            patch("m365_extract.worker.get_due_jobs", return_value=[(user, "email")]),
+            patch("m365_extract.worker.try_advisory_lock", return_value=True),
+            patch("m365_extract.worker.run_single_extractor", side_effect=RuntimeError("surprise")),
+            patch("m365_extract.worker.log") as mock_log,
+        ):
+            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+
+        critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
+        assert "worker.job_unhandled_error" in critical_events
+
+
+class TestStartWorkerThreadErrorPaths:
+    def _run_until_seen(self, seen: threading.Event, stop: threading.Event) -> None:
+        assert seen.wait(timeout=5), "mocked cycle was never called"
+        stop.set()
+        for t in threading.enumerate():
+            if t.name == "sync-worker":
+                t.join(timeout=5)
+                assert not t.is_alive()
+
+    def test_known_error_logs_cycle_failed(self, full_config, engine, tmp_path):
+        """start_worker_thread logs worker.cycle_failed when _run_cycle raises _KNOWN_ERRORS."""
+        seen = threading.Event()
+
+        def fake_run_cycle(*args, **kwargs):
+            seen.set()
+            raise GraphApiError("rate limited")
+
+        with (
+            patch("m365_extract.worker._run_cycle", side_effect=fake_run_cycle),
+            patch("m365_extract.worker.log") as mock_log,
+        ):
+            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            self._run_until_seen(seen, stop)
+
+        error_events = [c.args[0] for c in mock_log.error.call_args_list if c.args]
+        assert "worker.cycle_failed" in error_events
+
+    def test_unhandled_error_logs_cycle_unhandled_critical(self, full_config, engine, tmp_path):
+        """start_worker_thread logs worker.cycle_unhandled_error critical when _run_cycle raises unexpected."""
+        seen = threading.Event()
+
+        def fake_run_cycle(*args, **kwargs):
+            seen.set()
+            raise RuntimeError("db gone")
+
+        with (
+            patch("m365_extract.worker._run_cycle", side_effect=fake_run_cycle),
+            patch("m365_extract.worker.log") as mock_log,
+        ):
+            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            self._run_until_seen(seen, stop)
+
+        critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
+        assert "worker.cycle_unhandled_error" in critical_events
