@@ -61,7 +61,7 @@ class TestWebTokenProvider:
         mock_store = MagicMock()
         mock_store.get_tokens.return_value = {
             "access_token": "valid-token",
-            "expires_at": time.time() + 600,
+            "expires_at": time.time() + 3600,
             "refresh_token": "rt-123",
         }
 
