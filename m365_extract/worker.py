@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlmodel import Session, select
 
 from m365_extract.auth.token_provider import TokenRefreshError, TokenStoreProtocol, make_web_token_provider
-from m365_extract.config import Config
+from m365_extract.config import Config, WorkerConfig
 from m365_extract.config.errors import ConfigError
 from m365_extract.extractors.errors import ExtractorError
 from m365_extract.graph_client import GraphApiError
@@ -31,6 +31,14 @@ from m365_extract.storage import create_user_storage
 from m365_extract.sync import EXTRACTORS, run_extractors
 
 log = structlog.get_logger()
+
+
+def _require_worker_config(config: Config) -> WorkerConfig:
+    """Return the worker config, raising ConfigError if not configured."""
+    if config.worker is None:
+        raise ConfigError("'worker' section is required in config when running the worker")
+    return config.worker
+
 
 # Exceptions that worker jobs are known to raise.
 # Used in catch blocks to distinguish expected failures from unexpected ones.
@@ -221,9 +229,9 @@ def _run_cycle(
 
 def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
     """Main worker loop. Polls for due jobs, submits to thread pool."""
-    worker_config = config.worker
-    max_workers = worker_config.max_concurrent_jobs if worker_config else 4
-    poll_interval = worker_config.poll_interval_seconds if worker_config else config.service.continuous_poll_seconds
+    worker_config = _require_worker_config(config)
+    max_workers = worker_config.max_concurrent_jobs
+    poll_interval = worker_config.poll_interval_seconds
 
     log.info("worker.started", max_workers=max_workers, poll_interval=poll_interval, state_dir=state_dir)
     Path(state_dir).mkdir(parents=True, exist_ok=True)
@@ -255,9 +263,9 @@ def start_worker_thread(
     Returns a threading.Event that the caller can set() to stop the loop.
     Used by the Reflex app for single-container deployment.
     """
-    worker_config = config.worker
-    poll_interval = worker_config.poll_interval_seconds if worker_config else config.service.continuous_poll_seconds
-    max_workers = worker_config.max_concurrent_jobs if worker_config else 4
+    worker_config = _require_worker_config(config)
+    max_workers = worker_config.max_concurrent_jobs
+    poll_interval = worker_config.poll_interval_seconds
 
     stop = threading.Event()
 
