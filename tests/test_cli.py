@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click.testing
@@ -327,3 +328,114 @@ class TestAuthStatus:
 
         assert result.exit_code == 1
         assert "no accounts" in result.output
+
+    def test_no_access_tokens_branch(self, runner, tmp_path, full_config):
+        """auth status echoes 'no access tokens cached' when Account exists but AccessToken is empty."""
+        from m365_extract.cli import main
+
+        cache_data = {
+            "Account": {"acc-1": {"username": "user@test.com", "realm": "t-1"}},
+            "AccessToken": {},
+        }
+        cache_path = tmp_path / "token_cache.json"
+        cache_path.write_text(json.dumps(cache_data))
+
+        patched_config = full_config.model_copy(
+            update={"auth": full_config.auth.model_copy(update={"token_cache_path": str(cache_path)})},
+        )
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text("dummy: true")
+
+        with _patch_cli("load_config") as mock_load:
+            mock_load.return_value = patched_config
+            result = runner.invoke(main, ["--config", str(cfg_file), "auth", "status"])
+
+        assert result.exit_code == 0
+        assert "no access tokens cached" in result.output
+
+
+class TestDotenvLoading:
+    def test_loads_env_from_config_directory(self, runner, tmp_path):
+        """main() loads .env from the config file's directory when one exists there."""
+        from m365_extract.cli import main
+
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text("dummy: true")
+        env_file = tmp_path / ".env"
+        env_file.write_text("FOO=bar\n")
+
+        with _patch_cli("load_dotenv") as mock_load_dotenv:
+            # `sync` without --once or --dry-run errors fast, but the parent
+            # group has already executed its dotenv-loading logic.
+            runner.invoke(main, ["--config", str(cfg_file), "sync"])
+
+        expected_env = (tmp_path / ".env").resolve()
+        called_paths = [call.args[0] for call in mock_load_dotenv.call_args_list if call.args]
+        assert expected_env in called_paths
+
+    def test_skips_env_when_not_present(self, runner, tmp_path):
+        """main() does not pass a config-dir .env path to load_dotenv when none exists."""
+        from m365_extract.cli import main
+
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text("dummy: true")
+
+        with _patch_cli("load_dotenv") as mock_load_dotenv:
+            runner.invoke(main, ["--config", str(cfg_file), "sync"])
+
+        unexpected_env = (tmp_path / ".env").resolve()
+        called_paths = [call.args[0] for call in mock_load_dotenv.call_args_list if call.args]
+        assert unexpected_env not in called_paths
+
+
+class TestWorkerCommand:
+    def test_requires_web_config(self, runner, config_file, full_config):
+        """worker raises UsageError when config has no web: section."""
+        from m365_extract.cli import main
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+        ):
+            mock_load.return_value = full_config  # web is None
+
+            result = runner.invoke(main, ["--config", config_file, "worker"])
+
+        assert result.exit_code != 0
+        assert "worker requires a config with a 'web' section" in result.output
+
+    def test_happy_path_invokes_worker_loop(self, runner, tmp_path, full_web_config):
+        """worker constructs engine + token adapter and invokes worker_loop."""
+        from m365_extract.cli import main
+
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text("dummy: true")
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("configure_logging"),
+            patch("sqlmodel.create_engine") as mock_create_engine,
+            patch("m365_admin.services.token_service.TokenService") as mock_ts_cls,
+            patch("m365_admin.services.token_service.TokenServiceAdapter") as mock_adapter_cls,
+            patch("m365_extract.worker.worker_loop") as mock_worker_loop,
+        ):
+            mock_load.return_value = full_web_config
+            mock_engine = MagicMock()
+            mock_create_engine.return_value = mock_engine
+            mock_token_service = MagicMock()
+            mock_ts_cls.return_value = mock_token_service
+            mock_adapter = MagicMock()
+            mock_adapter_cls.return_value = mock_adapter
+
+            result = runner.invoke(main, ["--config", str(cfg_file), "worker"])
+
+        assert result.exit_code == 0, result.output
+        mock_create_engine.assert_called_once_with(full_web_config.web.db_url)
+        mock_ts_cls.assert_called_once_with(fernet_key=full_web_config.web.fernet_key)
+        mock_adapter_cls.assert_called_once_with(token_service=mock_token_service, engine=mock_engine)
+        mock_worker_loop.assert_called_once()
+        args = mock_worker_loop.call_args[0]
+        assert args[0] is full_web_config
+        assert args[1] is mock_engine
+        assert args[2] is mock_adapter
+        assert args[3] == str(Path(str(cfg_file)).resolve().parent / "state")
