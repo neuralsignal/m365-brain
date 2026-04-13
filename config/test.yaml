@@ -42,6 +42,9 @@ extractors:
     folders: ["Inbox"]
     lookback_days: 30
     max_items_per_sync: 10
+    download_attachments: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
   calendar:
     enabled: true
     poll_interval_minutes: 60

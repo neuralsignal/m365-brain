@@ -12,7 +12,7 @@ from pytest_httpx import HTTPXMock
 
 from m365_extract.config import EmailExtractorConfig, GraphConfig
 from m365_extract.extractors import email
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -729,3 +729,66 @@ class TestEmailAttachments:
         att_paths = [f for f in all_files if "attachments/data.xlsx" in f]
         assert len(att_paths) == 1
         client.close()
+
+
+class TestNarrowedExceptionHandling:
+    """Verify that narrowed except clauses catch expected errors but propagate programming errors."""
+
+    def test_download_graph_api_error_caught(self, tmp_path):
+        """GraphApiError during attachment download is caught (log-and-continue)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.return_value = iter(
+            [{"name": "file.pdf", "size": 100, "isInline": False, "@microsoft.graph.downloadUrl": "https://cdn/f"}]
+        )
+        client.get_bytes.side_effect = GraphApiError("404 Not Found")
+
+        config = _attachment_config()
+        email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+
+    def test_fetch_attachments_graph_api_error_caught(self, tmp_path):
+        """GraphApiError during attachment list fetch is caught (log-and-continue)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.side_effect = GraphApiError("500 Server Error")
+
+        config = _attachment_config()
+        email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+
+    def test_download_type_error_propagates(self, tmp_path):
+        """TypeError during attachment download propagates (programming error)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.return_value = iter(
+            [{"name": "file.pdf", "size": 100, "isInline": False, "@microsoft.graph.downloadUrl": "https://cdn/f"}]
+        )
+        client.get_bytes.side_effect = TypeError("unexpected None")
+
+        config = _attachment_config()
+        with pytest.raises(TypeError):
+            email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+
+    def test_fetch_attachments_type_error_propagates(self, tmp_path):
+        """TypeError during attachment list fetch propagates (programming error)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.side_effect = TypeError("bad argument")
+
+        config = _attachment_config()
+        with pytest.raises(TypeError):
+            email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+
+    def test_convert_os_error_caught(self, tmp_path):
+        """OSError during attachment conversion is caught (log-and-continue)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        with patch("m365_extract.extractors.email.convert_document", side_effect=OSError("disk full")):
+            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+
+    def test_convert_attribute_error_propagates(self, tmp_path):
+        """AttributeError during conversion propagates (programming error)."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        with (
+            patch("m365_extract.extractors.email.convert_document", side_effect=AttributeError("oops")),
+            pytest.raises(AttributeError),
+        ):
+            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
