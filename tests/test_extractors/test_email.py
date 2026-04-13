@@ -730,6 +730,112 @@ class TestEmailAttachments:
         assert len(att_paths) == 1
         client.close()
 
+    def test_attachment_download_failure_logs_warning(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """When client.get_bytes raises a caught error, the failure is logged and other attachments continue."""
+        config = _attachment_config()
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._make_email_msg()],
+                "@odata.deltaLink": "https://delta?token=fail",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/messages/msg-with-attachment/attachments.*"),
+            json={
+                "value": [
+                    {
+                        "id": "att-fail",
+                        "name": "broken.pdf",
+                        "contentType": "application/pdf",
+                        "size": 256,
+                        "isInline": False,
+                        "@microsoft.graph.downloadUrl": "https://attachments.office.com/broken.pdf",
+                    }
+                ]
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        warnings: list[dict] = []
+
+        def capture_warning(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with (
+            patch.object(client, "get_bytes", side_effect=OSError("network error")),
+            patch.object(email.log, "warning", side_effect=capture_warning),
+        ):
+            _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+
+        assert count == 1
+        download_failures = [w for w in warnings if w["event"] == "email.attachment_download_failed"]
+        assert len(download_failures) == 1
+        assert download_failures[0]["name"] == "broken.pdf"
+        assert "network error" in download_failures[0]["error"]
+
+        # No attachment file should have been written
+        all_files = storage.list_files("emails")
+        att_paths = [f for f in all_files if "attachments/" in f]
+        assert len(att_paths) == 0
+        client.close()
+
+    def test_attachment_triggers_convert_when_extension_matches(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """Attachment with matching extension is converted via _convert_and_store."""
+        config = EmailExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=3,
+            folders=["Inbox"],
+            lookback_days=30,
+            max_items_per_sync=100,
+            download_attachments=True,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[".pdf"],
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._make_email_msg()],
+                "@odata.deltaLink": "https://delta?token=conv",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/messages/msg-with-attachment/attachments.*"),
+            json={
+                "value": [
+                    {
+                        "id": "att-conv",
+                        "name": "report.pdf",
+                        "contentType": "application/pdf",
+                        "size": 64,
+                        "isInline": False,
+                        "@microsoft.graph.downloadUrl": "https://attachments.office.com/report.pdf",
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url="https://attachments.office.com/report.pdf",
+            content=b"%PDF-1.4 fake pdf",
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        with patch.object(email, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
+            _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+
+        assert count == 1
+        assert mock_conv.call_count == 1
+
+        all_files = storage.list_files("emails")
+        converted = [f for f in all_files if "attachments_converted/report.pdf.md" in f]
+        assert len(converted) == 1
+        assert "# Converted" in storage.read_file(converted[0])
+        client.close()
+
 
 class TestNarrowedExceptionHandling:
     """Verify that narrowed except clauses catch expected errors but propagate programming errors."""
@@ -792,3 +898,106 @@ class TestNarrowedExceptionHandling:
             pytest.raises(AttributeError),
         ):
             email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+
+
+# ---------------------------------------------------------------------------
+# _convert_and_store unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestConvertAndStore:
+    """Unit tests for _convert_and_store covering happy path, failure, and tmp cleanup."""
+
+    def test_happy_path_writes_markdown(self, tmp_path):
+        """convert_document returns markdown; storage.write_file gets correct path/content."""
+        storage = MagicMock()
+        with patch.object(email, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
+            email._convert_and_store(
+                storage=storage,
+                data=b"binary-data",
+                att_name="report.pdf",
+                email_dir="emails/2026/2026-03-12/sub-abc123",
+                converters_config={},
+            )
+
+        mock_conv.assert_called_once()
+        called_path = mock_conv.call_args.args[0]
+        assert isinstance(called_path, Path)
+        assert called_path.suffix == ".pdf"
+
+        storage.write_file.assert_called_once_with(
+            "emails/2026/2026-03-12/sub-abc123/attachments_converted/report.pdf.md",
+            "# Hello\n\ncontent",
+        )
+
+    def test_conversion_failure_logs_warning_no_raise(self, tmp_path):
+        """When convert_document raises a caught error, the warning is logged and no exception escapes."""
+        storage = MagicMock()
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with (
+            patch.object(email, "convert_document", side_effect=OSError("bad pdf")),
+            patch.object(email.log, "warning", side_effect=capture),
+        ):
+            email._convert_and_store(
+                storage=storage,
+                data=b"junk",
+                att_name="bad.pdf",
+                email_dir="emails/2026/2026-03-12/dir",
+                converters_config={},
+            )
+
+        # storage.write_file must NOT have been called when conversion fails
+        storage.write_file.assert_not_called()
+
+        convert_failures = [w for w in warnings if w["event"] == "email.attachment_convert_failed"]
+        assert len(convert_failures) == 1
+        assert convert_failures[0]["name"] == "bad.pdf"
+        assert "bad pdf" in convert_failures[0]["error"]
+
+    def test_tmp_path_cleaned_up_on_failure(self, tmp_path):
+        """tmp file is deleted by the finally block even when convert_document raises a caught error."""
+        storage = MagicMock()
+        captured_paths: list[Path] = []
+
+        def capture_path_and_raise(path: Path, _config: dict) -> str:
+            captured_paths.append(path)
+            assert path.exists(), "tmp file should exist when convert_document is invoked"
+            raise OSError("conversion blew up")
+
+        with patch.object(email, "convert_document", side_effect=capture_path_and_raise):
+            email._convert_and_store(
+                storage=storage,
+                data=b"bytes",
+                att_name="doc.docx",
+                email_dir="emails/2026/2026-03-12/dir",
+                converters_config={},
+            )
+
+        assert len(captured_paths) == 1
+        # finally block must have unlinked the tmp file
+        assert not captured_paths[0].exists()
+
+    def test_tmp_path_cleaned_up_on_success(self, tmp_path):
+        """tmp file is deleted by the finally block on the happy path too."""
+        storage = MagicMock()
+        captured_paths: list[Path] = []
+
+        def capture_path(path: Path, _config: dict) -> str:
+            captured_paths.append(path)
+            return "# md"
+
+        with patch.object(email, "convert_document", side_effect=capture_path):
+            email._convert_and_store(
+                storage=storage,
+                data=b"bytes",
+                att_name="doc.docx",
+                email_dir="emails/2026/2026-03-12/dir",
+                converters_config={},
+            )
+
+        assert len(captured_paths) == 1
+        assert not captured_paths[0].exists()
