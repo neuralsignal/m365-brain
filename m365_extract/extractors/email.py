@@ -40,6 +40,40 @@ _FOLDER_IDS = {
     "JunkEmail": "JunkEmail",
 }
 
+# Cache for custom folder IDs resolved via Graph API (stable for process lifetime)
+_resolved_folder_ids: dict[str, str] = {}
+
+
+def _resolve_folder_id(client: GraphClient, folder: str) -> str:
+    """Resolve a folder display name to its Graph API folder ID.
+
+    Well-known folders (Inbox, SentItems, etc.) use predefined IDs.
+    Custom folders are resolved via Graph API query and cached for the
+    process lifetime.
+    """
+    if folder in _FOLDER_IDS:
+        return _FOLDER_IDS[folder]
+
+    if folder in _resolved_folder_ids:
+        return _resolved_folder_ids[folder]
+
+    data = client.get(
+        "/me/mailFolders",
+        {"$filter": f"displayName eq '{folder}'", "$select": "id,displayName", "$top": "1"},
+    )
+    folders = data.get("value", [])
+
+    if not folders:
+        raise GraphApiError(
+            f"Mail folder not found: '{folder}'. "
+            "Check the folder name in Outlook (case-sensitive, top-level folders only)."
+        )
+
+    folder_id = folders[0]["id"]
+    _resolved_folder_ids[folder] = folder_id
+    log.info("email.folder_resolved", display_name=folder, folder_id=folder_id[:20])
+    return folder_id
+
 
 def run(
     client: GraphClient,
@@ -89,7 +123,7 @@ def _sync_folder(
     seen_keys: set[tuple[str, str]],
 ) -> tuple[int, str | None]:
     """Sync a single mail folder. Returns (items_written, new_delta_link)."""
-    folder_id = _FOLDER_IDS.get(folder, folder)
+    folder_id = _resolve_folder_id(client, folder)
     path = f"/me/mailFolders/{folder_id}/messages/delta"
 
     sync_type = "incremental" if delta_link else "initial"
