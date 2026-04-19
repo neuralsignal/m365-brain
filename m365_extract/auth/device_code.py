@@ -82,7 +82,7 @@ class DeviceCodeAuth:
             return result["access_token"]
         error = result.get("error_description", result.get("error", "unknown error"))
         _fail(f"Token acquisition failed: {error}")
-        return ""  # unreachable, satisfies type checker
+        return ""  # pragma: no cover
 
 
 def _fail(message: str) -> None:
