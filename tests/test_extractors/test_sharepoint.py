@@ -238,3 +238,113 @@ class TestSharePointExtractor:
         state, count = sharepoint.run(client, storage, {}, sharepoint_config, converters_config)
         assert count == 0
         client.close()
+
+    def test_delta_fetch_failure_returns_zero(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, sharepoint_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/followedSites.*"),
+            json={"value": [{"id": "s1", "displayName": "Site"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/sites/s1/drives.*"),
+            json={"value": [{"id": "d1", "name": "Docs"}]},
+        )
+        for _ in range(graph_config.max_retries + 1):
+            httpx_mock.add_response(
+                url=re.compile(r".*/drives/d1/root/delta.*"),
+                status_code=500,
+            )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = sharepoint.run(client, storage, {}, sharepoint_config, converters_config)
+
+        assert count == 0
+        assert "delta_s1_d1" not in state
+        client.close()
+
+    def test_folder_items_skipped(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, sharepoint_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/followedSites.*"),
+            json={"value": [{"id": "s1", "displayName": "Site"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/sites/s1/drives.*"),
+            json={"value": [{"id": "d1", "name": "Docs"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/drives/d1/root/delta.*"),
+            json={
+                "value": [{"id": "folder-1", "name": "My Folder", "folder": {"childCount": 3}}],
+                "@odata.deltaLink": "https://delta?token=f1",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = sharepoint.run(client, storage, {}, sharepoint_config, converters_config)
+
+        assert count == 0
+        assert storage.list_files("sharepoint") == []
+        client.close()
+
+    def test_items_without_file_metadata_skipped(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, sharepoint_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/followedSites.*"),
+            json={"value": [{"id": "s1", "displayName": "Site"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/sites/s1/drives.*"),
+            json={"value": [{"id": "d1", "name": "Docs"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/drives/d1/root/delta.*"),
+            json={
+                "value": [{"id": "pkg-1", "name": "package", "package": {"type": "oneNote"}}],
+                "@odata.deltaLink": "https://delta?token=p1",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = sharepoint.run(client, storage, {}, sharepoint_config, converters_config)
+
+        assert count == 0
+        assert storage.list_files("sharepoint") == []
+        client.close()
+
+    def test_items_with_empty_name_skipped(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, sharepoint_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/followedSites.*"),
+            json={"value": [{"id": "s1", "displayName": "Site"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/sites/s1/drives.*"),
+            json={"value": [{"id": "d1", "name": "Docs"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/drives/d1/root/delta.*"),
+            json={
+                "value": [{"id": "empty-1", "name": "", "file": {"mimeType": "text/plain"}}],
+                "@odata.deltaLink": "https://delta?token=e1",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = sharepoint.run(client, storage, {}, sharepoint_config, converters_config)
+
+        assert count == 0
+        assert storage.list_files("sharepoint") == []
+        client.close()
