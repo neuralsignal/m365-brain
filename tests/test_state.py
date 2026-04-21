@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -73,6 +75,28 @@ class TestSyncState:
         """Atomic write should not leave .tmp files on success."""
         state = SyncState(str(tmp_path / "state.json"))
         state.save("test", {"key": "value"})
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_write_cleanup_on_replace_failure(self, tmp_path):
+        """When os.replace fails, the temp file is cleaned up and the error re-raised."""
+        state = SyncState(str(tmp_path / "state.json"))
+        with (
+            patch("m365_extract.state.os.replace", side_effect=OSError("disk full")),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            state.save("email", {"delta": "tok"})
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_write_cleanup_on_write_failure(self, tmp_path):
+        """When f.write fails, the temp file is cleaned up and the error re-raised."""
+        state = SyncState(str(tmp_path / "state.json"))
+        with (
+            patch("json.dumps", side_effect=RuntimeError("serialize error")),
+            pytest.raises(RuntimeError, match="serialize error"),
+        ):
+            state.save("email", {"delta": "tok"})
         tmp_files = list(tmp_path.glob("*.tmp"))
         assert tmp_files == []
 
