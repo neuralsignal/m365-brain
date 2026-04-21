@@ -837,6 +837,72 @@ class TestEmailAttachments:
         client.close()
 
 
+# ---------------------------------------------------------------------------
+# Custom folder resolution (_resolve_folder_id)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveFolderId:
+    """Tests for _resolve_folder_id: well-known folders, Graph API lookup, and caching."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_folder_cache(self):
+        """Reset module-level cache before each test to avoid ordering dependencies."""
+        email._resolved_folder_ids.clear()
+        yield
+        email._resolved_folder_ids.clear()
+
+    def test_well_known_folder_returns_predefined_id(self):
+        """Well-known folders (Inbox, SentItems, etc.) return their predefined ID without calling the API."""
+        client = MagicMock(spec=GraphClient)
+        assert email._resolve_folder_id(client, "Inbox") == "Inbox"
+        assert email._resolve_folder_id(client, "SentItems") == "SentItems"
+        client.get.assert_not_called()
+
+    def test_custom_folder_resolved_via_graph_api(self):
+        """Custom folder name is resolved to its ID via Graph API query."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {"value": [{"id": "abc123", "displayName": "Archive-Custom"}]}
+
+        result = email._resolve_folder_id(client, "Archive-Custom")
+
+        assert result == "abc123"
+        client.get.assert_called_once_with(
+            "/me/mailFolders",
+            {"$filter": "displayName eq 'Archive-Custom'", "$select": "id,displayName", "$top": "1"},
+        )
+
+    def test_custom_folder_cached_after_first_resolution(self):
+        """Second call with the same custom folder name uses cache — Graph API not called again."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {"value": [{"id": "folder-xyz", "displayName": "Projects"}]}
+
+        first = email._resolve_folder_id(client, "Projects")
+        second = email._resolve_folder_id(client, "Projects")
+
+        assert first == "folder-xyz"
+        assert second == "folder-xyz"
+        assert client.get.call_count == 1
+
+    def test_custom_folder_not_found_raises_graph_api_error(self):
+        """Empty response from Graph API raises GraphApiError with helpful message."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {"value": []}
+
+        with pytest.raises(GraphApiError, match="Mail folder not found: 'NonExistent'"):
+            email._resolve_folder_id(client, "NonExistent")
+
+    def test_not_found_folder_not_cached(self):
+        """Failed resolution does not pollute the cache."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {"value": []}
+
+        with pytest.raises(GraphApiError):
+            email._resolve_folder_id(client, "Ghost")
+
+        assert "Ghost" not in email._resolved_folder_ids
+
+
 class TestNarrowedExceptionHandling:
     """Verify that narrowed except clauses catch expected errors but propagate programming errors."""
 
