@@ -198,6 +198,57 @@ class TestDryRun:
         assert result.exit_code == 0
         mock_log.info.assert_any_call("cli.dry_run_probe_skipped", name="teams_channels", reason="disabled")
 
+    def test_dry_run_unknown_extractor(self, runner, config_file, full_config):
+        """--dry-run increments failed and logs warning for unknown extractor names."""
+        from m365_extract.cli import main
+
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_dry_run("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_dry_run("log") as mock_log,
+        ):
+            mock_load.return_value = full_config
+            mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_gc.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = runner.invoke(
+                main, ["--config", config_file, "sync", "--dry-run", "--extractors", "nonexistent_extractor"]
+            )
+
+        assert result.exit_code == 1
+        mock_log.warning.assert_any_call("cli.dry_run_probe_unknown", name="nonexistent_extractor")
+        mock_log.info.assert_any_call("cli.dry_run_complete", passed=0, failed=1)
+
+    def test_dry_run_no_probe_configured(self, runner, config_file, full_config):
+        """--dry-run skips extractors with no probe URL configured."""
+        from m365_extract.cli import main
+
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
+
+        with (
+            _patch_cli("load_config") as mock_load,
+            _patch_cli("make_cli_token_provider"),
+            _patch_dry_run("GraphClient") as mock_gc,
+            _patch_cli("configure_logging"),
+            _patch_dry_run("log") as mock_log,
+            _patch_dry_run("_dry_run_probe_path") as mock_probe,
+        ):
+            mock_load.return_value = full_config
+            mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_gc.return_value.__exit__ = MagicMock(return_value=False)
+            mock_probe.return_value = None
+
+            result = runner.invoke(main, ["--config", config_file, "sync", "--dry-run", "--extractors", "email"])
+
+        assert result.exit_code == 0
+        mock_log.info.assert_any_call("cli.dry_run_probe_skipped", name="email", reason="no probe configured")
+
     def test_requires_flag(self, runner, config_file):
         """sync without --once or --dry-run errors."""
         from m365_extract.cli import main
