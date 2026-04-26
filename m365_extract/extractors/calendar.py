@@ -187,8 +187,6 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
                 parts.append(f"({', '.join(extra)})")
             att_strs.append(" ".join(parts))
         body_parts.append(f"**Attendees:** {', '.join(att_strs)}")
-    elif attendees:
-        body_parts.append(f"**Attendees:** {', '.join(attendees)}")
     body_parts.append("")
     body_parts.append("---\n")
     if body_md:

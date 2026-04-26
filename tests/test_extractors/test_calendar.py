@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import CalendarExtractorConfig, GraphConfig
 from m365_extract.extractors import calendar
+from m365_extract.extractors.calendar import _normalize_graph_datetime, _write_event
 from m365_extract.graph_client import GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -413,3 +415,62 @@ class TestCalendarExtractor:
         assert request is not None
         assert "calendarView" in str(request.url)
         client.close()
+
+
+class TestNormalizeGraphDatetime:
+    def test_empty_string_returns_empty(self):
+        assert _normalize_graph_datetime("") == ""
+
+    def test_unparseable_returns_unchanged(self):
+        assert _normalize_graph_datetime("not-a-date") == "not-a-date"
+
+    def test_valid_datetime_normalized(self):
+        result = _normalize_graph_datetime("2026-03-12T09:00:00.0000000")
+        assert result == "2026-03-12T09:00:00Z"
+
+    def test_already_z_suffixed(self):
+        result = _normalize_graph_datetime("2026-03-12T09:00:00Z")
+        assert result == "2026-03-12T09:00:00Z"
+
+
+class TestWriteEventEdgeCases:
+    def test_missing_event_id_returns_false(self):
+        storage = MagicMock()
+        event = {
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00.0000000"},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
+        }
+        assert _write_event(storage, event) is False
+        storage.write_file.assert_not_called()
+
+    def test_empty_event_id_returns_false(self):
+        storage = MagicMock()
+        event = {
+            "id": "",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00.0000000"},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
+        }
+        assert _write_event(storage, event) is False
+        storage.write_file.assert_not_called()
+
+    def test_missing_start_time_returns_false(self):
+        storage = MagicMock()
+        event = {
+            "id": "EVT-123",
+            "subject": "Test",
+            "start": {},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
+        }
+        assert _write_event(storage, event) is False
+        storage.write_file.assert_not_called()
+
+    def test_no_start_key_returns_false(self):
+        storage = MagicMock()
+        event = {
+            "id": "EVT-123",
+            "subject": "Test",
+        }
+        assert _write_event(storage, event) is False
+        storage.write_file.assert_not_called()
