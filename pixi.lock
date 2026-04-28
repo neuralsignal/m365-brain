@@ -111,7 +111,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/5e/75/bd9b7bb966668920f06b200e84454c8f3566b102183bc55c5473d96cb2b9/msal_extensions-1.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/79/cc665495e4d57d0aa6fbcc0aa57aa82671dfc78fbf95fe733ed86d98f52a/numpy-2.4.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/1b/50/0256800aa186af04d23b06c8df7880c927111dc94712aa667a700b58f116/obsidian_import-1.0.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/0a/a7/9ce7860b645345135dc55b03e9c156a608d3e45b503fbd0cd5bcf349ac87/obsidian_import-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-0.47-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/6d/ab/5b68110e0460d73fad814d5bd11c7b1ddcce5c37b10177eb264d6a36e331/onnxruntime-1.24.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
@@ -269,7 +269,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/5e/75/bd9b7bb966668920f06b200e84454c8f3566b102183bc55c5473d96cb2b9/msal_extensions-1.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/74/1b/ee2abfc68e1ce728b2958b6ba831d65c62e1b13ce3017c13943f8f9b5b2e/numpy-2.4.3-cp312-cp312-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/1b/50/0256800aa186af04d23b06c8df7880c927111dc94712aa667a700b58f116/obsidian_import-1.0.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/0a/a7/9ce7860b645345135dc55b03e9c156a608d3e45b503fbd0cd5bcf349ac87/obsidian_import-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-0.47-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/9e/f748cd64161213adeef83d0cb16cb8ace1e62fa501033acdd9f9341fff57/onnxruntime-1.23.2-cp312-cp312-macosx_13_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
@@ -434,7 +434,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/5e/75/bd9b7bb966668920f06b200e84454c8f3566b102183bc55c5473d96cb2b9/msal_extensions-1.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/79/cc665495e4d57d0aa6fbcc0aa57aa82671dfc78fbf95fe733ed86d98f52a/numpy-2.4.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/af/b3/15e5af321f67e79ccd4a3c95fc42f4b782fac877d44cc2e9437a6b6796d9/obsidian_import-1.0.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/0a/a7/9ce7860b645345135dc55b03e9c156a608d3e45b503fbd0cd5bcf349ac87/obsidian_import-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-0.47-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/28/7c/fd253da53594ab8efbefdc85b3638620ab1a6aab6eb7028a513c853559ce/onnxruntime-1.24.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
@@ -570,7 +570,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/5e/75/bd9b7bb966668920f06b200e84454c8f3566b102183bc55c5473d96cb2b9/msal_extensions-1.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/74/1b/ee2abfc68e1ce728b2958b6ba831d65c62e1b13ce3017c13943f8f9b5b2e/numpy-2.4.3-cp312-cp312-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/af/b3/15e5af321f67e79ccd4a3c95fc42f4b782fac877d44cc2e9437a6b6796d9/obsidian_import-1.0.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/0a/a7/9ce7860b645345135dc55b03e9c156a608d3e45b503fbd0cd5bcf349ac87/obsidian_import-1.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-0.47-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1b/9e/f748cd64161213adeef83d0cb16cb8ace1e62fa501033acdd9f9341fff57/onnxruntime-1.23.2-cp312-cp312-macosx_13_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
@@ -1990,36 +1990,17 @@ packages:
   version: 2.4.3
   sha256: e7dd01a46700b1967487141a66ac1a3cf0dd8ebf1f08db37d46389401512ca97
   requires_python: '>=3.11'
-- pypi: https://files.pythonhosted.org/packages/af/b3/15e5af321f67e79ccd4a3c95fc42f4b782fac877d44cc2e9437a6b6796d9/obsidian_import-1.0.1-py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/0a/a7/9ce7860b645345135dc55b03e9c156a608d3e45b503fbd0cd5bcf349ac87/obsidian_import-1.1.0-py3-none-any.whl
   name: obsidian-import
-  version: 1.0.1
-  sha256: 28c1e2b1d9ce8b02405244a2c15a29f1a662ded957189adff1f7cf61ab5353c4
+  version: 1.1.0
+  sha256: ed559beef28216e37abf439671c441dfe66269094a49fdcb09a098964b1ae141
   requires_dist:
   - click>=8.0,<9
   - defusedxml>=0.7,<1
   - openpyxl>=3.1,<4
   - pdfplumber>=0.11,<1
-  - pillow>=12.1,<13
-  - pypdf>=6.8,<7
-  - python-pptx>=1.0,<2
-  - pyyaml>=6.0,<7
-  - hypothesis>=6.0,<7 ; extra == 'dev'
-  - pytest-cov>=5.0,<6 ; extra == 'dev'
-  - pytest>=8.0,<9 ; extra == 'dev'
-  - docling>=2.0,<3 ; extra == 'docling'
-  - markitdown[all]>=0.1,<0.2 ; extra == 'markitdown'
-  requires_python: '>=3.12'
-- pypi: https://files.pythonhosted.org/packages/1b/50/0256800aa186af04d23b06c8df7880c927111dc94712aa667a700b58f116/obsidian_import-1.0.2-py3-none-any.whl
-  name: obsidian-import
-  version: 1.0.2
-  sha256: 5bd1dfeb76daadc10fb028796754ce1ececf777f01a58b77d82b80c1faec565c
-  requires_dist:
-  - click>=8.0,<9
-  - defusedxml>=0.7,<1
-  - openpyxl>=3.1,<4
-  - pdfplumber>=0.11,<1
-  - pillow>=12.1,<13
-  - pypdf>=6.8,<7
+  - pillow>=12.2,<13
+  - pypdf>=6.10.2,<7
   - python-pptx>=1.0,<2
   - pyyaml>=6.0,<7
   - hypothesis>=6.0,<7 ; extra == 'dev'
