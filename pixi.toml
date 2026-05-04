@@ -6,6 +6,7 @@ version = "0.3.0" # x-release-please-version
 
 [dependencies]
 python = ">=3.12,<3.13"
+# CVE-2026-3219 (GHSA-58qw-9mgm-455v): ZIP/tar confusion — no fix released yet; bump lower bound when patched
 pip = ">=26.0,<28"
 python-build = ">=1.4.0,<2"
 hatchling = ">=1.28.0,<2"

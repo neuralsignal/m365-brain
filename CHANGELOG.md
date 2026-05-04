@@ -70,6 +70,7 @@
 
 * Pin `pyopenssl>=26.0,<27` to fix CVE-2026-27448 (TLS callback bypass) and CVE-2026-27459 (buffer overflow)
 * Upgrade `pypdf` from `6.9.2` to `6.10.0` to fix CVE-2026-40260 (memory DoS via crafted PDF XMP metadata, GHSA-3crg-w4f6-42mx)
+* Track CVE-2026-3219 (pip ZIP/tar archive confusion, GHSA-58qw-9mgm-455v, MODERATE) — no fix released yet; pin will be narrowed when a patched pip version is available
 
 ### Features
 
