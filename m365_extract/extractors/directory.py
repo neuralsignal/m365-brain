@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import DirectoryExtractorConfig
-from m365_extract.frontmatter import build_directory_user_frontmatter
+from m365_extract.frontmatter import DirectoryUserData, build_directory_user_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -143,16 +143,18 @@ def _write_user(
     city = user.get("city") or ""
 
     fm = build_directory_user_frontmatter(
-        display_name=display_name,
-        user_id=user_id,
-        email=email,
-        upn=upn,
-        job_title=job_title,
-        department=department,
-        office=office,
-        city=city,
-        manager_link=manager_link,
-        direct_reports_links=direct_reports_links,
+        DirectoryUserData(
+            display_name=display_name,
+            user_id=user_id,
+            email=email,
+            upn=upn,
+            job_title=job_title,
+            department=department,
+            office=office,
+            city=city,
+            manager_link=manager_link,
+            direct_reports_links=direct_reports_links,
+        )
     )
 
     # Build body

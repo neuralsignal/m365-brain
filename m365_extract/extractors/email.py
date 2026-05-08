@@ -19,7 +19,7 @@ import structlog
 from m365_extract.config import EmailExtractorConfig
 from m365_extract.converters.document import convert_document
 from m365_extract.converters.html_to_md import html_to_markdown
-from m365_extract.frontmatter import build_email_frontmatter
+from m365_extract.frontmatter import EmailData, build_email_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -202,16 +202,18 @@ def _write_email(
 
     # Build frontmatter
     fm = build_email_frontmatter(
-        subject=subject,
-        message_id=message_id,
-        received_time=received,
-        folder=folder,
-        sender_address=sender_address,
-        sender_name=sender_name,
-        to_recipients=to_recipients,
-        importance=msg.get("importance", "normal"),
-        has_attachments=msg.get("hasAttachments", False),
-        web_link=msg.get("webLink", ""),
+        EmailData(
+            subject=subject,
+            message_id=message_id,
+            received_time=received,
+            folder=folder,
+            sender_address=sender_address,
+            sender_name=sender_name,
+            to_recipients=to_recipients,
+            importance=msg.get("importance", "normal"),
+            has_attachments=msg.get("hasAttachments", False),
+            web_link=msg.get("webLink", ""),
+        )
     )
 
     # Build body

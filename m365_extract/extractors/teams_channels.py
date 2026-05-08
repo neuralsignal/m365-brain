@@ -12,7 +12,7 @@ import structlog
 
 from m365_extract.config import TeamsChannelsExtractorConfig
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
-from m365_extract.frontmatter import build_teams_channel_frontmatter
+from m365_extract.frontmatter import TeamsChannelData, build_teams_channel_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -104,10 +104,12 @@ def _process_channel(
     last_msg_time = messages[-1].get("createdDateTime", "") if messages else ""
 
     fm = build_teams_channel_frontmatter(
-        team_name=team_name,
-        channel_name=channel_name,
-        channel_id=channel_id,
-        last_message_time=last_msg_time,
+        TeamsChannelData(
+            team_name=team_name,
+            channel_name=channel_name,
+            channel_id=channel_id,
+            last_message_time=last_msg_time,
+        )
     )
 
     body_parts = [f"# {team_name} / {channel_name}\n"]
