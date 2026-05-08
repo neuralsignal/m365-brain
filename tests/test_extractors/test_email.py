@@ -11,7 +11,7 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import EmailExtractorConfig, GraphConfig
-from m365_extract.extractors import email
+from m365_extract.extractors import _attachment_helpers, email
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -766,7 +766,7 @@ class TestEmailAttachments:
 
         with (
             patch.object(client, "get_bytes", side_effect=OSError("network error")),
-            patch.object(email.log, "warning", side_effect=capture_warning),
+            patch.object(_attachment_helpers.log, "warning", side_effect=capture_warning),
         ):
             _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
 
@@ -824,7 +824,7 @@ class TestEmailAttachments:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        with patch.object(email, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
+        with patch.object(_attachment_helpers, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
             _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
 
         assert count == 1
@@ -953,17 +953,17 @@ class TestNarrowedExceptionHandling:
     def test_convert_os_error_caught(self, tmp_path):
         """OSError during attachment conversion is caught (log-and-continue)."""
         storage = LocalBackend(str(tmp_path / "vault"))
-        with patch("m365_extract.extractors.email.convert_document", side_effect=OSError("disk full")):
-            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+        with patch.object(_attachment_helpers, "convert_document", side_effect=OSError("disk full")):
+            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
 
     def test_convert_attribute_error_propagates(self, tmp_path):
         """AttributeError during conversion propagates (programming error)."""
         storage = LocalBackend(str(tmp_path / "vault"))
         with (
-            patch("m365_extract.extractors.email.convert_document", side_effect=AttributeError("oops")),
+            patch.object(_attachment_helpers, "convert_document", side_effect=AttributeError("oops")),
             pytest.raises(AttributeError),
         ):
-            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
 
 
 # ---------------------------------------------------------------------------
@@ -977,8 +977,8 @@ class TestConvertAndStore:
     def test_happy_path_writes_markdown(self, tmp_path):
         """convert_document returns markdown; storage.write_file gets correct path/content."""
         storage = MagicMock()
-        with patch.object(email, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"binary-data",
                 att_name="report.pdf",
@@ -1005,10 +1005,10 @@ class TestConvertAndStore:
             warnings.append({"event": event, **kwargs})
 
         with (
-            patch.object(email, "convert_document", side_effect=OSError("bad pdf")),
-            patch.object(email.log, "warning", side_effect=capture),
+            patch.object(_attachment_helpers, "convert_document", side_effect=OSError("bad pdf")),
+            patch.object(_attachment_helpers.log, "warning", side_effect=capture),
         ):
-            email._convert_and_store(
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"junk",
                 att_name="bad.pdf",
@@ -1034,8 +1034,8 @@ class TestConvertAndStore:
             assert path.exists(), "tmp file should exist when convert_document is invoked"
             raise OSError("conversion blew up")
 
-        with patch.object(email, "convert_document", side_effect=capture_path_and_raise):
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", side_effect=capture_path_and_raise):
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
                 att_name="doc.docx",
@@ -1056,8 +1056,8 @@ class TestConvertAndStore:
             captured_paths.append(path)
             return "# md"
 
-        with patch.object(email, "convert_document", side_effect=capture_path):
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", side_effect=capture_path):
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
                 att_name="doc.docx",
