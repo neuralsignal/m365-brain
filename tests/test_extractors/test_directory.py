@@ -338,3 +338,66 @@ class TestDirectoryExtractor:
 
         assert "manager" not in meta
         client.close()
+
+
+class TestExtractUserData:
+    """Tests for _extract_user_data pure extraction function."""
+
+    def test_extracts_full_user(self):
+        user = {
+            "id": "u-001",
+            "displayName": "John Smith",
+            "mail": "john@contoso.com",
+            "userPrincipalName": "john@contoso.com",
+            "jobTitle": "Senior Dev",
+            "department": "Engineering",
+            "officeLocation": "Building A",
+            "city": "Seattle",
+        }
+
+        data = directory._extract_user_data(user, "[[manager-link]]", ["[[report-1]]"])
+
+        assert data.user_id == "u-001"
+        assert data.display_name == "John Smith"
+        assert data.email == "john@contoso.com"
+        assert data.upn == "john@contoso.com"
+        assert data.job_title == "Senior Dev"
+        assert data.department == "Engineering"
+        assert data.office == "Building A"
+        assert data.city == "Seattle"
+        assert data.manager_link == "[[manager-link]]"
+        assert data.direct_reports_links == ["[[report-1]]"]
+
+    def test_handles_missing_fields(self):
+        user = {"id": "u-002", "displayName": "Minimal User"}
+
+        data = directory._extract_user_data(user, "", [])
+
+        assert data.user_id == "u-002"
+        assert data.display_name == "Minimal User"
+        assert data.email == ""
+        assert data.job_title == ""
+        assert data.department == ""
+        assert data.office == ""
+        assert data.city == ""
+        assert data.manager_link == ""
+        assert data.direct_reports_links == []
+
+    def test_none_values_become_empty_strings(self):
+        user = {
+            "id": "u-003",
+            "displayName": "Null Fields",
+            "mail": None,
+            "jobTitle": None,
+            "department": None,
+            "officeLocation": None,
+            "city": None,
+        }
+
+        data = directory._extract_user_data(user, "", [])
+
+        assert data.email == ""
+        assert data.job_title == ""
+        assert data.department == ""
+        assert data.office == ""
+        assert data.city == ""

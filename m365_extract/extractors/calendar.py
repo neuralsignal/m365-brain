@@ -5,6 +5,7 @@ Uses /me/calendarView with date range filtering for incremental sync.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -67,7 +68,8 @@ def run(
             skipped += 1
             continue
 
-        if _write_event(storage, event):
+        event_data = _extract_event_data(event)
+        if event_data and _write_event(storage, event_data):
             written += 1
 
     state["last_sync"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -95,8 +97,26 @@ def _normalize_graph_datetime(dt_str: str) -> str:
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_event(storage: StorageBackend, event: dict) -> bool:
-    """Write a single calendar event to storage. Returns True if written."""
+@dataclass(frozen=True)
+class EventData:
+    """Extracted and normalized calendar event fields."""
+
+    event_id: str
+    subject: str
+    start_time: str
+    end_time: str
+    location: str
+    organizer_name: str
+    organizer_email: str
+    attendees: list[str]
+    attendee_details: list[dict[str, str]]
+    body_md: str
+    is_recurring: bool
+    web_link: str
+
+
+def _extract_event_data(event: dict) -> EventData | None:
+    """Extract and normalize calendar event data. Returns None if invalid."""
     event_id = event.get("id", "")
     subject = event.get("subject") or "(no subject)"
 
@@ -107,24 +127,19 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
 
     if not event_id or not start_time:
         log.warning("calendar.skipping_invalid", event_id=event_id)
-        return False
+        return None
 
-    # Normalize times — Graph returns fractional seconds without Z for UTC.
-    # Parse and re-format to get a clean ISO string with Z suffix.
     start_time = _normalize_graph_datetime(start_time)
     end_time = _normalize_graph_datetime(end_time)
 
-    # Extract location
     location = event.get("location", {}).get("displayName", "")
 
-    # Extract organizer
     organizer_obj = event.get("organizer", {}).get("emailAddress", {})
     organizer_name = organizer_obj.get("name", "")
     organizer_email = organizer_obj.get("address", "")
 
-    # Extract attendees
-    attendees = []
-    attendee_details = []
+    attendees: list[str] = []
+    attendee_details: list[dict[str, str]] = []
     for att in event.get("attendees", []):
         email_obj = att.get("emailAddress", {})
         att_name = email_obj.get("name", "")
@@ -142,20 +157,14 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
                 detail["status"] = att_status
             attendee_details.append(detail)
 
-    # Convert body
     body_obj = event.get("body", {})
     content_type = body_obj.get("contentType", "text")
     raw_body = body_obj.get("content", "")
+    body_md = html_to_markdown(raw_body) if content_type == "html" else raw_body
 
-    if content_type == "html":
-        body_md = html_to_markdown(raw_body)
-    else:
-        body_md = raw_body
-
-    # Build frontmatter
-    fm = build_calendar_frontmatter(
-        subject=subject,
+    return EventData(
         event_id=event_id,
+        subject=subject,
         start_time=start_time,
         end_time=end_time,
         location=location,
@@ -163,20 +172,37 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
         organizer_email=organizer_email,
         attendees=attendees,
         attendee_details=attendee_details,
+        body_md=body_md,
         is_recurring=event.get("type", "singleInstance") != "singleInstance",
         web_link=event.get("webLink", ""),
     )
 
-    # Build body
-    body_parts = [f"# {subject}\n"]
-    body_parts.append(f"**When:** {start_time} — {end_time}")
-    if location:
-        body_parts.append(f"**Where:** {location}")
-    if organizer_name:
-        body_parts.append(f"**Organizer:** {organizer_name}")
-    if attendee_details:
+
+def _write_event(storage: StorageBackend, data: EventData) -> bool:
+    """Build frontmatter and markdown body for a calendar event, then write to storage."""
+    fm = build_calendar_frontmatter(
+        subject=data.subject,
+        event_id=data.event_id,
+        start_time=data.start_time,
+        end_time=data.end_time,
+        location=data.location,
+        organizer_name=data.organizer_name,
+        organizer_email=data.organizer_email,
+        attendees=data.attendees,
+        attendee_details=data.attendee_details,
+        is_recurring=data.is_recurring,
+        web_link=data.web_link,
+    )
+
+    body_parts = [f"# {data.subject}\n"]
+    body_parts.append(f"**When:** {data.start_time} — {data.end_time}")
+    if data.location:
+        body_parts.append(f"**Where:** {data.location}")
+    if data.organizer_name:
+        body_parts.append(f"**Organizer:** {data.organizer_name}")
+    if data.attendee_details:
         att_strs = []
-        for d in attendee_details:
+        for d in data.attendee_details:
             parts = [d.get("name", "")]
             extra = []
             if d.get("email"):
@@ -187,21 +213,20 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
                 parts.append(f"({', '.join(extra)})")
             att_strs.append(" ".join(parts))
         body_parts.append(f"**Attendees:** {', '.join(att_strs)}")
-    elif attendees:
-        body_parts.append(f"**Attendees:** {', '.join(attendees)}")
+    elif data.attendees:
+        body_parts.append(f"**Attendees:** {', '.join(data.attendees)}")
     body_parts.append("")
     body_parts.append("---\n")
-    if body_md:
-        body_parts.append(body_md)
+    if data.body_md:
+        body_parts.append(data.body_md)
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    # File path: calendar/{year}/{month}/{slug}.md
-    date_str = start_time[:10]
+    date_str = data.start_time[:10]
     year = date_str[:4]
     month = date_str[:7]
-    slug = slugify(subject, 80)
-    hsh = short_hash(event_id, 6)
+    slug = slugify(data.subject, 80)
+    hsh = short_hash(data.event_id, 6)
     file_path = f"calendar/{year}/{month}/{date_str}-{slug}-{hsh}.md"
 
     storage.write_file(file_path, content)

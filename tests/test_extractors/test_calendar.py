@@ -413,3 +413,98 @@ class TestCalendarExtractor:
         assert request is not None
         assert "calendarView" in str(request.url)
         client.close()
+
+
+class TestExtractEventData:
+    """Tests for _extract_event_data pure extraction function."""
+
+    def test_extracts_full_event(self):
+        event = {
+            "id": "EVT-001",
+            "subject": "Team Meeting",
+            "start": {"dateTime": "2026-03-12T09:00:00.0000000", "timeZone": "UTC"},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000", "timeZone": "UTC"},
+            "location": {"displayName": "Room A"},
+            "organizer": {"emailAddress": {"name": "Alice", "address": "alice@example.com"}},
+            "attendees": [
+                {
+                    "emailAddress": {"name": "Bob", "address": "bob@example.com"},
+                    "status": {"response": "accepted"},
+                },
+            ],
+            "body": {"contentType": "text", "content": "Agenda here"},
+            "type": "occurrence",
+            "webLink": "https://outlook.office.com/event/1",
+        }
+
+        data = calendar._extract_event_data(event)
+
+        assert data is not None
+        assert data.event_id == "EVT-001"
+        assert data.subject == "Team Meeting"
+        assert data.start_time == "2026-03-12T09:00:00Z"
+        assert data.end_time == "2026-03-12T10:00:00Z"
+        assert data.location == "Room A"
+        assert data.organizer_name == "Alice"
+        assert data.organizer_email == "alice@example.com"
+        assert data.attendees == ["Bob"]
+        assert data.attendee_details == [{"name": "Bob", "email": "bob@example.com", "status": "accepted"}]
+        assert data.body_md == "Agenda here"
+        assert data.is_recurring is True
+        assert data.web_link == "https://outlook.office.com/event/1"
+
+    def test_returns_none_for_missing_id(self):
+        event = {
+            "id": "",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+        }
+        assert calendar._extract_event_data(event) is None
+
+    def test_returns_none_for_missing_start_time(self):
+        event = {
+            "id": "EVT-002",
+            "subject": "Test",
+            "start": {},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+        }
+        assert calendar._extract_event_data(event) is None
+
+    def test_defaults_subject_when_missing(self):
+        event = {
+            "id": "EVT-003",
+            "subject": None,
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
+        }
+        data = calendar._extract_event_data(event)
+        assert data is not None
+        assert data.subject == "(no subject)"
+        assert data.is_recurring is False
+
+    def test_attendee_without_name_uses_email(self):
+        event = {
+            "id": "EVT-004",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [
+                {"emailAddress": {"name": "", "address": "anon@example.com"}, "status": {"response": ""}},
+            ],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
+        }
+        data = calendar._extract_event_data(event)
+        assert data is not None
+        assert data.attendees == []
+        assert data.attendee_details == [{"email": "anon@example.com"}]
