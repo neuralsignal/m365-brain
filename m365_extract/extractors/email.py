@@ -45,33 +45,37 @@ _FOLDER_IDS = {
     "JunkEmail": "JunkEmail",
 }
 
-# Well-known folder names to skip during folder auto-discovery (mailbox-system
-# noise that should not be ingested as content).
-_AUTO_DISCOVER_SKIP_WELL_KNOWN = {
-    "drafts",
-    "junkemail",
-    "deleteditems",
-    "syncissues",
-    "outbox",
-    "conflicts",
-    "localfailures",
-    "searchfolders",
-    "serverfailures",
-    "conversationhistory",
-    "recoverableitemsdeletions",
-    "scheduled",
-}
-
-# Display names to skip during folder auto-discovery (vendor or user-visible
-# system folders without a wellKnownName).
+# Display names to skip during folder auto-discovery.
+#
+# Graph API v1.0 does NOT expose `wellKnownName` on the mailFolder schema
+# (it's beta-only), so the filter cannot match well-known IDs. Instead we
+# match on the localized displayName that Graph actually returns for system
+# folders + a few vendor/sync artefacts.
+#
+# The English set below covers the standard EN mailbox locale (Drafts, Sent
+# Items, etc.). Add localized variants here when ingesting non-English
+# mailboxes ("Entwürfe", "Gelöschte Elemente", "Posteingang"-friends, etc.).
 _AUTO_DISCOVER_SKIP_DISPLAY = {
+    # System mailbox folders
+    "Drafts",
+    "Deleted Items",
+    "Junk Email",
+    "Junk E-Mail",
+    "Outbox",
+    "Conversation History",
+    "Sync Issues",
+    "Conflicts",
+    "Local Failures",
+    "Server Failures",
+    "Recoverable Items",
+    "Scheduled",
+    # Vendor/system artefacts
     "Conversation Action Settings",
     "Quick Step Settings",
     "RSS Feeds",
     "RSS Subscriptions",
     "Yammer Root",
     "Files",
-    "Junk E-Mail",
 }
 
 # Cache for resolved folder IDs, keyed by (mailbox_address, folder_display_name).
@@ -126,22 +130,26 @@ def _list_all_folders(client: GraphClient, address: str) -> list[tuple[str, str]
     """List all top-level mail folders for auto-discovery.
 
     Returns (display_name, folder_id) tuples with system / noise folders
-    filtered out. The caller can prime `_resolved_folder_ids` with the IDs to
-    avoid a second Graph round-trip per folder.
+    filtered out by display name and the `isHidden` flag. The caller can
+    prime `_resolved_folder_ids` with the IDs to avoid a second Graph
+    round-trip per folder.
+
+    Note: Graph API v1.0 does not expose `wellKnownName` on `mailFolder`, so
+    filtering relies on `displayName` plus `isHidden`. See
+    `_AUTO_DISCOVER_SKIP_DISPLAY` for the localized display-name list.
     """
     data = client.get(
         f"{_endpoint_base(address)}/mailFolders",
-        {"$select": "id,displayName,wellKnownName", "$top": "100"},
+        {"$select": "id,displayName,isHidden", "$top": "100"},
     )
     folders = data.get("value", [])
     result: list[tuple[str, str]] = []
     for f in folders:
-        well_known = (f.get("wellKnownName") or "").lower()
         display = f.get("displayName") or ""
         folder_id = f.get("id") or ""
         if not display or not folder_id:
             continue
-        if well_known in _AUTO_DISCOVER_SKIP_WELL_KNOWN:
+        if f.get("isHidden", False):
             continue
         if display in _AUTO_DISCOVER_SKIP_DISPLAY:
             continue
