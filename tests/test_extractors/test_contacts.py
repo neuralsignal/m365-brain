@@ -240,6 +240,37 @@ class TestContactsExtractor:
         assert "delta_link_folder_folder-1" in state
         client.close()
 
+    def test_contact_folders_skips_folder_without_id(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        config = ContactsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=1440,
+            max_items_per_sync=500,
+            include_contact_folders=True,
+        )
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta.*"),
+            json={"value": [], "@odata.deltaLink": "https://delta?token=default"},
+        )
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contactFolders\?.*"),
+            json={
+                "value": [
+                    {"displayName": "No ID Folder"},
+                    {"id": "", "displayName": "Empty ID Folder"},
+                ],
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = contacts.run(client, storage, {}, config)
+        assert count == 0
+        assert storage.list_files("contacts") == []
+        client.close()
+
     def test_personal_notes_in_body(self, httpx_mock: HTTPXMock, tmp_path, graph_config, contacts_config):
         httpx_mock.add_response(
             url=re.compile(r".*/me/contacts/delta.*"),
