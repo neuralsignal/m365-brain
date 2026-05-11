@@ -24,8 +24,12 @@ class TestExtractSender:
     def test_no_from_field(self) -> None:
         assert extract_sender({}) == ""
 
-    def test_from_field_with_no_user_or_app(self) -> None:
+    def test_from_field_empty(self) -> None:
         msg = {"from": {}}
+        assert extract_sender(msg) == ""
+
+    def test_from_field_with_no_user_or_app(self) -> None:
+        msg = {"from": {"emailAddress": {"name": "someone"}}}
         assert extract_sender(msg) == ""
 
     @given(name=st.text(min_size=1))

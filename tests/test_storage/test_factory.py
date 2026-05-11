@@ -96,6 +96,24 @@ class TestCreateUserStorage:
             # Prefix should be dev/user-xyz-789/
             assert backend._prefix == "dev/user-xyz-789/"
 
+    def test_local_missing_config_crashes(self):
+        config = StorageConfig(
+            backend="local",
+            local=None,
+            azure_blob=None,
+        )
+        with pytest.raises(ConfigError):
+            create_user_storage(config, "user-1")
+
+    def test_azure_blob_missing_config_crashes(self):
+        config = StorageConfig(
+            backend="azure_blob",
+            local=None,
+            azure_blob=None,
+        )
+        with pytest.raises(ConfigError):
+            create_user_storage(config, "user-1")
+
     def test_unknown_backend_crashes(self):
         config = StorageConfig(
             backend="s3",

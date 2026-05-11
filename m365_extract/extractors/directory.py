@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import DirectoryExtractorConfig
-from m365_extract.frontmatter import build_directory_user_frontmatter
+from m365_extract.frontmatter import DirectoryUserData, build_directory_user_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -64,7 +64,8 @@ def run(
         if config.include_direct_reports:
             direct_reports_links = _fetch_direct_reports_links(client, user["id"])
 
-        if _write_user(storage, user, manager_link, direct_reports_links):
+        user_data = _extract_user_data(user, manager_link, direct_reports_links)
+        if _write_user(storage, user_data):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -126,62 +127,52 @@ def _fetch_direct_reports_links(client: GraphClient, user_id: str) -> list[str]:
         return []
 
 
-def _write_user(
-    storage: StorageBackend,
-    user: dict,
-    manager_link: str,
-    direct_reports_links: list[str],
-) -> bool:
-    """Write a single user to storage. Returns True if written."""
-    user_id = user.get("id", "")
-    display_name = user.get("displayName") or ""
-    email = user.get("mail") or ""
-    upn = user.get("userPrincipalName") or ""
-    job_title = user.get("jobTitle") or ""
-    department = user.get("department") or ""
-    office = user.get("officeLocation") or ""
-    city = user.get("city") or ""
-
-    fm = build_directory_user_frontmatter(
-        display_name=display_name,
-        user_id=user_id,
-        email=email,
-        upn=upn,
-        job_title=job_title,
-        department=department,
-        office=office,
-        city=city,
+def _extract_user_data(user: dict, manager_link: str, direct_reports_links: list[str]) -> DirectoryUserData:
+    """Extract and normalize directory user data from a Graph API user dict."""
+    return DirectoryUserData(
+        display_name=user.get("displayName") or "",
+        user_id=user.get("id", ""),
+        email=user.get("mail") or "",
+        upn=user.get("userPrincipalName") or "",
+        job_title=user.get("jobTitle") or "",
+        department=user.get("department") or "",
+        office=user.get("officeLocation") or "",
+        city=user.get("city") or "",
         manager_link=manager_link,
         direct_reports_links=direct_reports_links,
     )
 
-    # Build body
-    body_parts = [f"# {display_name}\n", "## Profile\n"]
 
-    if job_title:
-        body_parts.append(f"- **Title:** {job_title}")
-    if department:
-        body_parts.append(f"- **Department:** {department}")
-    if office:
-        body_parts.append(f"- **Office:** {office}")
-    if email:
-        body_parts.append(f"- **Email:** {email}")
-    if city:
-        body_parts.append(f"- **City:** {city}")
+def _write_user(storage: StorageBackend, data: DirectoryUserData) -> bool:
+    """Build frontmatter and markdown body for a directory user, then write to storage."""
+    fm = build_directory_user_frontmatter(data)
 
-    if manager_link or direct_reports_links:
+    body_parts = [f"# {data.display_name}\n", "## Profile\n"]
+
+    if data.job_title:
+        body_parts.append(f"- **Title:** {data.job_title}")
+    if data.department:
+        body_parts.append(f"- **Department:** {data.department}")
+    if data.office:
+        body_parts.append(f"- **Office:** {data.office}")
+    if data.email:
+        body_parts.append(f"- **Email:** {data.email}")
+    if data.city:
+        body_parts.append(f"- **City:** {data.city}")
+
+    if data.manager_link or data.direct_reports_links:
         body_parts.append("\n## Organization\n")
-        if manager_link:
-            body_parts.append(f"- **Manager:** {manager_link}")
-        if direct_reports_links:
+        if data.manager_link:
+            body_parts.append(f"- **Manager:** {data.manager_link}")
+        if data.direct_reports_links:
             body_parts.append("- **Direct Reports:**")
-            for link in direct_reports_links:
+            for link in data.direct_reports_links:
                 body_parts.append(f"  - {link}")
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    slug = slugify(display_name, 80)
-    hsh = short_hash(user_id, 6)
+    slug = slugify(data.display_name, 80)
+    hsh = short_hash(data.user_id, 6)
     file_path = f"directory/{slug}-{hsh}/index.md"
 
     storage.write_file(file_path, content)

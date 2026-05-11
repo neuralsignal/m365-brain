@@ -11,7 +11,7 @@ import structlog
 
 from m365_extract.config import CalendarExtractorConfig
 from m365_extract.converters.html_to_md import html_to_markdown
-from m365_extract.frontmatter import build_calendar_frontmatter
+from m365_extract.frontmatter import CalendarEventData, build_calendar_frontmatter
 from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -67,7 +67,11 @@ def run(
             skipped += 1
             continue
 
-        if _write_event(storage, event):
+        extracted = _extract_event_data(event)
+        if extracted is None:
+            continue
+        event_data, body_md = extracted
+        if _write_event(storage, event_data, body_md):
             written += 1
 
     state["last_sync"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -95,8 +99,12 @@ def _normalize_graph_datetime(dt_str: str) -> str:
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_event(storage: StorageBackend, event: dict) -> bool:
-    """Write a single calendar event to storage. Returns True if written."""
+def _extract_event_data(event: dict) -> tuple[CalendarEventData, str] | None:
+    """Extract and normalize calendar event data. Returns None if invalid.
+
+    The body markdown is returned separately because it is not part of the
+    frontmatter schema.
+    """
     event_id = event.get("id", "")
     subject = event.get("subject") or "(no subject)"
 
@@ -107,24 +115,19 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
 
     if not event_id or not start_time:
         log.warning("calendar.skipping_invalid", event_id=event_id)
-        return False
+        return None
 
-    # Normalize times — Graph returns fractional seconds without Z for UTC.
-    # Parse and re-format to get a clean ISO string with Z suffix.
     start_time = _normalize_graph_datetime(start_time)
     end_time = _normalize_graph_datetime(end_time)
 
-    # Extract location
     location = event.get("location", {}).get("displayName", "")
 
-    # Extract organizer
     organizer_obj = event.get("organizer", {}).get("emailAddress", {})
     organizer_name = organizer_obj.get("name", "")
     organizer_email = organizer_obj.get("address", "")
 
-    # Extract attendees
-    attendees = []
-    attendee_details = []
+    attendees: list[str] = []
+    attendee_details: list[dict] = []
     for att in event.get("attendees", []):
         email_obj = att.get("emailAddress", {})
         att_name = email_obj.get("name", "")
@@ -142,18 +145,12 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
                 detail["status"] = att_status
             attendee_details.append(detail)
 
-    # Convert body
     body_obj = event.get("body", {})
     content_type = body_obj.get("contentType", "text")
     raw_body = body_obj.get("content", "")
+    body_md = html_to_markdown(raw_body) if content_type == "html" else raw_body
 
-    if content_type == "html":
-        body_md = html_to_markdown(raw_body)
-    else:
-        body_md = raw_body
-
-    # Build frontmatter
-    fm = build_calendar_frontmatter(
+    data = CalendarEventData(
         subject=subject,
         event_id=event_id,
         start_time=start_time,
@@ -166,17 +163,22 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
         is_recurring=event.get("type", "singleInstance") != "singleInstance",
         web_link=event.get("webLink", ""),
     )
+    return data, body_md
 
-    # Build body
-    body_parts = [f"# {subject}\n"]
-    body_parts.append(f"**When:** {start_time} — {end_time}")
-    if location:
-        body_parts.append(f"**Where:** {location}")
-    if organizer_name:
-        body_parts.append(f"**Organizer:** {organizer_name}")
-    if attendee_details:
+
+def _write_event(storage: StorageBackend, data: CalendarEventData, body_md: str) -> bool:
+    """Build frontmatter and markdown body for a calendar event, then write to storage."""
+    fm = build_calendar_frontmatter(data)
+
+    body_parts = [f"# {data.subject}\n"]
+    body_parts.append(f"**When:** {data.start_time} — {data.end_time}")
+    if data.location:
+        body_parts.append(f"**Where:** {data.location}")
+    if data.organizer_name:
+        body_parts.append(f"**Organizer:** {data.organizer_name}")
+    if data.attendee_details:
         att_strs = []
-        for d in attendee_details:
+        for d in data.attendee_details:
             parts = [d.get("name", "")]
             extra = []
             if d.get("email"):
@@ -187,8 +189,8 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
                 parts.append(f"({', '.join(extra)})")
             att_strs.append(" ".join(parts))
         body_parts.append(f"**Attendees:** {', '.join(att_strs)}")
-    elif attendees:
-        body_parts.append(f"**Attendees:** {', '.join(attendees)}")
+    elif data.attendees:
+        body_parts.append(f"**Attendees:** {', '.join(data.attendees)}")
     body_parts.append("")
     body_parts.append("---\n")
     if body_md:
@@ -196,12 +198,11 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    # File path: calendar/{year}/{month}/{slug}.md
-    date_str = start_time[:10]
+    date_str = data.start_time[:10]
     year = date_str[:4]
     month = date_str[:7]
-    slug = slugify(subject, 80)
-    hsh = short_hash(event_id, 6)
+    slug = slugify(data.subject, 80)
+    hsh = short_hash(data.event_id, 6)
     file_path = f"calendar/{year}/{month}/{date_str}-{slug}-{hsh}.md"
 
     storage.write_file(file_path, content)

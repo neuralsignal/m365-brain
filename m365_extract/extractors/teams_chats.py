@@ -11,7 +11,7 @@ import structlog
 
 from m365_extract.config import TeamsChatsExtractorConfig
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
-from m365_extract.frontmatter import build_teams_chat_frontmatter
+from m365_extract.frontmatter import TeamsChatData, build_teams_chat_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, loads_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -56,96 +56,47 @@ def run(
     return state, written
 
 
-def _process_chat(
-    client: GraphClient,
-    storage: StorageBackend,
-    chat: dict,
-    last_sync: str | None,
-    max_messages: int,
-) -> bool:
-    """Process a single chat: fetch messages and write markdown. Returns True if written."""
+def _extract_chat_data(chat: dict, messages: list[dict], max_messages: int) -> tuple[TeamsChatData, list[dict], str]:
+    """Extract chat frontmatter data, sort messages, and compute the output path."""
     chat_id = chat.get("id", "")
     chat_type = chat.get("chatType", "oneOnOne")
     topic = chat.get("topic") or ""
 
-    members = chat.get("members", [])
-    participants = []
-    for member in members:
-        display_name = member.get("displayName", "")
-        if display_name:
-            participants.append(display_name)
-
+    participants = [m.get("displayName", "") for m in chat.get("members", []) if m.get("displayName", "")]
     title = topic if topic else ", ".join(sorted(participants)) if participants else "Chat"
 
-    # Fetch messages with optional incremental filter
-    params: dict = {"$top": "50", "$orderby": "createdDateTime desc"}
-    if last_sync:
-        params["$filter"] = f"lastModifiedDateTime gt {last_sync}"
-
-    try:
-        messages = list(
-            client.get_paginated(
-                f"/me/chats/{chat_id}/messages",
-                params=params,
-                max_pages=max(1, max_messages // 50),
-            )
-        )
-    except GraphApiError as exc:
-        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
-        return False
-
-    if not messages:
-        return False
-
-    # Detect truncation — messages may have been capped by max_messages
-    message_limit_reached = len(messages) >= max_messages
-    if message_limit_reached:
-        log.warning("teams_chats.message_limit_reached", chat_id=chat_id, messages=len(messages), limit=max_messages)
-
-    # Sort chronologically
-    messages.sort(key=lambda m: m.get("createdDateTime", ""))
-
-    last_msg_time = messages[-1].get("createdDateTime", "") if messages else ""
+    messages_sorted = sorted(messages, key=lambda m: m.get("createdDateTime", ""))
+    last_message_time = messages_sorted[-1].get("createdDateTime", "") if messages_sorted else ""
 
     slug = slugify(title, 80)
     hsh = short_hash(chat_id, 6)
     file_path = f"teams-chats/{slug}_{hsh}.md"
 
-    # Check if update is needed
-    if storage.file_exists(file_path):
-        try:
-            existing_content = storage.read_file(file_path)
-            existing_fm, _ = loads_markdown(existing_content)
-            if existing_fm.get("last_message_time") == last_msg_time:
-                return False
-        except (ValueError, KeyError) as exc:
-            log.warning(
-                "teams_chats.existing_file_parse_failed",
-                file_path=file_path,
-                error=str(exc),
-            )
-
-    fm = build_teams_chat_frontmatter(
+    data = TeamsChatData(
         title=title,
         conversation_id=chat_id,
         conversation_type=chat_type,
         participants=participants,
-        last_message_time=last_msg_time,
-        message_limit_reached=message_limit_reached,
+        last_message_time=last_message_time,
+        message_limit_reached=len(messages) >= max_messages,
     )
+    return data, messages_sorted, file_path
 
-    body_parts = [f"# {title}\n"]
 
-    # Observations
+def _write_chat(storage: StorageBackend, data: TeamsChatData, messages: list[dict], file_path: str) -> bool:
+    """Build frontmatter and markdown body for a chat, then write to storage."""
+    fm = build_teams_chat_frontmatter(data)
+
+    body_parts = [f"# {data.title}\n"]
+
     body_parts.append("## Observations\n")
-    body_parts.append(f"- [conversation_type] {chat_type}")
-    body_parts.append(f"- [participants] {', '.join(participants)}")
-    body_parts.append(f"- [last_message_time] {last_msg_time}")
+    body_parts.append(f"- [conversation_type] {data.conversation_type}")
+    body_parts.append(f"- [participants] {', '.join(data.participants)}")
+    body_parts.append(f"- [last_message_time] {data.last_message_time}")
     body_parts.append(f"- [message_count] {len(messages)}")
 
-    # Relations
     relations = []
-    for p_name in participants:
+    for p_name in data.participants:
         contact_slug = slugify(p_name, 80)
         if contact_slug and contact_slug != "untitled" and len(contact_slug) > 5:
             relations.append(f"- participant [[contact-{contact_slug}]]")
@@ -153,7 +104,6 @@ def _process_chat(
         body_parts.append("\n## Relations\n")
         body_parts.extend(relations)
 
-    # Messages
     body_parts.append("\n---\n")
     body_parts.append("## Messages\n")
 
@@ -175,5 +125,55 @@ def _process_chat(
 
     content_str = dumps_markdown(fm, "\n".join(body_parts))
     storage.write_file(file_path, content_str)
-    log.debug("teams_chats.wrote", title=title, messages=len(messages))
+    log.debug("teams_chats.wrote", title=data.title, messages=len(messages))
     return True
+
+
+def _process_chat(
+    client: GraphClient,
+    storage: StorageBackend,
+    chat: dict,
+    last_sync: str | None,
+    max_messages: int,
+) -> bool:
+    """Process a single chat: fetch messages and write markdown. Returns True if written."""
+    chat_id = chat.get("id", "")
+
+    params: dict = {"$top": "50", "$orderby": "createdDateTime desc"}
+    if last_sync:
+        params["$filter"] = f"lastModifiedDateTime gt {last_sync}"
+
+    try:
+        messages = list(
+            client.get_paginated(
+                f"/me/chats/{chat_id}/messages",
+                params=params,
+                max_pages=max(1, max_messages // 50),
+            )
+        )
+    except GraphApiError as exc:
+        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
+        return False
+
+    if not messages:
+        return False
+
+    data, messages_sorted, file_path = _extract_chat_data(chat, messages, max_messages)
+
+    if data.message_limit_reached:
+        log.warning("teams_chats.message_limit_reached", chat_id=chat_id, messages=len(messages), limit=max_messages)
+
+    if storage.file_exists(file_path):
+        try:
+            existing_content = storage.read_file(file_path)
+            existing_fm, _ = loads_markdown(existing_content)
+            if existing_fm.get("last_message_time") == data.last_message_time:
+                return False
+        except (ValueError, KeyError) as exc:
+            log.warning(
+                "teams_chats.existing_file_parse_failed",
+                file_path=file_path,
+                error=str(exc),
+            )
+
+    return _write_chat(storage, data, messages_sorted, file_path)

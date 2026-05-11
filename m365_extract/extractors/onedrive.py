@@ -18,7 +18,7 @@ from m365_extract.extractors._file_helpers import (
     handle_removed_item,
     process_drive_item,
 )
-from m365_extract.frontmatter import build_onedrive_frontmatter
+from m365_extract.frontmatter import OneDriveFileData, build_onedrive_frontmatter
 from m365_extract.graph_client import GraphClient
 from m365_extract.storage.base import StorageBackend
 
@@ -95,14 +95,16 @@ def run(
         web_url = item.get("webUrl", "")
 
         fm = build_onedrive_frontmatter(
-            file_name=file_name,
-            item_id=item_id,
-            size=size,
-            modified_time=modified,
-            modified_by=modified_by,
-            parent_path=parent_path,
-            web_url=web_url,
-            conversion_status="pending",
+            OneDriveFileData(
+                file_name=file_name,
+                item_id=item_id,
+                size=size,
+                modified_time=modified,
+                modified_by=modified_by,
+                parent_path=parent_path,
+                web_url=web_url,
+                conversion_status="pending",
+            )
         )
 
         if process_drive_item(

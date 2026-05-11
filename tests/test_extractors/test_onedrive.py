@@ -245,6 +245,65 @@ class TestOneDriveExtractor:
         assert "not_convertible" in content
         client.close()
 
+    def test_run_skips_item_without_file_key(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, onedrive_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/drive/root/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "onenote-notebook",
+                        "name": "My Notebook",
+                        "size": 0,
+                        "parentReference": {"path": "/drive/root:"},
+                        "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+                        "lastModifiedBy": {"user": {"displayName": "Test"}},
+                        "webUrl": "",
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=nofile",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = onedrive.run(client, storage, {}, onedrive_config, converters_config)
+        assert count == 0
+        assert storage.list_files("onedrive") == []
+        client.close()
+
+    def test_run_skips_item_with_empty_filename(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, onedrive_config, converters_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/drive/root/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "empty-name-file",
+                        "name": "",
+                        "size": 100,
+                        "file": {"mimeType": "application/octet-stream"},
+                        "parentReference": {"path": "/drive/root:"},
+                        "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+                        "lastModifiedBy": {"user": {"displayName": "Test"}},
+                        "webUrl": "",
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=emptyname",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = onedrive.run(client, storage, {}, onedrive_config, converters_config)
+        assert count == 0
+        assert storage.list_files("onedrive") == []
+        client.close()
+
     def test_empty_delta(self, httpx_mock: HTTPXMock, tmp_path, graph_config, onedrive_config, converters_config):
         httpx_mock.add_response(
             url=re.compile(r".*/me/drive/root/delta.*"),

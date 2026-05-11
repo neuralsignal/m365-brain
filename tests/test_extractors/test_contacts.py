@@ -240,6 +240,37 @@ class TestContactsExtractor:
         assert "delta_link_folder_folder-1" in state
         client.close()
 
+    def test_contact_folders_skips_folder_without_id(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        config = ContactsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=1440,
+            max_items_per_sync=500,
+            include_contact_folders=True,
+        )
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta.*"),
+            json={"value": [], "@odata.deltaLink": "https://delta?token=default"},
+        )
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contactFolders\?.*"),
+            json={
+                "value": [
+                    {"displayName": "No ID Folder"},
+                    {"id": "", "displayName": "Empty ID Folder"},
+                ],
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = contacts.run(client, storage, {}, config)
+        assert count == 0
+        assert storage.list_files("contacts") == []
+        client.close()
+
     def test_personal_notes_in_body(self, httpx_mock: HTTPXMock, tmp_path, graph_config, contacts_config):
         httpx_mock.add_response(
             url=re.compile(r".*/me/contacts/delta.*"),
@@ -267,3 +298,60 @@ class TestContactsExtractor:
         content = storage.read_file(files[0])
         assert "Important collaborator on Project X." in content
         client.close()
+
+
+class TestExtractContactData:
+    """Tests for _extract_contact_data pure extraction function."""
+
+    def test_extracts_full_contact(self):
+        contact = {
+            "id": "c-001",
+            "displayName": "Jane Doe",
+            "emailAddresses": [{"address": "jane@example.com"}],
+            "businessPhones": ["+1-555-0100"],
+            "mobilePhone": "+1-555-0101",
+            "companyName": "Acme Corp",
+            "jobTitle": "Engineer",
+            "department": "R&D",
+            "categories": ["VIP"],
+            "personalNotes": "Met at conference.",
+        }
+
+        extracted = contacts._extract_contact_data(contact)
+
+        assert extracted is not None
+        data, notes = extracted
+        assert data.contact_id == "c-001"
+        assert data.display_name == "Jane Doe"
+        assert data.email_addresses == ["jane@example.com"]
+        assert data.phones == ["+1-555-0100", "+1-555-0101"]
+        assert data.company == "Acme Corp"
+        assert data.job_title == "Engineer"
+        assert data.department == "R&D"
+        assert data.categories == ["VIP"]
+        assert notes == "Met at conference."
+
+    def test_returns_none_for_missing_id(self):
+        contact = {"id": "", "displayName": "Someone"}
+        assert contacts._extract_contact_data(contact) is None
+
+    def test_returns_none_for_missing_display_name(self):
+        contact = {"id": "c-002", "displayName": ""}
+        assert contacts._extract_contact_data(contact) is None
+
+    def test_handles_minimal_contact(self):
+        contact = {
+            "id": "c-003",
+            "displayName": "Minimal",
+            "emailAddresses": [],
+            "businessPhones": [],
+        }
+
+        extracted = contacts._extract_contact_data(contact)
+
+        assert extracted is not None
+        data, notes = extracted
+        assert data.email_addresses == []
+        assert data.phones == []
+        assert data.company == ""
+        assert notes == ""

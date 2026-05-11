@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+from unittest.mock import patch
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig, TeamsChannelsExtractorConfig
 from m365_extract.extractors import teams_channels
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
 
@@ -138,4 +139,68 @@ class TestTeamsChannelsExtractor:
 
         state, count = teams_channels.run(client, storage, {}, channels_config)
         assert count == 0
+        client.close()
+
+    def test_sync_channel_graph_api_error(self, httpx_mock: HTTPXMock, tmp_path, graph_config, channels_config):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/joinedTeams.*"),
+            json={"value": [{"id": "team-1", "displayName": "Eng"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/teams/team-1/channels\?.*"),
+            json={"value": [{"id": "ch-1", "displayName": "General"}]},
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        with patch.object(client, "get_delta", side_effect=GraphApiError("403 Forbidden")):
+            state, count = teams_channels.run(client, storage, {}, channels_config)
+
+        assert count == 0
+        assert storage.list_files("teams-channels") == []
+        client.close()
+
+    def test_sync_channel_skips_system_event_messages(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, channels_config
+    ):
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/joinedTeams.*"),
+            json={"value": [{"id": "team-1", "displayName": "Eng"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/teams/team-1/channels\?.*"),
+            json={"value": [{"id": "ch-1", "displayName": "General"}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/teams/team-1/channels/ch-1/messages/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-sys",
+                        "messageType": "systemEventMessage",
+                        "createdDateTime": "2026-03-12T09:00:00Z",
+                        "body": {"contentType": "html", "content": "<systemEventMessage/>"},
+                    },
+                    {
+                        "id": "msg-real",
+                        "messageType": "message",
+                        "createdDateTime": "2026-03-12T10:00:00Z",
+                        "from": {"user": {"displayName": "Bob"}},
+                        "body": {"contentType": "text", "content": "Real message"},
+                    },
+                ],
+                "@odata.deltaLink": "https://delta?token=sys",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = teams_channels.run(client, storage, {}, channels_config)
+
+        assert count == 1
+        content = storage.read_file(storage.list_files("teams-channels")[0])
+        assert "Real message" in content
+        assert "systemEventMessage" not in content
         client.close()

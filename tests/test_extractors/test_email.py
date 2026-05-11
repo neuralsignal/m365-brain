@@ -11,7 +11,7 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import EmailExtractorConfig, GraphConfig, MailboxConfig
-from m365_extract.extractors import email
+from m365_extract.extractors import _attachment_helpers, _folder_helpers, email
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -772,7 +772,7 @@ class TestEmailAttachments:
 
         with (
             patch.object(client, "get_bytes", side_effect=OSError("network error")),
-            patch.object(email.log, "warning", side_effect=capture_warning),
+            patch.object(_attachment_helpers.log, "warning", side_effect=capture_warning),
         ):
             _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
 
@@ -832,7 +832,7 @@ class TestEmailAttachments:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        with patch.object(email, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
+        with patch.object(_attachment_helpers, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
             _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
 
         assert count == 1
@@ -855,9 +855,9 @@ class TestSharedMailbox:
 
     @pytest.fixture(autouse=True)
     def _clear_folder_cache(self):
-        email._resolved_folder_ids.clear()
+        _folder_helpers._resolved_folder_ids.clear()
         yield
-        email._resolved_folder_ids.clear()
+        _folder_helpers._resolved_folder_ids.clear()
 
     def _config(self, mailboxes: list[MailboxConfig]) -> EmailExtractorConfig:
         return EmailExtractorConfig(
@@ -1025,15 +1025,15 @@ class TestResolveFolderId:
     @pytest.fixture(autouse=True)
     def _clear_folder_cache(self):
         """Reset module-level cache before each test to avoid ordering dependencies."""
-        email._resolved_folder_ids.clear()
+        _folder_helpers._resolved_folder_ids.clear()
         yield
-        email._resolved_folder_ids.clear()
+        _folder_helpers._resolved_folder_ids.clear()
 
     def test_well_known_folder_returns_predefined_id(self):
         """Well-known folders (Inbox, SentItems, etc.) return their predefined ID without calling the API."""
         client = MagicMock(spec=GraphClient)
-        assert email._resolve_folder_id(client, "me", "Inbox") == "Inbox"
-        assert email._resolve_folder_id(client, "me", "SentItems") == "SentItems"
+        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "Inbox") == "Inbox"
+        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "SentItems") == "SentItems"
         client.get.assert_not_called()
 
     def test_custom_folder_resolved_via_graph_api(self):
@@ -1041,7 +1041,7 @@ class TestResolveFolderId:
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "abc123", "displayName": "Archive-Custom"}]}
 
-        result = email._resolve_folder_id(client, "me", "Archive-Custom")
+        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "Archive-Custom")
 
         assert result == "abc123"
         client.get.assert_called_once_with(
@@ -1054,8 +1054,8 @@ class TestResolveFolderId:
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "folder-xyz", "displayName": "Projects"}]}
 
-        first = email._resolve_folder_id(client, "me", "Projects")
-        second = email._resolve_folder_id(client, "me", "Projects")
+        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
+        second = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
 
         assert first == "folder-xyz"
         assert second == "folder-xyz"
@@ -1067,7 +1067,7 @@ class TestResolveFolderId:
         client.get.return_value = {"value": []}
 
         with pytest.raises(GraphApiError, match="Mail folder not found: 'NonExistent'"):
-            email._resolve_folder_id(client, "me", "NonExistent")
+            _folder_helpers.resolve_folder_id(client, "/me", "me", "NonExistent")
 
     def test_not_found_folder_not_cached(self):
         """Failed resolution does not pollute the cache."""
@@ -1075,9 +1075,9 @@ class TestResolveFolderId:
         client.get.return_value = {"value": []}
 
         with pytest.raises(GraphApiError):
-            email._resolve_folder_id(client, "me", "Ghost")
+            _folder_helpers.resolve_folder_id(client, "/me", "me", "Ghost")
 
-        assert ("me", "Ghost") not in email._resolved_folder_ids
+        assert ("me", "Ghost") not in _folder_helpers._resolved_folder_ids
 
     def test_custom_folder_cache_keyed_by_mailbox(self):
         """The same folder name in different mailboxes resolves independently."""
@@ -1087,8 +1087,8 @@ class TestResolveFolderId:
             {"value": [{"id": "id-shared", "displayName": "Projects"}]},
         ]
 
-        first = email._resolve_folder_id(client, "me", "Projects")
-        second = email._resolve_folder_id(client, "ai@sanoptis.com", "Projects")
+        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
+        second = _folder_helpers.resolve_folder_id(client, "/users/ai@sanoptis.com", "ai@sanoptis.com", "Projects")
 
         assert first == "id-personal"
         assert second == "id-shared"
@@ -1110,7 +1110,9 @@ class TestNarrowedExceptionHandling:
         client.get_bytes.side_effect = GraphApiError("404 Not Found")
 
         config = _attachment_config()
-        email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+        _attachment_helpers.download_attachments(
+            client, storage, "/me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS
+        )
 
     def test_fetch_attachments_graph_api_error_caught(self, tmp_path):
         """GraphApiError during attachment list fetch is caught (log-and-continue)."""
@@ -1119,7 +1121,9 @@ class TestNarrowedExceptionHandling:
         client.get_paginated.side_effect = GraphApiError("500 Server Error")
 
         config = _attachment_config()
-        email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+        _attachment_helpers.download_attachments(
+            client, storage, "/me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS
+        )
 
     def test_download_type_error_propagates(self, tmp_path):
         """TypeError during attachment download propagates (programming error)."""
@@ -1132,7 +1136,9 @@ class TestNarrowedExceptionHandling:
 
         config = _attachment_config()
         with pytest.raises(TypeError):
-            email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+            _attachment_helpers.download_attachments(
+                client, storage, "/me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS
+            )
 
     def test_fetch_attachments_type_error_propagates(self, tmp_path):
         """TypeError during attachment list fetch propagates (programming error)."""
@@ -1142,22 +1148,24 @@ class TestNarrowedExceptionHandling:
 
         config = _attachment_config()
         with pytest.raises(TypeError):
-            email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+            _attachment_helpers.download_attachments(
+                client, storage, "/me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS
+            )
 
     def test_convert_os_error_caught(self, tmp_path):
         """OSError during attachment conversion is caught (log-and-continue)."""
         storage = LocalBackend(str(tmp_path / "vault"))
-        with patch("m365_extract.extractors.email.convert_document", side_effect=OSError("disk full")):
-            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+        with patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=OSError("disk full")):
+            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
 
     def test_convert_attribute_error_propagates(self, tmp_path):
         """AttributeError during conversion propagates (programming error)."""
         storage = LocalBackend(str(tmp_path / "vault"))
         with (
-            patch("m365_extract.extractors.email.convert_document", side_effect=AttributeError("oops")),
+            patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=AttributeError("oops")),
             pytest.raises(AttributeError),
         ):
-            email._convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
 
 
 # ---------------------------------------------------------------------------
@@ -1171,8 +1179,8 @@ class TestConvertAndStore:
     def test_happy_path_writes_markdown(self, tmp_path):
         """convert_document returns markdown; storage.write_file gets correct path/content."""
         storage = MagicMock()
-        with patch.object(email, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"binary-data",
                 att_name="report.pdf",
@@ -1199,10 +1207,10 @@ class TestConvertAndStore:
             warnings.append({"event": event, **kwargs})
 
         with (
-            patch.object(email, "convert_document", side_effect=OSError("bad pdf")),
-            patch.object(email.log, "warning", side_effect=capture),
+            patch.object(_attachment_helpers, "convert_document", side_effect=OSError("bad pdf")),
+            patch.object(_attachment_helpers.log, "warning", side_effect=capture),
         ):
-            email._convert_and_store(
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"junk",
                 att_name="bad.pdf",
@@ -1228,8 +1236,8 @@ class TestConvertAndStore:
             assert path.exists(), "tmp file should exist when convert_document is invoked"
             raise OSError("conversion blew up")
 
-        with patch.object(email, "convert_document", side_effect=capture_path_and_raise):
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", side_effect=capture_path_and_raise):
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
                 att_name="doc.docx",
@@ -1250,8 +1258,8 @@ class TestConvertAndStore:
             captured_paths.append(path)
             return "# md"
 
-        with patch.object(email, "convert_document", side_effect=capture_path):
-            email._convert_and_store(
+        with patch.object(_attachment_helpers, "convert_document", side_effect=capture_path):
+            _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
                 att_name="doc.docx",

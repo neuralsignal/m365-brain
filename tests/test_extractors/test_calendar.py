@@ -11,6 +11,7 @@ from pytest_httpx import HTTPXMock
 
 from m365_extract.config import CalendarExtractorConfig, GraphConfig
 from m365_extract.extractors import calendar
+from m365_extract.extractors.calendar import _normalize_graph_datetime
 from m365_extract.graph_client import GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -413,3 +414,117 @@ class TestCalendarExtractor:
         assert request is not None
         assert "calendarView" in str(request.url)
         client.close()
+
+
+class TestNormalizeGraphDatetime:
+    def test_empty_string_returns_empty(self):
+        assert _normalize_graph_datetime("") == ""
+
+    def test_unparseable_returns_unchanged(self):
+        assert _normalize_graph_datetime("not-a-date") == "not-a-date"
+
+    def test_valid_datetime_normalized(self):
+        result = _normalize_graph_datetime("2026-03-12T09:00:00.0000000")
+        assert result == "2026-03-12T09:00:00Z"
+
+    def test_already_z_suffixed(self):
+        result = _normalize_graph_datetime("2026-03-12T09:00:00Z")
+        assert result == "2026-03-12T09:00:00Z"
+
+
+class TestExtractEventData:
+    """Tests for _extract_event_data pure extraction function."""
+
+    def test_extracts_full_event(self):
+        event = {
+            "id": "EVT-001",
+            "subject": "Team Meeting",
+            "start": {"dateTime": "2026-03-12T09:00:00.0000000", "timeZone": "UTC"},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000", "timeZone": "UTC"},
+            "location": {"displayName": "Room A"},
+            "organizer": {"emailAddress": {"name": "Alice", "address": "alice@example.com"}},
+            "attendees": [
+                {
+                    "emailAddress": {"name": "Bob", "address": "bob@example.com"},
+                    "status": {"response": "accepted"},
+                },
+            ],
+            "body": {"contentType": "text", "content": "Agenda here"},
+            "type": "occurrence",
+            "webLink": "https://outlook.office.com/event/1",
+        }
+
+        extracted = calendar._extract_event_data(event)
+
+        assert extracted is not None
+        data, body_md = extracted
+        assert data.event_id == "EVT-001"
+        assert data.subject == "Team Meeting"
+        assert data.start_time == "2026-03-12T09:00:00Z"
+        assert data.end_time == "2026-03-12T10:00:00Z"
+        assert data.location == "Room A"
+        assert data.organizer_name == "Alice"
+        assert data.organizer_email == "alice@example.com"
+        assert data.attendees == ["Bob"]
+        assert data.attendee_details == [{"name": "Bob", "email": "bob@example.com", "status": "accepted"}]
+        assert body_md == "Agenda here"
+        assert data.is_recurring is True
+        assert data.web_link == "https://outlook.office.com/event/1"
+
+    def test_returns_none_for_missing_id(self):
+        event = {
+            "id": "",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+        }
+        assert calendar._extract_event_data(event) is None
+
+    def test_returns_none_for_missing_start_time(self):
+        event = {
+            "id": "EVT-002",
+            "subject": "Test",
+            "start": {},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+        }
+        assert calendar._extract_event_data(event) is None
+
+    def test_defaults_subject_when_missing(self):
+        event = {
+            "id": "EVT-003",
+            "subject": None,
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
+        }
+        extracted = calendar._extract_event_data(event)
+        assert extracted is not None
+        data, _body_md = extracted
+        assert data.subject == "(no subject)"
+        assert data.is_recurring is False
+
+    def test_attendee_without_name_uses_email(self):
+        event = {
+            "id": "EVT-004",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [
+                {"emailAddress": {"name": "", "address": "anon@example.com"}, "status": {"response": ""}},
+            ],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
+        }
+        extracted = calendar._extract_event_data(event)
+        assert extracted is not None
+        data, _body_md = extracted
+        assert data.attendees == []
+        assert data.attendee_details == [{"email": "anon@example.com"}]

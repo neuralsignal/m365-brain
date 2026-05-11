@@ -2,45 +2,49 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from m365_extract.markdown_writer import now_iso, short_hash, slugify
 
 
-def build_email_frontmatter(
-    *,
-    subject: str,
-    message_id: str,
-    received_time: str,
-    folder: str,
-    mailbox: str,
-    sender_address: str,
-    sender_name: str,
-    to_recipients: list[str],
-    importance: str,
-    has_attachments: bool,
-    web_link: str,
-) -> dict:
+@dataclass(frozen=True)
+class EmailData:
+    subject: str
+    message_id: str
+    received_time: str
+    folder: str
+    mailbox: str
+    sender_address: str
+    sender_name: str
+    to_recipients: list[str]
+    importance: str
+    has_attachments: bool
+    web_link: str
+
+
+def build_email_frontmatter(data: EmailData) -> dict:
     """Build frontmatter dict for an email."""
-    date_str = received_time[:10]
-    slug = slugify(subject, 80)
-    permalink = f"email-{date_str}-{slug}-{short_hash(message_id, 6)}"
+    date_str = data.received_time[:10]
+    slug = slugify(data.subject, 80)
+    permalink = f"email-{date_str}-{slug}-{short_hash(data.message_id, 6)}"
     return {
-        "title": subject,
+        "title": data.subject,
         "permalink": permalink,
         "type": "email",
-        "tags": ["email", folder.lower().replace(" ", "-")],
-        "sender": sender_address,
-        "sender_name": sender_name,
-        "to": to_recipients,
-        "date": received_time,
-        "folder": folder,
-        "mailbox": mailbox,
-        "importance": importance,
-        "has_attachments": has_attachments,
+        "tags": ["email", data.folder.lower().replace(" ", "-")],
+        "sender": data.sender_address,
+        "sender_name": data.sender_name,
+        "to": data.to_recipients,
+        "date": data.received_time,
+        "folder": data.folder,
+        "mailbox": data.mailbox,
+        "importance": data.importance,
+        "has_attachments": data.has_attachments,
         "source": {
             "system": "microsoft365",
             "service": "exchange",
-            "id": message_id,
-            "url": web_link,
+            "id": data.message_id,
+            "url": data.web_link,
             "extracted_at": now_iso(),
             "extractor": "m365-extract/email/1.1",
         },

@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import ContactsExtractorConfig
-from m365_extract.frontmatter import build_contact_frontmatter
+from m365_extract.frontmatter import ContactData, build_contact_frontmatter
 from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -114,7 +114,11 @@ def _sync_contacts(
 
     written = 0
     for contact in contacts[:max_items]:
-        if _write_contact(storage, contact):
+        extracted = _extract_contact_data(contact)
+        if extracted is None:
+            continue
+        contact_data, notes = extracted
+        if _write_contact(storage, contact_data, notes):
             written += 1
 
     log.info("contacts.batch_synced", fetched=len(contacts), written=written)
@@ -138,58 +142,59 @@ def _extract_emails(contact: dict) -> list[str]:
     return [e.get("address", "") for e in contact.get("emailAddresses", []) if e.get("address")]
 
 
-def _write_contact(storage: StorageBackend, contact: dict) -> bool:
-    """Write a single contact to storage. Returns True if written."""
+def _extract_contact_data(contact: dict) -> tuple[ContactData, str] | None:
+    """Extract and normalize contact data. Returns None if invalid.
+
+    Personal notes are returned separately because they belong in the body, not
+    the frontmatter.
+    """
     contact_id = contact.get("id", "")
     display_name = contact.get("displayName") or ""
 
     if not contact_id or not display_name:
         log.warning("contacts.skipping_invalid", contact_id=contact_id)
-        return False
+        return None
 
-    email_addresses = _extract_emails(contact)
-    phones = _extract_phones(contact)
-    company = contact.get("companyName") or ""
-    job_title = contact.get("jobTitle") or ""
-    department = contact.get("department") or ""
-    categories = contact.get("categories") or []
-
-    fm = build_contact_frontmatter(
+    data = ContactData(
         display_name=display_name,
         contact_id=contact_id,
-        email_addresses=email_addresses,
-        phones=phones,
-        company=company,
-        job_title=job_title,
-        department=department,
-        categories=categories,
+        email_addresses=_extract_emails(contact),
+        phones=_extract_phones(contact),
+        company=contact.get("companyName") or "",
+        job_title=contact.get("jobTitle") or "",
+        department=contact.get("department") or "",
+        categories=contact.get("categories") or [],
     )
+    return data, contact.get("personalNotes") or ""
 
-    # Build body
-    body_parts = [f"# {display_name}\n", "## Details\n"]
 
-    if email_addresses:
-        for addr in email_addresses:
+def _write_contact(storage: StorageBackend, data: ContactData, notes: str) -> bool:
+    """Build frontmatter and markdown body for a contact, then write to storage."""
+    fm = build_contact_frontmatter(data)
+
+    body_parts = [f"# {data.display_name}\n", "## Details\n"]
+
+    if data.email_addresses:
+        for addr in data.email_addresses:
             body_parts.append(f"- **Email:** {addr}")
-    if phones:
-        for phone in phones:
+    if data.phones:
+        for phone in data.phones:
             body_parts.append(f"- **Phone:** {phone}")
-    if company:
-        body_parts.append(f"- **Company:** {company}")
-    if job_title:
-        body_parts.append(f"- **Title:** {job_title}")
-    if department:
-        body_parts.append(f"- **Department:** {department}")
+    if data.company:
+        body_parts.append(f"- **Company:** {data.company}")
+    if data.job_title:
+        body_parts.append(f"- **Title:** {data.job_title}")
+    if data.department:
+        body_parts.append(f"- **Department:** {data.department}")
 
-    notes = contact.get("personalNotes") or ""
     if notes:
         body_parts.append("\n## Notes\n")
         body_parts.append(notes)
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 
-    slug = slugify(display_name, 80)
-    hsh = short_hash(contact_id, 6)
+    slug = slugify(data.display_name, 80)
+    hsh = short_hash(data.contact_id, 6)
     file_path = f"contacts/{slug}-{hsh}/index.md"
 
     storage.write_file(file_path, content)

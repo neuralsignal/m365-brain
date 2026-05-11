@@ -469,3 +469,76 @@ class TestProcessChat:
 
         assert result is True
         mock_storage.write_file.assert_called_once()
+
+
+class TestExtractChatData:
+    """Tests for _extract_chat_data pure extraction function."""
+
+    def test_extracts_full_chat(self):
+        chat = {
+            "id": "chat-1",
+            "chatType": "group",
+            "topic": "Project Alpha",
+            "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
+        }
+        messages = [
+            {"id": "m2", "createdDateTime": "2026-03-12T10:00:00Z", "messageType": "message"},
+            {"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z", "messageType": "message"},
+        ]
+
+        data, sorted_messages, file_path = teams_chats._extract_chat_data(chat, messages, 200)
+
+        assert data.conversation_id == "chat-1"
+        assert data.conversation_type == "group"
+        assert data.title == "Project Alpha"
+        assert data.participants == ["Alice", "Bob"]
+        assert sorted_messages[0]["id"] == "m1"
+        assert sorted_messages[1]["id"] == "m2"
+        assert data.last_message_time == "2026-03-12T10:00:00Z"
+        assert data.message_limit_reached is False
+        assert "teams-chats/" in file_path
+
+    def test_title_from_participants_when_no_topic(self):
+        chat = {
+            "id": "chat-2",
+            "chatType": "oneOnOne",
+            "topic": None,
+            "members": [{"displayName": "Charlie"}, {"displayName": "Alice"}],
+        }
+        messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
+
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
+
+        assert data.title == "Alice, Charlie"
+
+    def test_title_defaults_to_chat_when_no_participants(self):
+        chat = {"id": "chat-3", "chatType": "oneOnOne", "topic": None, "members": []}
+        messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
+
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
+
+        assert data.title == "Chat"
+
+    def test_message_limit_reached_detected(self):
+        chat = {"id": "chat-4", "chatType": "oneOnOne", "topic": None, "members": [{"displayName": "Alice"}]}
+        messages = [
+            {"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"},
+            {"id": "m2", "createdDateTime": "2026-03-12T10:00:00Z"},
+        ]
+
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 2)
+
+        assert data.message_limit_reached is True
+
+    def test_skips_members_without_display_name(self):
+        chat = {
+            "id": "chat-5",
+            "chatType": "oneOnOne",
+            "topic": None,
+            "members": [{"displayName": "Alice"}, {"displayName": ""}, {}],
+        }
+        messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
+
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
+
+        assert data.participants == ["Alice"]

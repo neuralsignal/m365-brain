@@ -20,7 +20,7 @@ from m365_extract.extractors._file_helpers import (
     handle_removed_item,
     process_drive_item,
 )
-from m365_extract.frontmatter import build_sharepoint_frontmatter
+from m365_extract.frontmatter import SharePointFileData, build_sharepoint_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import slugify
 from m365_extract.storage.base import StorageBackend
@@ -176,16 +176,18 @@ def _sync_drive(
         web_url = item.get("webUrl", "")
 
         fm = build_sharepoint_frontmatter(
-            file_name=file_name,
-            item_id=item_id,
-            size=size,
-            modified_time=modified,
-            modified_by=modified_by,
-            parent_path=parent_path,
-            web_url=web_url,
-            site_name=drive_ref.site_name,
-            drive_name=drive_ref.drive_name,
-            conversion_status="pending",
+            SharePointFileData(
+                file_name=file_name,
+                item_id=item_id,
+                size=size,
+                modified_time=modified,
+                modified_by=modified_by,
+                parent_path=parent_path,
+                web_url=web_url,
+                site_name=drive_ref.site_name,
+                drive_name=drive_ref.drive_name,
+                conversion_status="pending",
+            )
         )
 
         if process_drive_item(
