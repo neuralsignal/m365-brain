@@ -22,7 +22,7 @@ from m365_extract.extractors._folder_helpers import (
     resolve_folder_id,
 )
 from m365_extract.frontmatter import EmailData, build_email_frontmatter
-from m365_extract.graph_client import GraphApiError, GraphClient
+from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
