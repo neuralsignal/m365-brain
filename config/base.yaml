@@ -16,7 +16,10 @@ extractors:
   email:
     enabled: true
     poll_interval_minutes: 3
-    folders: ["Inbox", "SentItems", "Archive"]
+    mailboxes:
+      - address: "me"
+        folders: ["Inbox", "SentItems", "Archive"]
+        output_subdir: ""
     lookback_days: 365
     max_items_per_sync: 500
     download_attachments: false

@@ -39,7 +39,10 @@ extractors:
   email:
     enabled: true
     poll_interval_minutes: 3
-    folders: ["Inbox"]
+    mailboxes:
+      - address: "me"
+        folders: ["Inbox"]
+        output_subdir: ""
     lookback_days: 30
     max_items_per_sync: 10
     download_attachments: false

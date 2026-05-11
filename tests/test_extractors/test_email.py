@@ -885,9 +885,7 @@ class TestSharedMailbox:
             "parentFolderId": "inbox",
         }
 
-    def test_shared_mailbox_uses_users_endpoint_and_subdir(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_shared_mailbox_uses_users_endpoint_and_subdir(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         config = self._config(
             [MailboxConfig(address="ai@sanoptis.com", folders=["Inbox"], output_subdir="ai-sanoptis")]
         )
@@ -921,9 +919,7 @@ class TestSharedMailbox:
         assert fm["mailbox"] == "ai@sanoptis.com"
         client.close()
 
-    def test_personal_and_shared_isolated_in_one_run(
-        self, httpx_mock: HTTPXMock, tmp_path, graph_config
-    ):
+    def test_personal_and_shared_isolated_in_one_run(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         config = self._config(
             [
                 MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
@@ -963,9 +959,7 @@ class TestSharedMailbox:
 
     def test_auto_discover_filters_system_folders(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
         """When folders=None, discovery uses GET /mailFolders and skips Drafts/Junk/etc."""
-        config = self._config(
-            [MailboxConfig(address="ai@sanoptis.com", folders=None, output_subdir="ai-sanoptis")]
-        )
+        config = self._config([MailboxConfig(address="ai@sanoptis.com", folders=None, output_subdir="ai-sanoptis")])
 
         # Discovery response — mix of keep + skip folders.
         # URL params are encoded ($select=id%2CdisplayName...), so match loosely on
