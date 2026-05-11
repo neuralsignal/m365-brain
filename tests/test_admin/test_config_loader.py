@@ -52,7 +52,9 @@ def _write_config_yaml(tmp_path, full_web_config):
             "email": {
                 "enabled": False,
                 "poll_interval_minutes": 3,
-                "folders": ["Inbox"],
+                "mailboxes": [
+                    {"address": "me", "folders": ["Inbox"], "output_subdir": ""},
+                ],
                 "lookback_days": 30,
                 "max_items_per_sync": 100,
                 "download_attachments": False,
@@ -225,7 +227,9 @@ class TestGetConfig:
                 "email": {
                     "enabled": False,
                     "poll_interval_minutes": 3,
-                    "folders": ["Inbox"],
+                    "mailboxes": [
+                        {"address": "me", "folders": ["Inbox"], "output_subdir": ""},
+                    ],
                     "lookback_days": 30,
                     "max_items_per_sync": 100,
                     "download_attachments": False,

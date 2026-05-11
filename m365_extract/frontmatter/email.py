@@ -11,6 +11,7 @@ def build_email_frontmatter(
     message_id: str,
     received_time: str,
     folder: str,
+    mailbox: str,
     sender_address: str,
     sender_name: str,
     to_recipients: list[str],
@@ -32,6 +33,7 @@ def build_email_frontmatter(
         "to": to_recipients,
         "date": received_time,
         "folder": folder,
+        "mailbox": mailbox,
         "importance": importance,
         "has_attachments": has_attachments,
         "source": {
@@ -40,7 +42,7 @@ def build_email_frontmatter(
             "id": message_id,
             "url": web_link,
             "extracted_at": now_iso(),
-            "extractor": "m365-extract/email/1.0",
+            "extractor": "m365-extract/email/1.1",
         },
         "status": "raw",
     }

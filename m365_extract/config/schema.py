@@ -57,11 +57,18 @@ class StateConfig(BaseModel):
     state_file_path: str
 
 
+class MailboxConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+    address: str
+    folders: list[str] | None
+    output_subdir: str
+
+
 class EmailExtractorConfig(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
-    folders: list[str]
+    mailboxes: list[MailboxConfig]
     lookback_days: int
     max_items_per_sync: int
     download_attachments: bool
