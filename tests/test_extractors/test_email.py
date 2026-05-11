@@ -965,15 +965,17 @@ class TestSharedMailbox:
         # URL params are encoded ($select=id%2CdisplayName...), so match loosely on
         # the listing endpoint, distinguished from /mailFolders/{id}/messages by the
         # trailing `?` indicating a query-string list call rather than a sub-resource.
+        # Graph API v1.0 returns `isHidden`; `wellKnownName` is beta-only and not selected.
         httpx_mock.add_response(
             url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders\?.*"),
             json={
                 "value": [
-                    {"id": "id-inbox", "displayName": "Inbox", "wellKnownName": "inbox"},
-                    {"id": "id-drafts", "displayName": "Drafts", "wellKnownName": "drafts"},
-                    {"id": "id-junk", "displayName": "Junk Email", "wellKnownName": "junkemail"},
-                    {"id": "id-projects", "displayName": "Projects", "wellKnownName": None},
-                    {"id": "id-deleted", "displayName": "Deleted Items", "wellKnownName": "deleteditems"},
+                    {"id": "id-inbox", "displayName": "Inbox", "isHidden": False},
+                    {"id": "id-drafts", "displayName": "Drafts", "isHidden": False},
+                    {"id": "id-junk", "displayName": "Junk Email", "isHidden": False},
+                    {"id": "id-projects", "displayName": "Projects", "isHidden": False},
+                    {"id": "id-deleted", "displayName": "Deleted Items", "isHidden": False},
+                    {"id": "id-hidden", "displayName": "Internal", "isHidden": True},
                 ]
             },
         )
@@ -1000,12 +1002,15 @@ class TestSharedMailbox:
 
         state, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
 
-        # Only Inbox + Projects synced; Drafts/Junk/Deleted skipped
+        # Only Inbox + Projects synced; Drafts/Junk/Deleted skipped by displayName,
+        # Internal skipped by isHidden=true.
         assert count == 2
         assert "delta_link_ai@sanoptis.com_Inbox" in state
         assert "delta_link_ai@sanoptis.com_Projects" in state
         assert "delta_link_ai@sanoptis.com_Drafts" not in state
         assert "delta_link_ai@sanoptis.com_Junk Email" not in state
+        assert "delta_link_ai@sanoptis.com_Deleted Items" not in state
+        assert "delta_link_ai@sanoptis.com_Internal" not in state
         client.close()
 
 
