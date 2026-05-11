@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import EmailExtractorConfig, GraphConfig
+from m365_extract.config import EmailExtractorConfig, GraphConfig, MailboxConfig
 from m365_extract.extractors import email
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
@@ -26,7 +26,9 @@ def email_config():
     return EmailExtractorConfig(
         enabled=True,
         poll_interval_minutes=3,
-        folders=["Inbox"],
+        mailboxes=[
+            MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+        ],
         lookback_days=30,
         max_items_per_sync=100,
         download_attachments=False,
@@ -65,7 +67,7 @@ class TestEmailExtractor:
         state, count = email.run(client, storage, {}, email_config, _NO_CONVERTERS)
 
         assert count == 2
-        assert "delta_link_Inbox" in state
+        assert "delta_link_me_Inbox" in state
         assert "last_sync" in state
 
         files = storage.list_files("emails")
@@ -99,11 +101,11 @@ class TestEmailExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        existing_state = {"delta_link_Inbox": delta_url}
+        existing_state = {"delta_link_me_Inbox": delta_url}
         state, count = email.run(client, storage, existing_state, email_config, _NO_CONVERTERS)
 
         assert count == 1
-        assert state["delta_link_Inbox"] == "https://graph.microsoft.com/v1.0/delta?token=new"
+        assert state["delta_link_me_Inbox"] == "https://graph.microsoft.com/v1.0/delta?token=new"
         client.close()
 
     def test_empty_response(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
@@ -145,7 +147,9 @@ class TestEmailExtractor:
         config = EmailExtractorConfig(
             enabled=True,
             poll_interval_minutes=3,
-            folders=["Inbox", "SentItems"],
+            mailboxes=[
+                MailboxConfig(address="me", folders=["Inbox", "SentItems"], output_subdir=""),
+            ],
             lookback_days=30,
             max_items_per_sync=100,
             download_attachments=False,
@@ -180,8 +184,8 @@ class TestEmailExtractor:
 
         state, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
         assert count == 2
-        assert "delta_link_Inbox" in state
-        assert "delta_link_SentItems" in state
+        assert "delta_link_me_Inbox" in state
+        assert "delta_link_me_SentItems" in state
         client.close()
 
     def test_initial_sync_logs_sync_type(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config):
@@ -224,7 +228,7 @@ class TestEmailExtractor:
             events.append({"event": event, **kwargs})
 
         with patch.object(email.log, "info", side_effect=capture_log):
-            email.run(client, storage, {"delta_link_Inbox": delta_url}, email_config, _NO_CONVERTERS)
+            email.run(client, storage, {"delta_link_me_Inbox": delta_url}, email_config, _NO_CONVERTERS)
 
         sync_start_events = [e for e in events if e["event"] == "email.folder_sync_start"]
         assert len(sync_start_events) == 1
@@ -455,7 +459,9 @@ def _attachment_config() -> EmailExtractorConfig:
     return EmailExtractorConfig(
         enabled=True,
         poll_interval_minutes=3,
-        folders=["Inbox"],
+        mailboxes=[
+            MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+        ],
         lookback_days=30,
         max_items_per_sync=100,
         download_attachments=True,
@@ -787,7 +793,9 @@ class TestEmailAttachments:
         config = EmailExtractorConfig(
             enabled=True,
             poll_interval_minutes=3,
-            folders=["Inbox"],
+            mailboxes=[
+                MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+            ],
             lookback_days=30,
             max_items_per_sync=100,
             download_attachments=True,
@@ -838,6 +846,176 @@ class TestEmailAttachments:
 
 
 # ---------------------------------------------------------------------------
+# Multi-mailbox routing
+# ---------------------------------------------------------------------------
+
+
+class TestSharedMailbox:
+    """Verify the shared mailbox path uses /users/{address}/... and namespaces storage."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_folder_cache(self):
+        email._resolved_folder_ids.clear()
+        yield
+        email._resolved_folder_ids.clear()
+
+    def _config(self, mailboxes: list[MailboxConfig]) -> EmailExtractorConfig:
+        return EmailExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=3,
+            mailboxes=mailboxes,
+            lookback_days=30,
+            max_items_per_sync=100,
+            download_attachments=False,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
+        )
+
+    def _msg(self, msg_id: str, subject: str, received: str) -> dict:
+        return {
+            "id": msg_id,
+            "subject": subject,
+            "body": {"contentType": "text", "content": "body"},
+            "from": {"emailAddress": {"name": "S", "address": "s@example.com"}},
+            "toRecipients": [],
+            "receivedDateTime": received,
+            "importance": "normal",
+            "hasAttachments": False,
+            "webLink": "",
+            "parentFolderId": "inbox",
+        }
+
+    def test_shared_mailbox_uses_users_endpoint_and_subdir(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config
+    ):
+        config = self._config(
+            [MailboxConfig(address="ai@sanoptis.com", folders=["Inbox"], output_subdir="ai-sanoptis")]
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._msg("msg-shared-1", "Hello shared", "2026-05-08T10:00:00Z")],
+                "@odata.deltaLink": "https://delta?token=shared",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+
+        assert count == 1
+        assert "delta_link_ai@sanoptis.com_Inbox" in state
+
+        # Storage path must be namespaced under the output_subdir
+        files = storage.list_files("emails")
+        assert any("emails/ai-sanoptis/2026/2026-05-08/" in f for f in files)
+        # And NOT placed at the top-level emails/{year}/...
+        assert not any(f.startswith("emails/2026/") for f in files)
+
+        # Frontmatter must record the mailbox address
+        content = storage.read_file(files[0])
+        from m365_extract.markdown_writer import loads_markdown
+
+        fm, _ = loads_markdown(content)
+        assert fm["mailbox"] == "ai@sanoptis.com"
+        client.close()
+
+    def test_personal_and_shared_isolated_in_one_run(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config
+    ):
+        config = self._config(
+            [
+                MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+                MailboxConfig(address="ai@sanoptis.com", folders=["Inbox"], output_subdir="ai-sanoptis"),
+            ]
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._msg("msg-personal", "Personal", "2026-05-08T09:00:00Z")],
+                "@odata.deltaLink": "https://delta?token=me",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._msg("msg-shared", "Shared", "2026-05-08T10:00:00Z")],
+                "@odata.deltaLink": "https://delta?token=ai",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+
+        assert count == 2
+        assert "delta_link_me_Inbox" in state
+        assert "delta_link_ai@sanoptis.com_Inbox" in state
+
+        files = storage.list_files("emails")
+        personal = [f for f in files if f.startswith("emails/2026/")]
+        shared = [f for f in files if f.startswith("emails/ai-sanoptis/")]
+        assert len(personal) == 1
+        assert len(shared) == 1
+        client.close()
+
+    def test_auto_discover_filters_system_folders(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """When folders=None, discovery uses GET /mailFolders and skips Drafts/Junk/etc."""
+        config = self._config(
+            [MailboxConfig(address="ai@sanoptis.com", folders=None, output_subdir="ai-sanoptis")]
+        )
+
+        # Discovery response — mix of keep + skip folders.
+        # URL params are encoded ($select=id%2CdisplayName...), so match loosely on
+        # the listing endpoint, distinguished from /mailFolders/{id}/messages by the
+        # trailing `?` indicating a query-string list call rather than a sub-resource.
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders\?.*"),
+            json={
+                "value": [
+                    {"id": "id-inbox", "displayName": "Inbox", "wellKnownName": "inbox"},
+                    {"id": "id-drafts", "displayName": "Drafts", "wellKnownName": "drafts"},
+                    {"id": "id-junk", "displayName": "Junk Email", "wellKnownName": "junkemail"},
+                    {"id": "id-projects", "displayName": "Projects", "wellKnownName": None},
+                    {"id": "id-deleted", "displayName": "Deleted Items", "wellKnownName": "deleteditems"},
+                ]
+            },
+        )
+
+        # Inbox delta (uses well-known "Inbox" as the folder ID)
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._msg("m-1", "in inbox", "2026-05-08T10:00:00Z")],
+                "@odata.deltaLink": "https://delta?token=inbox",
+            },
+        )
+        # Projects delta — uses the resolved folder id from discovery cache
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/id-projects/messages/delta.*"),
+            json={
+                "value": [self._msg("m-2", "in projects", "2026-05-08T10:00:00Z")],
+                "@odata.deltaLink": "https://delta?token=projects",
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+
+        # Only Inbox + Projects synced; Drafts/Junk/Deleted skipped
+        assert count == 2
+        assert "delta_link_ai@sanoptis.com_Inbox" in state
+        assert "delta_link_ai@sanoptis.com_Projects" in state
+        assert "delta_link_ai@sanoptis.com_Drafts" not in state
+        assert "delta_link_ai@sanoptis.com_Junk Email" not in state
+        client.close()
+
+
+# ---------------------------------------------------------------------------
 # Custom folder resolution (_resolve_folder_id)
 # ---------------------------------------------------------------------------
 
@@ -855,8 +1033,8 @@ class TestResolveFolderId:
     def test_well_known_folder_returns_predefined_id(self):
         """Well-known folders (Inbox, SentItems, etc.) return their predefined ID without calling the API."""
         client = MagicMock(spec=GraphClient)
-        assert email._resolve_folder_id(client, "Inbox") == "Inbox"
-        assert email._resolve_folder_id(client, "SentItems") == "SentItems"
+        assert email._resolve_folder_id(client, "me", "Inbox") == "Inbox"
+        assert email._resolve_folder_id(client, "me", "SentItems") == "SentItems"
         client.get.assert_not_called()
 
     def test_custom_folder_resolved_via_graph_api(self):
@@ -864,7 +1042,7 @@ class TestResolveFolderId:
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "abc123", "displayName": "Archive-Custom"}]}
 
-        result = email._resolve_folder_id(client, "Archive-Custom")
+        result = email._resolve_folder_id(client, "me", "Archive-Custom")
 
         assert result == "abc123"
         client.get.assert_called_once_with(
@@ -877,8 +1055,8 @@ class TestResolveFolderId:
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "folder-xyz", "displayName": "Projects"}]}
 
-        first = email._resolve_folder_id(client, "Projects")
-        second = email._resolve_folder_id(client, "Projects")
+        first = email._resolve_folder_id(client, "me", "Projects")
+        second = email._resolve_folder_id(client, "me", "Projects")
 
         assert first == "folder-xyz"
         assert second == "folder-xyz"
@@ -890,7 +1068,7 @@ class TestResolveFolderId:
         client.get.return_value = {"value": []}
 
         with pytest.raises(GraphApiError, match="Mail folder not found: 'NonExistent'"):
-            email._resolve_folder_id(client, "NonExistent")
+            email._resolve_folder_id(client, "me", "NonExistent")
 
     def test_not_found_folder_not_cached(self):
         """Failed resolution does not pollute the cache."""
@@ -898,9 +1076,26 @@ class TestResolveFolderId:
         client.get.return_value = {"value": []}
 
         with pytest.raises(GraphApiError):
-            email._resolve_folder_id(client, "Ghost")
+            email._resolve_folder_id(client, "me", "Ghost")
 
-        assert "Ghost" not in email._resolved_folder_ids
+        assert ("me", "Ghost") not in email._resolved_folder_ids
+
+    def test_custom_folder_cache_keyed_by_mailbox(self):
+        """The same folder name in different mailboxes resolves independently."""
+        client = MagicMock(spec=GraphClient)
+        client.get.side_effect = [
+            {"value": [{"id": "id-personal", "displayName": "Projects"}]},
+            {"value": [{"id": "id-shared", "displayName": "Projects"}]},
+        ]
+
+        first = email._resolve_folder_id(client, "me", "Projects")
+        second = email._resolve_folder_id(client, "ai@sanoptis.com", "Projects")
+
+        assert first == "id-personal"
+        assert second == "id-shared"
+        assert client.get.call_count == 2
+        # The second call must use the /users/... endpoint base.
+        assert client.get.call_args_list[1].args[0] == "/users/ai@sanoptis.com/mailFolders"
 
 
 class TestNarrowedExceptionHandling:
@@ -916,7 +1111,7 @@ class TestNarrowedExceptionHandling:
         client.get_bytes.side_effect = GraphApiError("404 Not Found")
 
         config = _attachment_config()
-        email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+        email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
 
     def test_fetch_attachments_graph_api_error_caught(self, tmp_path):
         """GraphApiError during attachment list fetch is caught (log-and-continue)."""
@@ -925,7 +1120,7 @@ class TestNarrowedExceptionHandling:
         client.get_paginated.side_effect = GraphApiError("500 Server Error")
 
         config = _attachment_config()
-        email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+        email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
 
     def test_download_type_error_propagates(self, tmp_path):
         """TypeError during attachment download propagates (programming error)."""
@@ -938,7 +1133,7 @@ class TestNarrowedExceptionHandling:
 
         config = _attachment_config()
         with pytest.raises(TypeError):
-            email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+            email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
 
     def test_fetch_attachments_type_error_propagates(self, tmp_path):
         """TypeError during attachment list fetch propagates (programming error)."""
@@ -948,7 +1143,7 @@ class TestNarrowedExceptionHandling:
 
         config = _attachment_config()
         with pytest.raises(TypeError):
-            email._download_attachments(client, storage, "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
+            email._download_attachments(client, storage, "me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS)
 
     def test_convert_os_error_caught(self, tmp_path):
         """OSError during attachment conversion is caught (log-and-continue)."""

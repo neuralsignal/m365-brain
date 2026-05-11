@@ -25,6 +25,7 @@ from m365_extract.config import (
     ExtractorsConfig,
     GraphConfig,
     LocalStorageConfig,
+    MailboxConfig,
     OneDriveExtractorConfig,
     ServiceConfig,
     SharePointExtractorConfig,
@@ -92,7 +93,9 @@ def email_config():
     return EmailExtractorConfig(
         enabled=True,
         poll_interval_minutes=3,
-        folders=["Inbox"],
+        mailboxes=[
+            MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+        ],
         lookback_days=30,
         max_items_per_sync=100,
         download_attachments=False,
@@ -167,7 +170,9 @@ def full_config(tmp_path):
             email=EmailExtractorConfig(
                 enabled=True,
                 poll_interval_minutes=3,
-                folders=["Inbox"],
+                mailboxes=[
+                    MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+                ],
                 lookback_days=30,
                 max_items_per_sync=100,
                 download_attachments=False,
@@ -281,7 +286,9 @@ def full_web_config(tmp_path, web_config):
             email=EmailExtractorConfig(
                 enabled=True,
                 poll_interval_minutes=3,
-                folders=["Inbox"],
+                mailboxes=[
+                    MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
+                ],
                 lookback_days=30,
                 max_items_per_sync=100,
                 download_attachments=False,

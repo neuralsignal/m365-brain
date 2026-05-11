@@ -46,7 +46,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -105,7 +108,10 @@ class TestLoadConfig:
         assert config.auth.client_id == "test-id"
         assert config.graph.max_retries == 3
         assert config.extractors.email.enabled is True
-        assert config.extractors.email.folders == ["Inbox"]
+        assert len(config.extractors.email.mailboxes) == 1
+        assert config.extractors.email.mailboxes[0].address == "me"
+        assert config.extractors.email.mailboxes[0].folders == ["Inbox"]
+        assert config.extractors.email.mailboxes[0].output_subdir == ""
         assert isinstance(config.converters, ConvertersConfig)
         assert config.converters.backends["pdf"] == "markitdown"
 
@@ -152,7 +158,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -247,7 +256,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -337,7 +349,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -431,7 +446,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -524,7 +542,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -616,7 +637,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -710,7 +734,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -802,7 +829,10 @@ class TestLoadConfig:
               email:
                 enabled: true
                 poll_interval_minutes: 3
-                folders: ["Inbox"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["Inbox"]
+                    output_subdir: ""
                 lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
@@ -890,7 +920,10 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       email:
         enabled: true
         poll_interval_minutes: 3
-        folders: ["Inbox"]
+        mailboxes:
+          - address: "me"
+            folders: ["Inbox"]
+            output_subdir: ""
         lookback_days: 365
         max_items_per_sync: 500
         download_attachments: false
@@ -1148,9 +1181,12 @@ class TestMultiPathLoadConfig:
             textwrap.dedent("""\
             extractors:
               email:
-                folders: ["SentItems"]
+                mailboxes:
+                  - address: "me"
+                    folders: ["SentItems"]
+                    output_subdir: ""
         """)
         )
 
         config = load_config(f"{base_file},{override_file}")
-        assert config.extractors.email.folders == ["SentItems"]
+        assert config.extractors.email.mailboxes[0].folders == ["SentItems"]
