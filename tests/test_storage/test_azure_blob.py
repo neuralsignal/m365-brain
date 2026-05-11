@@ -104,6 +104,19 @@ class TestListFiles:
         assert backend.list_files("nonexistent") == []
 
 
+class TestWriteBytes:
+    def test_uploads_binary_with_overwrite(self):
+        backend, mock_client = _make_backend("pfx")
+        data = b"\x89PNG\r\n\x1a\n fake binary"
+        backend.write_bytes("attachments/image.png", data)
+
+        mock_client.upload_blob.assert_called_once_with(
+            "pfx/attachments/image.png",
+            data,
+            overwrite=True,
+        )
+
+
 class TestDeleteFile:
     def test_deletes_blob(self):
         backend, mock_client = _make_backend("pfx")

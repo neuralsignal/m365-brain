@@ -31,6 +31,12 @@ class TestLocalBackend:
         assert "emails/a.md" in email_files
         assert "emails/b.md" in email_files
 
+    def test_list_files_prefix_is_file(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        backend.write_file("emails/report.md", "content")
+        result = backend.list_files("emails/report.md")
+        assert result == ["emails/report.md"]
+
     def test_list_files_empty_prefix(self, tmp_path):
         backend = LocalBackend(str(tmp_path / "vault"))
         assert backend.list_files("nonexistent") == []
@@ -41,6 +47,15 @@ class TestLocalBackend:
         assert backend.file_exists("test.md")
         backend.delete_file("test.md")
         assert not backend.file_exists("test.md")
+
+    def test_delete_non_empty_parent_not_removed(self, tmp_path):
+        backend = LocalBackend(str(tmp_path / "vault"))
+        backend.write_file("subdir/a.md", "a")
+        backend.write_file("subdir/b.md", "b")
+        backend.delete_file("subdir/a.md")
+        assert not backend.file_exists("subdir/a.md")
+        assert (tmp_path / "vault" / "subdir").exists()
+        assert backend.file_exists("subdir/b.md")
 
     def test_delete_cleans_empty_dirs(self, tmp_path):
         backend = LocalBackend(str(tmp_path / "vault"))
