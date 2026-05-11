@@ -6,7 +6,6 @@ Writes Obsidian-compatible markdown files with YAML frontmatter.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -115,8 +114,11 @@ def _sync_contacts(
 
     written = 0
     for contact in contacts[:max_items]:
-        contact_data = _extract_contact_data(contact)
-        if contact_data and _write_contact(storage, contact_data):
+        extracted = _extract_contact_data(contact)
+        if extracted is None:
+            continue
+        contact_data, notes = extracted
+        if _write_contact(storage, contact_data, notes):
             written += 1
 
     log.info("contacts.batch_synced", fetched=len(contacts), written=written)
@@ -140,23 +142,12 @@ def _extract_emails(contact: dict) -> list[str]:
     return [e.get("address", "") for e in contact.get("emailAddresses", []) if e.get("address")]
 
 
-@dataclass(frozen=True)
-class ContactRecord:
-    """Extracted and normalized contact fields."""
+def _extract_contact_data(contact: dict) -> tuple[ContactData, str] | None:
+    """Extract and normalize contact data. Returns None if invalid.
 
-    contact_id: str
-    display_name: str
-    email_addresses: list[str]
-    phones: list[str]
-    company: str
-    job_title: str
-    department: str
-    categories: list[str]
-    notes: str
-
-
-def _extract_contact_data(contact: dict) -> ContactRecord | None:
-    """Extract and normalize contact data. Returns None if invalid."""
+    Personal notes are returned separately because they belong in the body, not
+    the frontmatter.
+    """
     contact_id = contact.get("id", "")
     display_name = contact.get("displayName") or ""
 
@@ -164,33 +155,22 @@ def _extract_contact_data(contact: dict) -> ContactRecord | None:
         log.warning("contacts.skipping_invalid", contact_id=contact_id)
         return None
 
-    return ContactRecord(
-        contact_id=contact_id,
+    data = ContactData(
         display_name=display_name,
+        contact_id=contact_id,
         email_addresses=_extract_emails(contact),
         phones=_extract_phones(contact),
         company=contact.get("companyName") or "",
         job_title=contact.get("jobTitle") or "",
         department=contact.get("department") or "",
         categories=contact.get("categories") or [],
-        notes=contact.get("personalNotes") or "",
     )
+    return data, contact.get("personalNotes") or ""
 
 
-def _write_contact(storage: StorageBackend, data: ContactRecord) -> bool:
+def _write_contact(storage: StorageBackend, data: ContactData, notes: str) -> bool:
     """Build frontmatter and markdown body for a contact, then write to storage."""
-    fm = build_contact_frontmatter(
-        ContactData(
-            display_name=data.display_name,
-            contact_id=data.contact_id,
-            email_addresses=data.email_addresses,
-            phones=data.phones,
-            company=data.company,
-            job_title=data.job_title,
-            department=data.department,
-            categories=data.categories,
-        )
-    )
+    fm = build_contact_frontmatter(data)
 
     body_parts = [f"# {data.display_name}\n", "## Details\n"]
 
@@ -207,9 +187,9 @@ def _write_contact(storage: StorageBackend, data: ContactRecord) -> bool:
     if data.department:
         body_parts.append(f"- **Department:** {data.department}")
 
-    if data.notes:
+    if notes:
         body_parts.append("\n## Notes\n")
-        body_parts.append(data.notes)
+        body_parts.append(notes)
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 

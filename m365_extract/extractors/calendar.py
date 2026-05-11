@@ -5,7 +5,6 @@ Uses /me/calendarView with date range filtering for incremental sync.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -68,8 +67,11 @@ def run(
             skipped += 1
             continue
 
-        event_data = _extract_event_data(event)
-        if event_data and _write_event(storage, event_data):
+        extracted = _extract_event_data(event)
+        if extracted is None:
+            continue
+        event_data, body_md = extracted
+        if _write_event(storage, event_data, body_md):
             written += 1
 
     state["last_sync"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -97,26 +99,12 @@ def _normalize_graph_datetime(dt_str: str) -> str:
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-@dataclass(frozen=True)
-class EventData:
-    """Extracted and normalized calendar event fields."""
+def _extract_event_data(event: dict) -> tuple[CalendarEventData, str] | None:
+    """Extract and normalize calendar event data. Returns None if invalid.
 
-    event_id: str
-    subject: str
-    start_time: str
-    end_time: str
-    location: str
-    organizer_name: str
-    organizer_email: str
-    attendees: list[str]
-    attendee_details: list[dict[str, str]]
-    body_md: str
-    is_recurring: bool
-    web_link: str
-
-
-def _extract_event_data(event: dict) -> EventData | None:
-    """Extract and normalize calendar event data. Returns None if invalid."""
+    The body markdown is returned separately because it is not part of the
+    frontmatter schema.
+    """
     event_id = event.get("id", "")
     subject = event.get("subject") or "(no subject)"
 
@@ -139,7 +127,7 @@ def _extract_event_data(event: dict) -> EventData | None:
     organizer_email = organizer_obj.get("address", "")
 
     attendees: list[str] = []
-    attendee_details: list[dict[str, str]] = []
+    attendee_details: list[dict] = []
     for att in event.get("attendees", []):
         email_obj = att.get("emailAddress", {})
         att_name = email_obj.get("name", "")
@@ -162,9 +150,9 @@ def _extract_event_data(event: dict) -> EventData | None:
     raw_body = body_obj.get("content", "")
     body_md = html_to_markdown(raw_body) if content_type == "html" else raw_body
 
-    return EventData(
-        event_id=event_id,
+    data = CalendarEventData(
         subject=subject,
+        event_id=event_id,
         start_time=start_time,
         end_time=end_time,
         location=location,
@@ -172,29 +160,15 @@ def _extract_event_data(event: dict) -> EventData | None:
         organizer_email=organizer_email,
         attendees=attendees,
         attendee_details=attendee_details,
-        body_md=body_md,
         is_recurring=event.get("type", "singleInstance") != "singleInstance",
         web_link=event.get("webLink", ""),
     )
+    return data, body_md
 
 
-def _write_event(storage: StorageBackend, data: EventData) -> bool:
+def _write_event(storage: StorageBackend, data: CalendarEventData, body_md: str) -> bool:
     """Build frontmatter and markdown body for a calendar event, then write to storage."""
-    fm = build_calendar_frontmatter(
-        CalendarEventData(
-            subject=data.subject,
-            event_id=data.event_id,
-            start_time=data.start_time,
-            end_time=data.end_time,
-            location=data.location,
-            organizer_name=data.organizer_name,
-            organizer_email=data.organizer_email,
-            attendees=data.attendees,
-            attendee_details=data.attendee_details,
-            is_recurring=data.is_recurring,
-            web_link=data.web_link,
-        )
-    )
+    fm = build_calendar_frontmatter(data)
 
     body_parts = [f"# {data.subject}\n"]
     body_parts.append(f"**When:** {data.start_time} — {data.end_time}")
@@ -219,8 +193,8 @@ def _write_event(storage: StorageBackend, data: EventData) -> bool:
         body_parts.append(f"**Attendees:** {', '.join(data.attendees)}")
     body_parts.append("")
     body_parts.append("---\n")
-    if data.body_md:
-        body_parts.append(data.body_md)
+    if body_md:
+        body_parts.append(body_md)
 
     content = dumps_markdown(fm, "\n".join(body_parts))
 

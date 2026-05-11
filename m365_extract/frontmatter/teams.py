@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from m365_extract.markdown_writer import now_iso, short_hash, slugify
 
@@ -12,9 +12,9 @@ class TeamsChatData:
     title: str
     conversation_id: str
     conversation_type: str
-    participants: list[str] = field(default_factory=list)
-    last_message_time: str = ""
-    message_limit_reached: bool = False
+    participants: list[str]
+    last_message_time: str
+    message_limit_reached: bool
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class TeamsChannelData:
     team_name: str
     channel_name: str
     channel_id: str
-    last_message_time: str = ""
+    last_message_time: str
 
 
 def build_teams_chat_frontmatter(data: TeamsChatData) -> dict:

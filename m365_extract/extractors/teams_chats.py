@@ -5,7 +5,6 @@ Uses /me/chats for chat list and /me/chats/{id}/messages for messages.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -57,22 +56,8 @@ def run(
     return state, written
 
 
-@dataclass(frozen=True)
-class ChatData:
-    """Extracted and normalized Teams chat metadata."""
-
-    chat_id: str
-    chat_type: str
-    title: str
-    participants: list[str]
-    messages: list[dict]
-    last_message_time: str
-    message_limit_reached: bool
-    file_path: str
-
-
-def _extract_chat_data(chat: dict, messages: list[dict], max_messages: int) -> ChatData:
-    """Extract and normalize chat metadata and sort messages chronologically."""
+def _extract_chat_data(chat: dict, messages: list[dict], max_messages: int) -> tuple[TeamsChatData, list[dict], str]:
+    """Extract chat frontmatter data, sort messages, and compute the output path."""
     chat_id = chat.get("id", "")
     chat_type = chat.get("chatType", "oneOnOne")
     topic = chat.get("topic") or ""
@@ -85,39 +70,30 @@ def _extract_chat_data(chat: dict, messages: list[dict], max_messages: int) -> C
 
     slug = slugify(title, 80)
     hsh = short_hash(chat_id, 6)
+    file_path = f"teams-chats/{slug}_{hsh}.md"
 
-    return ChatData(
-        chat_id=chat_id,
-        chat_type=chat_type,
+    data = TeamsChatData(
         title=title,
+        conversation_id=chat_id,
+        conversation_type=chat_type,
         participants=participants,
-        messages=messages_sorted,
         last_message_time=last_message_time,
         message_limit_reached=len(messages) >= max_messages,
-        file_path=f"teams-chats/{slug}_{hsh}.md",
     )
+    return data, messages_sorted, file_path
 
 
-def _write_chat(storage: StorageBackend, data: ChatData) -> bool:
+def _write_chat(storage: StorageBackend, data: TeamsChatData, messages: list[dict], file_path: str) -> bool:
     """Build frontmatter and markdown body for a chat, then write to storage."""
-    fm = build_teams_chat_frontmatter(
-        TeamsChatData(
-            title=data.title,
-            conversation_id=data.chat_id,
-            conversation_type=data.chat_type,
-            participants=data.participants,
-            last_message_time=data.last_message_time,
-            message_limit_reached=data.message_limit_reached,
-        )
-    )
+    fm = build_teams_chat_frontmatter(data)
 
     body_parts = [f"# {data.title}\n"]
 
     body_parts.append("## Observations\n")
-    body_parts.append(f"- [conversation_type] {data.chat_type}")
+    body_parts.append(f"- [conversation_type] {data.conversation_type}")
     body_parts.append(f"- [participants] {', '.join(data.participants)}")
     body_parts.append(f"- [last_message_time] {data.last_message_time}")
-    body_parts.append(f"- [message_count] {len(data.messages)}")
+    body_parts.append(f"- [message_count] {len(messages)}")
 
     relations = []
     for p_name in data.participants:
@@ -131,7 +107,7 @@ def _write_chat(storage: StorageBackend, data: ChatData) -> bool:
     body_parts.append("\n---\n")
     body_parts.append("## Messages\n")
 
-    for msg in data.messages:
+    for msg in messages:
         sender_name = extract_sender(msg)
         created = msg.get("createdDateTime", "")
         content = extract_content(msg)
@@ -148,8 +124,8 @@ def _write_chat(storage: StorageBackend, data: ChatData) -> bool:
         body_parts.append("")
 
     content_str = dumps_markdown(fm, "\n".join(body_parts))
-    storage.write_file(data.file_path, content_str)
-    log.debug("teams_chats.wrote", title=data.title, messages=len(data.messages))
+    storage.write_file(file_path, content_str)
+    log.debug("teams_chats.wrote", title=data.title, messages=len(messages))
     return True
 
 
@@ -182,22 +158,22 @@ def _process_chat(
     if not messages:
         return False
 
-    data = _extract_chat_data(chat, messages, max_messages)
+    data, messages_sorted, file_path = _extract_chat_data(chat, messages, max_messages)
 
     if data.message_limit_reached:
         log.warning("teams_chats.message_limit_reached", chat_id=chat_id, messages=len(messages), limit=max_messages)
 
-    if storage.file_exists(data.file_path):
+    if storage.file_exists(file_path):
         try:
-            existing_content = storage.read_file(data.file_path)
+            existing_content = storage.read_file(file_path)
             existing_fm, _ = loads_markdown(existing_content)
             if existing_fm.get("last_message_time") == data.last_message_time:
                 return False
         except (ValueError, KeyError) as exc:
             log.warning(
                 "teams_chats.existing_file_parse_failed",
-                file_path=data.file_path,
+                file_path=file_path,
                 error=str(exc),
             )
 
-    return _write_chat(storage, data)
+    return _write_chat(storage, data, messages_sorted, file_path)

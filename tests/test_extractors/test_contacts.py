@@ -317,9 +317,10 @@ class TestExtractContactData:
             "personalNotes": "Met at conference.",
         }
 
-        data = contacts._extract_contact_data(contact)
+        extracted = contacts._extract_contact_data(contact)
 
-        assert data is not None
+        assert extracted is not None
+        data, notes = extracted
         assert data.contact_id == "c-001"
         assert data.display_name == "Jane Doe"
         assert data.email_addresses == ["jane@example.com"]
@@ -328,7 +329,7 @@ class TestExtractContactData:
         assert data.job_title == "Engineer"
         assert data.department == "R&D"
         assert data.categories == ["VIP"]
-        assert data.notes == "Met at conference."
+        assert notes == "Met at conference."
 
     def test_returns_none_for_missing_id(self):
         contact = {"id": "", "displayName": "Someone"}
@@ -346,10 +347,11 @@ class TestExtractContactData:
             "businessPhones": [],
         }
 
-        data = contacts._extract_contact_data(contact)
+        extracted = contacts._extract_contact_data(contact)
 
-        assert data is not None
+        assert extracted is not None
+        data, notes = extracted
         assert data.email_addresses == []
         assert data.phones == []
         assert data.company == ""
-        assert data.notes == ""
+        assert notes == ""

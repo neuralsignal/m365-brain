@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from m365_extract.markdown_writer import now_iso, short_hash, slugify
 
@@ -16,10 +16,10 @@ class EmailData:
     mailbox: str
     sender_address: str
     sender_name: str
-    to_recipients: list[str] = field(default_factory=list)
-    importance: str = "normal"
-    has_attachments: bool = False
-    web_link: str = ""
+    to_recipients: list[str]
+    importance: str
+    has_attachments: bool
+    web_link: str
 
 
 def build_email_frontmatter(data: EmailData) -> dict:

@@ -486,17 +486,17 @@ class TestExtractChatData:
             {"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z", "messageType": "message"},
         ]
 
-        data = teams_chats._extract_chat_data(chat, messages, 200)
+        data, sorted_messages, file_path = teams_chats._extract_chat_data(chat, messages, 200)
 
-        assert data.chat_id == "chat-1"
-        assert data.chat_type == "group"
+        assert data.conversation_id == "chat-1"
+        assert data.conversation_type == "group"
         assert data.title == "Project Alpha"
         assert data.participants == ["Alice", "Bob"]
-        assert data.messages[0]["id"] == "m1"
-        assert data.messages[1]["id"] == "m2"
+        assert sorted_messages[0]["id"] == "m1"
+        assert sorted_messages[1]["id"] == "m2"
         assert data.last_message_time == "2026-03-12T10:00:00Z"
         assert data.message_limit_reached is False
-        assert "teams-chats/" in data.file_path
+        assert "teams-chats/" in file_path
 
     def test_title_from_participants_when_no_topic(self):
         chat = {
@@ -507,7 +507,7 @@ class TestExtractChatData:
         }
         messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
 
-        data = teams_chats._extract_chat_data(chat, messages, 200)
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
 
         assert data.title == "Alice, Charlie"
 
@@ -515,7 +515,7 @@ class TestExtractChatData:
         chat = {"id": "chat-3", "chatType": "oneOnOne", "topic": None, "members": []}
         messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
 
-        data = teams_chats._extract_chat_data(chat, messages, 200)
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
 
         assert data.title == "Chat"
 
@@ -526,7 +526,7 @@ class TestExtractChatData:
             {"id": "m2", "createdDateTime": "2026-03-12T10:00:00Z"},
         ]
 
-        data = teams_chats._extract_chat_data(chat, messages, 2)
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 2)
 
         assert data.message_limit_reached is True
 
@@ -539,6 +539,6 @@ class TestExtractChatData:
         }
         messages = [{"id": "m1", "createdDateTime": "2026-03-12T09:00:00Z"}]
 
-        data = teams_chats._extract_chat_data(chat, messages, 200)
+        data, _messages, _file_path = teams_chats._extract_chat_data(chat, messages, 200)
 
         assert data.participants == ["Alice"]

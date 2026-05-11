@@ -161,6 +161,10 @@ class TestBuildEmailFrontmatter:
                 mailbox="me",
                 sender_address="alice@example.com",
                 sender_name="Alice",
+                to_recipients=[],
+                importance="normal",
+                has_attachments=False,
+                web_link="",
             )
         )
         assert fm["permalink"].startswith("email-2026-03-12-budget-review-")
@@ -183,6 +187,7 @@ class TestBuildCalendarFrontmatter:
                     {"name": "Bob", "email": "bob@example.com", "status": "tentativelyAccepted"},
                 ],
                 is_recurring=True,
+                web_link="",
             )
         )
         assert fm["type"] == "calendar_event"
@@ -203,6 +208,10 @@ class TestBuildCalendarFrontmatter:
                 location="",
                 organizer_name="Boss",
                 organizer_email="boss@example.com",
+                attendees=[],
+                attendee_details=[],
+                is_recurring=False,
+                web_link="",
             )
         )
         assert "location" not in fm
@@ -218,6 +227,7 @@ class TestBuildTeamsChatFrontmatter:
                 conversation_type="oneOnOne",
                 participants=["Alice", "Bob"],
                 last_message_time="2026-03-12T10:00:00Z",
+                message_limit_reached=False,
             )
         )
         assert fm["type"] == "teams_chat"
@@ -354,6 +364,12 @@ class TestBuildContactFrontmatter:
             ContactData(
                 display_name="Minimal Contact",
                 contact_id="contact-min",
+                email_addresses=[],
+                phones=[],
+                company="",
+                job_title="",
+                department="",
+                categories=[],
             )
         )
         assert "email" not in fm
@@ -367,6 +383,11 @@ class TestBuildContactFrontmatter:
             ContactData(
                 display_name="Tagged Contact",
                 contact_id="contact-tags",
+                email_addresses=[],
+                phones=[],
+                company="",
+                job_title="",
+                department="",
                 categories=["VIP", "Engineering Team"],
             )
         )
@@ -410,6 +431,12 @@ class TestBuildDirectoryUserFrontmatter:
                 user_id="user-min",
                 email="min@contoso.com",
                 upn="min@contoso.com",
+                job_title="",
+                department="",
+                office="",
+                city="",
+                manager_link="",
+                direct_reports_links=[],
             )
         )
         assert "job_title" not in fm
@@ -426,7 +453,12 @@ class TestBuildDirectoryUserFrontmatter:
                 user_id="user-dept",
                 email="dept@contoso.com",
                 upn="dept@contoso.com",
+                job_title="",
                 department="Product Design",
+                office="",
+                city="",
+                manager_link="",
+                direct_reports_links=[],
             )
         )
         assert "product-design" in fm["tags"]

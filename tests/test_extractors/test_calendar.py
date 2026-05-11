@@ -454,9 +454,10 @@ class TestExtractEventData:
             "webLink": "https://outlook.office.com/event/1",
         }
 
-        data = calendar._extract_event_data(event)
+        extracted = calendar._extract_event_data(event)
 
-        assert data is not None
+        assert extracted is not None
+        data, body_md = extracted
         assert data.event_id == "EVT-001"
         assert data.subject == "Team Meeting"
         assert data.start_time == "2026-03-12T09:00:00Z"
@@ -466,7 +467,7 @@ class TestExtractEventData:
         assert data.organizer_email == "alice@example.com"
         assert data.attendees == ["Bob"]
         assert data.attendee_details == [{"name": "Bob", "email": "bob@example.com", "status": "accepted"}]
-        assert data.body_md == "Agenda here"
+        assert body_md == "Agenda here"
         assert data.is_recurring is True
         assert data.web_link == "https://outlook.office.com/event/1"
 
@@ -501,8 +502,9 @@ class TestExtractEventData:
             "type": "singleInstance",
             "webLink": "",
         }
-        data = calendar._extract_event_data(event)
-        assert data is not None
+        extracted = calendar._extract_event_data(event)
+        assert extracted is not None
+        data, _body_md = extracted
         assert data.subject == "(no subject)"
         assert data.is_recurring is False
 
@@ -521,7 +523,8 @@ class TestExtractEventData:
             "type": "singleInstance",
             "webLink": "",
         }
-        data = calendar._extract_event_data(event)
-        assert data is not None
+        extracted = calendar._extract_event_data(event)
+        assert extracted is not None
+        data, _body_md = extracted
         assert data.attendees == []
         assert data.attendee_details == [{"email": "anon@example.com"}]

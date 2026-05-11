@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from m365_extract.markdown_writer import now_iso, short_hash, slugify
 
@@ -16,10 +16,10 @@ class CalendarEventData:
     location: str
     organizer_name: str
     organizer_email: str
-    attendees: list[str] = field(default_factory=list)
-    attendee_details: list[dict] = field(default_factory=list)
-    is_recurring: bool = False
-    web_link: str = ""
+    attendees: list[str]
+    attendee_details: list[dict]
+    is_recurring: bool
+    web_link: str
 
 
 def build_calendar_frontmatter(data: CalendarEventData) -> dict:

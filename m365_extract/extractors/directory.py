@@ -6,7 +6,6 @@ Writes Obsidian-compatible markdown files with YAML frontmatter.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -128,27 +127,11 @@ def _fetch_direct_reports_links(client: GraphClient, user_id: str) -> list[str]:
         return []
 
 
-@dataclass(frozen=True)
-class UserData:
-    """Extracted and normalized directory user fields."""
-
-    user_id: str
-    display_name: str
-    email: str
-    upn: str
-    job_title: str
-    department: str
-    office: str
-    city: str
-    manager_link: str
-    direct_reports_links: list[str]
-
-
-def _extract_user_data(user: dict, manager_link: str, direct_reports_links: list[str]) -> UserData:
+def _extract_user_data(user: dict, manager_link: str, direct_reports_links: list[str]) -> DirectoryUserData:
     """Extract and normalize directory user data from a Graph API user dict."""
-    return UserData(
-        user_id=user.get("id", ""),
+    return DirectoryUserData(
         display_name=user.get("displayName") or "",
+        user_id=user.get("id", ""),
         email=user.get("mail") or "",
         upn=user.get("userPrincipalName") or "",
         job_title=user.get("jobTitle") or "",
@@ -160,22 +143,9 @@ def _extract_user_data(user: dict, manager_link: str, direct_reports_links: list
     )
 
 
-def _write_user(storage: StorageBackend, data: UserData) -> bool:
+def _write_user(storage: StorageBackend, data: DirectoryUserData) -> bool:
     """Build frontmatter and markdown body for a directory user, then write to storage."""
-    fm = build_directory_user_frontmatter(
-        DirectoryUserData(
-            display_name=data.display_name,
-            user_id=data.user_id,
-            email=data.email,
-            upn=data.upn,
-            job_title=data.job_title,
-            department=data.department,
-            office=data.office,
-            city=data.city,
-            manager_link=data.manager_link,
-            direct_reports_links=data.direct_reports_links,
-        )
-    )
+    fm = build_directory_user_frontmatter(data)
 
     body_parts = [f"# {data.display_name}\n", "## Profile\n"]
 

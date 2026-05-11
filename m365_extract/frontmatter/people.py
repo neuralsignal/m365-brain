@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from m365_extract.markdown_writer import now_iso, short_hash, slugify
 
@@ -11,12 +11,12 @@ from m365_extract.markdown_writer import now_iso, short_hash, slugify
 class ContactData:
     display_name: str
     contact_id: str
-    email_addresses: list[str] = field(default_factory=list)
-    phones: list[str] = field(default_factory=list)
-    company: str = ""
-    job_title: str = ""
-    department: str = ""
-    categories: list[str] = field(default_factory=list)
+    email_addresses: list[str]
+    phones: list[str]
+    company: str
+    job_title: str
+    department: str
+    categories: list[str]
 
 
 @dataclass(frozen=True)
@@ -25,12 +25,12 @@ class DirectoryUserData:
     user_id: str
     email: str
     upn: str
-    job_title: str = ""
-    department: str = ""
-    office: str = ""
-    city: str = ""
-    manager_link: str = ""
-    direct_reports_links: list[str] = field(default_factory=list)
+    job_title: str
+    department: str
+    office: str
+    city: str
+    manager_link: str
+    direct_reports_links: list[str]
 
 
 def build_contact_frontmatter(data: ContactData) -> dict:

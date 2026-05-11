@@ -66,6 +66,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+* `m365_extract.frontmatter` builders now take a single dataclass argument instead of keyword arguments. Replace `build_email_frontmatter(subject=..., message_id=..., ...)` with `build_email_frontmatter(EmailData(subject=..., message_id=..., ...))`. Same shape for `build_calendar_frontmatter` / `CalendarEventData`, `build_contact_frontmatter` / `ContactData`, `build_directory_user_frontmatter` / `DirectoryUserData`, `build_onedrive_frontmatter` / `OneDriveFileData`, `build_sharepoint_frontmatter` / `SharePointFileData`, `build_teams_chat_frontmatter` / `TeamsChatData`, and `build_teams_channel_frontmatter` / `TeamsChannelData`. All dataclass fields are required — callers must pass every field explicitly.
+
 ### Security
 
 * Pin `pyopenssl>=26.0,<27` to fix CVE-2026-27448 (TLS callback bypass) and CVE-2026-27459 (buffer overflow)
