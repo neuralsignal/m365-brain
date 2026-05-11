@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from unittest.mock import MagicMock
-
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import CalendarExtractorConfig, GraphConfig
 from m365_extract.extractors import calendar
-from m365_extract.extractors.calendar import _normalize_graph_datetime, _write_event
+from m365_extract.extractors.calendar import _normalize_graph_datetime
 from m365_extract.graph_client import GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -433,44 +431,96 @@ class TestNormalizeGraphDatetime:
         assert result == "2026-03-12T09:00:00Z"
 
 
-class TestWriteEventEdgeCases:
-    def test_missing_event_id_returns_false(self):
-        storage = MagicMock()
-        event = {
-            "subject": "Test",
-            "start": {"dateTime": "2026-03-12T09:00:00.0000000"},
-            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
-        }
-        assert _write_event(storage, event) is False
-        storage.write_file.assert_not_called()
+class TestExtractEventData:
+    """Tests for _extract_event_data pure extraction function."""
 
-    def test_empty_event_id_returns_false(self):
-        storage = MagicMock()
+    def test_extracts_full_event(self):
+        event = {
+            "id": "EVT-001",
+            "subject": "Team Meeting",
+            "start": {"dateTime": "2026-03-12T09:00:00.0000000", "timeZone": "UTC"},
+            "end": {"dateTime": "2026-03-12T10:00:00.0000000", "timeZone": "UTC"},
+            "location": {"displayName": "Room A"},
+            "organizer": {"emailAddress": {"name": "Alice", "address": "alice@example.com"}},
+            "attendees": [
+                {
+                    "emailAddress": {"name": "Bob", "address": "bob@example.com"},
+                    "status": {"response": "accepted"},
+                },
+            ],
+            "body": {"contentType": "text", "content": "Agenda here"},
+            "type": "occurrence",
+            "webLink": "https://outlook.office.com/event/1",
+        }
+
+        data = calendar._extract_event_data(event)
+
+        assert data is not None
+        assert data.event_id == "EVT-001"
+        assert data.subject == "Team Meeting"
+        assert data.start_time == "2026-03-12T09:00:00Z"
+        assert data.end_time == "2026-03-12T10:00:00Z"
+        assert data.location == "Room A"
+        assert data.organizer_name == "Alice"
+        assert data.organizer_email == "alice@example.com"
+        assert data.attendees == ["Bob"]
+        assert data.attendee_details == [{"name": "Bob", "email": "bob@example.com", "status": "accepted"}]
+        assert data.body_md == "Agenda here"
+        assert data.is_recurring is True
+        assert data.web_link == "https://outlook.office.com/event/1"
+
+    def test_returns_none_for_missing_id(self):
         event = {
             "id": "",
             "subject": "Test",
-            "start": {"dateTime": "2026-03-12T09:00:00.0000000"},
-            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
         }
-        assert _write_event(storage, event) is False
-        storage.write_file.assert_not_called()
+        assert calendar._extract_event_data(event) is None
 
-    def test_missing_start_time_returns_false(self):
-        storage = MagicMock()
+    def test_returns_none_for_missing_start_time(self):
         event = {
-            "id": "EVT-123",
+            "id": "EVT-002",
             "subject": "Test",
             "start": {},
-            "end": {"dateTime": "2026-03-12T10:00:00.0000000"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
         }
-        assert _write_event(storage, event) is False
-        storage.write_file.assert_not_called()
+        assert calendar._extract_event_data(event) is None
 
-    def test_no_start_key_returns_false(self):
-        storage = MagicMock()
+    def test_defaults_subject_when_missing(self):
         event = {
-            "id": "EVT-123",
-            "subject": "Test",
+            "id": "EVT-003",
+            "subject": None,
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
         }
-        assert _write_event(storage, event) is False
-        storage.write_file.assert_not_called()
+        data = calendar._extract_event_data(event)
+        assert data is not None
+        assert data.subject == "(no subject)"
+        assert data.is_recurring is False
+
+    def test_attendee_without_name_uses_email(self):
+        event = {
+            "id": "EVT-004",
+            "subject": "Test",
+            "start": {"dateTime": "2026-03-12T09:00:00Z"},
+            "end": {"dateTime": "2026-03-12T10:00:00Z"},
+            "location": {},
+            "organizer": {},
+            "attendees": [
+                {"emailAddress": {"name": "", "address": "anon@example.com"}, "status": {"response": ""}},
+            ],
+            "body": {"contentType": "text", "content": ""},
+            "type": "singleInstance",
+            "webLink": "",
+        }
+        data = calendar._extract_event_data(event)
+        assert data is not None
+        assert data.attendees == []
+        assert data.attendee_details == [{"email": "anon@example.com"}]
