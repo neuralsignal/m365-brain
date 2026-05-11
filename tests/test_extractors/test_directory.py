@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import DirectoryExtractorConfig, GraphConfig
 from m365_extract.extractors import directory
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import loads_markdown
 from m365_extract.storage.local import LocalBackend
 
@@ -338,3 +339,21 @@ class TestDirectoryExtractor:
 
         assert "manager" not in meta
         client.close()
+
+    def test_build_user_link_missing_display_name(self):
+        result = directory._build_user_link({"id": "abc"})
+        assert result == ""
+
+    def test_build_user_link_missing_id(self):
+        result = directory._build_user_link({"displayName": "Alice"})
+        assert result == ""
+
+    def test_fetch_direct_reports_links_graph_api_error(self):
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.side_effect = GraphApiError("not found")
+        client.max_pages = 10
+
+        result = directory._fetch_direct_reports_links(client, "user-123")
+
+        assert result == []
+        client.get_paginated.assert_called_once()
