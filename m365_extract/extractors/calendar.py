@@ -11,7 +11,7 @@ import structlog
 
 from m365_extract.config import CalendarExtractorConfig
 from m365_extract.converters.html_to_md import html_to_markdown
-from m365_extract.frontmatter import build_calendar_frontmatter
+from m365_extract.frontmatter import CalendarEventData, build_calendar_frontmatter
 from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -154,17 +154,19 @@ def _write_event(storage: StorageBackend, event: dict) -> bool:
 
     # Build frontmatter
     fm = build_calendar_frontmatter(
-        subject=subject,
-        event_id=event_id,
-        start_time=start_time,
-        end_time=end_time,
-        location=location,
-        organizer_name=organizer_name,
-        organizer_email=organizer_email,
-        attendees=attendees,
-        attendee_details=attendee_details,
-        is_recurring=event.get("type", "singleInstance") != "singleInstance",
-        web_link=event.get("webLink", ""),
+        CalendarEventData(
+            subject=subject,
+            event_id=event_id,
+            start_time=start_time,
+            end_time=end_time,
+            location=location,
+            organizer_name=organizer_name,
+            organizer_email=organizer_email,
+            attendees=attendees,
+            attendee_details=attendee_details,
+            is_recurring=event.get("type", "singleInstance") != "singleInstance",
+            web_link=event.get("webLink", ""),
+        )
     )
 
     # Build body

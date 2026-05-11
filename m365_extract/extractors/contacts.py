@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 
 from m365_extract.config import ContactsExtractorConfig
-from m365_extract.frontmatter import build_contact_frontmatter
+from m365_extract.frontmatter import ContactData, build_contact_frontmatter
 from m365_extract.graph_client import GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -155,14 +155,16 @@ def _write_contact(storage: StorageBackend, contact: dict) -> bool:
     categories = contact.get("categories") or []
 
     fm = build_contact_frontmatter(
-        display_name=display_name,
-        contact_id=contact_id,
-        email_addresses=email_addresses,
-        phones=phones,
-        company=company,
-        job_title=job_title,
-        department=department,
-        categories=categories,
+        ContactData(
+            display_name=display_name,
+            contact_id=contact_id,
+            email_addresses=email_addresses,
+            phones=phones,
+            company=company,
+            job_title=job_title,
+            department=department,
+            categories=categories,
+        )
     )
 
     # Build body

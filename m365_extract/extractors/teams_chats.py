@@ -11,7 +11,7 @@ import structlog
 
 from m365_extract.config import TeamsChatsExtractorConfig
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
-from m365_extract.frontmatter import build_teams_chat_frontmatter
+from m365_extract.frontmatter import TeamsChatData, build_teams_chat_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, loads_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
@@ -126,12 +126,14 @@ def _process_chat(
             )
 
     fm = build_teams_chat_frontmatter(
-        title=title,
-        conversation_id=chat_id,
-        conversation_type=chat_type,
-        participants=participants,
-        last_message_time=last_msg_time,
-        message_limit_reached=message_limit_reached,
+        TeamsChatData(
+            title=title,
+            conversation_id=chat_id,
+            conversation_type=chat_type,
+            participants=participants,
+            last_message_time=last_msg_time,
+            message_limit_reached=message_limit_reached,
+        )
     )
 
     body_parts = [f"# {title}\n"]
