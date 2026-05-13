@@ -536,7 +536,8 @@ class TestIsAllowedDownloadDomain:
             "https://graph.microsoft.com/v1.0/me/photo",
             "https://files.office.com/download/abc",
             "https://storage.office365.com/blobs/123",
-            "https://account.blob.windows.net/container/blob",
+            "https://files.cdn.office.net/assets/doc.docx",
+            "https://svc.ms/v1/download/abc",
         ],
     )
     def test_allowed_domains(self, url: str) -> None:
@@ -549,6 +550,7 @@ class TestIsAllowedDownloadDomain:
             "https://attacker.sharepoint.com.evil.com/file",
             "https://notmicrosoft.com/file",
             "https://sharepoint.com.evil.org/file",
+            "https://attacker.blob.core.windows.net/container/blob",
         ],
     )
     def test_blocked_domains(self, url: str) -> None:
