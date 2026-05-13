@@ -36,6 +36,9 @@ def download_attachments(
             att_name = att.get("name", "")
             if not att_name or ":" in att_name:
                 continue
+            att_name = Path(att_name).name
+            if not att_name:
+                continue
             if att.get("isInline", False):
                 continue
             size = att.get("size", 0)
