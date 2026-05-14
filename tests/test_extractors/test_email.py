@@ -844,6 +844,60 @@ class TestEmailAttachments:
         assert "# Converted" in storage.read_file(converted[0])
         client.close()
 
+    @pytest.mark.parametrize(
+        "malicious_name",
+        [
+            "../../etc/passwd",
+            "../sibling/file.txt",
+            "subdir/file.pdf",
+            "a/b/c/d.txt",
+        ],
+    )
+    def test_path_traversal_attachment_name_stripped_to_basename(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, malicious_name
+    ):
+        """Attachment names with path components are stripped to basename only."""
+        config = _attachment_config()
+        expected_basename = Path(malicious_name).name
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [self._make_email_msg()],
+                "@odata.deltaLink": "https://delta?token=traversal",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/messages/msg-with-attachment/attachments.*"),
+            json={
+                "value": [
+                    {
+                        "id": "att-traversal",
+                        "name": malicious_name,
+                        "contentType": "application/octet-stream",
+                        "size": 64,
+                        "isInline": False,
+                        "@microsoft.graph.downloadUrl": "https://attachments.office.com/traversal",
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url="https://attachments.office.com/traversal",
+            content=b"payload",
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        _, count = email.run(client, storage, {}, config, _NO_CONVERTERS)
+        assert count == 1
+
+        all_files = storage.list_files("emails")
+        att_paths = [f for f in all_files if "attachments/" in f]
+        assert len(att_paths) == 1
+        assert att_paths[0].endswith(f"attachments/{expected_basename}")
+        client.close()
+
 
 # ---------------------------------------------------------------------------
 # Multi-mailbox routing
