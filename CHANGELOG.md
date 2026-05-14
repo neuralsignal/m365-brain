@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.0](https://github.com/neuralsignal/m365-extract/compare/v0.3.0...v1.0.0) (2026-05-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* EmailExtractorConfig.folders is replaced by a mailboxes list. Each entry has address (use "me" for /me/ endpoints, or a UPN for /users/{address}/ endpoints), folders (list or null for auto-discovery), and output_subdir (storage namespace under emails/).
+
+### Features
+
+* support multiple mailboxes in email extractor ([d65700f](https://github.com/neuralsignal/m365-extract/commit/d65700f7ef84204a39e58f7a88c85c3b6b4f37a7))
+
+
+### Bug Fixes
+
+* add server-side admin authorization to AdminState handlers ([#169](https://github.com/neuralsignal/m365-extract/issues/169)) ([4064034](https://github.com/neuralsignal/m365-extract/commit/4064034648e704eefbe1243e66fee84a185043ac))
+* align tests with module split and apply ruff format/imports ([16f95c4](https://github.com/neuralsignal/m365-extract/commit/16f95c4d7d2842653e8bd479e3ce38d04292004a))
+* **email:** drop wellKnownName from auto-discover (v1.0 incompatible) ([953b6c8](https://github.com/neuralsignal/m365-extract/commit/953b6c8725d80035b848246beb158e5c23ee7d10))
+* **email:** drop wellKnownName from auto-discover select (v1.0) ([ccea9fc](https://github.com/neuralsignal/m365-extract/commit/ccea9fcc4f79160960d74646a49dba2d2f68be61))
+* narrow SSRF allowlist by replacing .windows.net with specific CDN domains ([#171](https://github.com/neuralsignal/m365-extract/issues/171)) ([e4bd3d9](https://github.com/neuralsignal/m365-extract/commit/e4bd3d9ba4c967e276a88a6fa6b72bc03222b074))
+* pin pillow &gt;=12.2.0 to remediate CVE-2026-40192 ([#127](https://github.com/neuralsignal/m365-extract/issues/127)) ([509ab6d](https://github.com/neuralsignal/m365-extract/commit/509ab6dfe3a65baeaa97fa9b30693d9ce75a9d5e))
+* sanitize attachment filename to basename to prevent path traversal ([#170](https://github.com/neuralsignal/m365-extract/issues/170)) ([f8ad054](https://github.com/neuralsignal/m365-extract/commit/f8ad054627a16ccb353da3422fe1b0ff9f73a10c))
+
 ## [0.3.0](https://github.com/neuralsignal/m365-extract/compare/v0.2.2...v0.3.0) (2026-04-13)
 
 
