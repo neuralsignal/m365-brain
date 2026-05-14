@@ -16,6 +16,8 @@ class AdminState(AuthState):
 
     def load_users(self) -> None:
         """Load all users from DB."""
+        if not self.is_admin:
+            return
         session = get_session()
         try:
             rows = session.exec(select(User).order_by(User.user_id)).all()
@@ -45,6 +47,8 @@ class AdminState(AuthState):
 
     def toggle_user_enabled(self, user_id: str) -> None:
         """Enable or disable a user."""
+        if not self.is_admin:
+            return
         session = get_session()
         try:
             user = session.get(User, user_id)
