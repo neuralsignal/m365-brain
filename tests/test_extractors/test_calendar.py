@@ -528,3 +528,128 @@ class TestExtractEventData:
         data, _body_md = extracted
         assert data.attendees == []
         assert data.attendee_details == [{"email": "anon@example.com"}]
+
+
+class TestSyncSkipsInvalidEvents:
+    """Tests that the sync loop skips events where _extract_event_data returns None."""
+
+    def test_sync_skips_event_with_missing_id(self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config):
+        response = {
+            "value": [
+                {
+                    "id": "",
+                    "subject": "Ghost Event",
+                    "start": {"dateTime": "2026-03-12T09:00:00Z"},
+                    "end": {"dateTime": "2026-03-12T10:00:00Z"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Test", "address": "t@t.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+                {
+                    "id": "EVT-VALID",
+                    "subject": "Real Event",
+                    "start": {"dateTime": "2026-03-12T11:00:00Z"},
+                    "end": {"dateTime": "2026-03-12T12:00:00Z"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Test", "address": "t@t.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = calendar.run(client, storage, {}, calendar_config)
+
+        assert count == 1
+        assert state["events_fetched"] == 2
+        files = storage.list_files("calendar")
+        assert len(files) == 1
+        content = storage.read_file(files[0])
+        assert "Real Event" in content
+        client.close()
+
+    def test_sync_skips_event_with_missing_start_time(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, calendar_config
+    ):
+        response = {
+            "value": [
+                {
+                    "id": "EVT-NO-START",
+                    "subject": "Broken Event",
+                    "start": {},
+                    "end": {"dateTime": "2026-03-12T10:00:00Z"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Test", "address": "t@t.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+                {
+                    "id": "EVT-OK",
+                    "subject": "Good Event",
+                    "start": {"dateTime": "2026-03-12T14:00:00Z"},
+                    "end": {"dateTime": "2026-03-12T15:00:00Z"},
+                    "location": {"displayName": ""},
+                    "organizer": {"emailAddress": {"name": "Test", "address": "t@t.com"}},
+                    "attendees": [],
+                    "body": {"contentType": "text", "content": ""},
+                    "type": "singleInstance",
+                    "webLink": "",
+                },
+            ],
+        }
+        httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = calendar.run(client, storage, {}, calendar_config)
+
+        assert count == 1
+        assert state["events_fetched"] == 2
+        files = storage.list_files("calendar")
+        assert len(files) == 1
+        content = storage.read_file(files[0])
+        assert "Good Event" in content
+        client.close()
+
+
+class TestWriteEventPlainAttendees:
+    """Test _write_event branch where attendees exist but attendee_details is empty."""
+
+    def test_write_event_plain_attendees(self, tmp_path):
+        from m365_extract.frontmatter import CalendarEventData
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        data = CalendarEventData(
+            subject="Lunch Meeting",
+            event_id="EVT-PLAIN-ATT",
+            start_time="2026-03-12T12:00:00Z",
+            end_time="2026-03-12T13:00:00Z",
+            location="Cafeteria",
+            organizer_name="Alice",
+            organizer_email="alice@example.com",
+            attendees=["Alice", "Bob"],
+            attendee_details=[],
+            is_recurring=False,
+            web_link="",
+        )
+
+        result = calendar._write_event(storage, data, "Let's eat")
+
+        assert result is True
+        files = storage.list_files("calendar")
+        assert len(files) == 1
+        content = storage.read_file(files[0])
+        assert "**Attendees:** Alice, Bob" in content
+        assert "Let's eat" in content
