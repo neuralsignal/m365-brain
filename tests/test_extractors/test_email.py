@@ -1327,3 +1327,106 @@ class TestConvertAndStore:
 
         assert len(captured_paths) == 1
         assert not captured_paths[0].exists()
+
+
+# ---------------------------------------------------------------------------
+# Guard branch coverage: _attachment_helpers line 41
+# ---------------------------------------------------------------------------
+
+
+class TestAttachmentEmptyPathName:
+    """Attachment with name that resolves to empty after Path().name is skipped."""
+
+    def test_download_attachments_skips_empty_path_name(self, tmp_path):
+        """Attachment with name='/' passes the ':' check but Path('/').name == '', so it's skipped."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get_paginated.return_value = iter(
+            [
+                {
+                    "name": "/",
+                    "size": 100,
+                    "isInline": False,
+                    "@microsoft.graph.downloadUrl": "https://cdn/slash",
+                }
+            ]
+        )
+
+        config = _attachment_config()
+        _attachment_helpers.download_attachments(
+            client, storage, "/me", "msg-1", "emails/2026/dir", config, _NO_CONVERTERS
+        )
+
+        client.get_bytes.assert_not_called()
+        assert storage.list_files("emails") == []
+
+
+# ---------------------------------------------------------------------------
+# Guard branch coverage: _folder_helpers line 113
+# ---------------------------------------------------------------------------
+
+
+class TestListAllFoldersGuardBranches:
+    """list_all_folders skips folder entries with missing displayName or id."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_folder_cache(self):
+        _folder_helpers._resolved_folder_ids.clear()
+        yield
+        _folder_helpers._resolved_folder_ids.clear()
+
+    def test_skips_missing_display_name(self):
+        """Folder with displayName=None is excluded from the result."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "value": [
+                {"id": "id-valid", "displayName": "Projects", "isHidden": False},
+                {"id": "id-no-name", "displayName": None, "isHidden": False},
+            ]
+        }
+
+        result = _folder_helpers.list_all_folders(client, "/me", "me")
+
+        assert result == [("Projects", "id-valid")]
+
+    def test_skips_absent_display_name(self):
+        """Folder with no displayName key at all is excluded from the result."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "value": [
+                {"id": "id-valid", "displayName": "Inbox", "isHidden": False},
+                {"id": "id-missing-key", "isHidden": False},
+            ]
+        }
+
+        result = _folder_helpers.list_all_folders(client, "/me", "me")
+
+        assert result == [("Inbox", "id-valid")]
+
+    def test_skips_missing_id(self):
+        """Folder with id=None is excluded from the result."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "value": [
+                {"id": "id-good", "displayName": "Archive", "isHidden": False},
+                {"id": None, "displayName": "Broken", "isHidden": False},
+            ]
+        }
+
+        result = _folder_helpers.list_all_folders(client, "/me", "me")
+
+        assert result == [("Archive", "id-good")]
+
+    def test_skips_absent_id(self):
+        """Folder with no id key at all is excluded from the result."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "value": [
+                {"id": "id-good", "displayName": "Sent", "isHidden": False},
+                {"displayName": "NoId", "isHidden": False},
+            ]
+        }
+
+        result = _folder_helpers.list_all_folders(client, "/me", "me")
+
+        assert result == [("Sent", "id-good")]
