@@ -89,6 +89,10 @@ class TeamsChatsExtractorConfig(BaseModel):
     enabled: bool
     poll_interval_minutes: int
     max_messages_per_chat: int
+    download_attachments: bool
+    download_inline_images: bool
+    max_attachment_size_mb: int
+    attachment_convert_extensions: list[str]
 
 
 class TeamsChannelsExtractorConfig(BaseModel):

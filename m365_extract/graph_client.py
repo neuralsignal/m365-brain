@@ -196,6 +196,27 @@ class GraphClient:
             extract=lambda r: r.content,
         )
 
+    def get_bytes_with_content_type(self, url: str) -> tuple[bytes, str]:
+        """Download binary content and return ``(bytes, content_type)``.
+
+        The Teams ``hostedContents/{id}/$value`` endpoint returns inline image
+        bytes without revealing the MIME type elsewhere; we need the response
+        ``Content-Type`` header to choose a file extension. ``url`` may be a
+        relative Graph path or an absolute Microsoft CDN URL (validated by
+        the same SSRF guard as ``get_bytes``).
+        """
+        if url.startswith("https://") and not _is_allowed_download_domain(url):
+            raise GraphApiError(
+                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}"
+            )
+
+        return self._execute_with_retry(
+            url=url,
+            log_ref=_sanitize_log_url(url) if url.startswith("https://") else url,
+            params=None,
+            extract=lambda r: (r.content, r.headers.get("Content-Type", "application/octet-stream")),
+        )
+
     def get_paginated(
         self,
         path: str,

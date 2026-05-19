@@ -126,7 +126,7 @@ def _process_channel(
     for msg in messages:
         sender = extract_sender(msg)
         created = msg.get("createdDateTime", "")
-        content = extract_content(msg)
+        content = extract_content(msg, {})
         msg_type = msg.get("messageType", "")
 
         if msg_type == "systemEventMessage":

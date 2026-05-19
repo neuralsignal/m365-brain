@@ -25,6 +25,10 @@ def teams_config():
         enabled=True,
         poll_interval_minutes=5,
         max_messages_per_chat=200,
+        download_attachments=False,
+        download_inline_images=False,
+        max_attachment_size_mb=25,
+        attachment_convert_extensions=[],
     )
 
 
@@ -67,7 +71,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        state, count = teams_chats.run(client, storage, {}, teams_config)
+        state, count = teams_chats.run(client, storage, {}, teams_config, {})
 
         assert count == 2
         assert "last_sync" in state
@@ -116,7 +120,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        teams_chats.run(client, storage, {}, teams_config)
+        teams_chats.run(client, storage, {}, teams_config, {})
 
         files = storage.list_files("teams-chats")
         content = storage.read_file(files[0])
@@ -157,7 +161,7 @@ class TestTeamsChatsExtractor:
         client = GraphClient(graph_config, lambda: "test-token")
 
         existing_state = {"last_sync": "2026-03-12T10:00:00Z"}
-        state, count = teams_chats.run(client, storage, existing_state, teams_config)
+        state, count = teams_chats.run(client, storage, existing_state, teams_config, {})
 
         assert count == 1
         requests = httpx_mock.get_requests()
@@ -174,7 +178,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        state, count = teams_chats.run(client, storage, {}, teams_config)
+        state, count = teams_chats.run(client, storage, {}, teams_config, {})
         assert count == 0
         client.close()
 
@@ -184,6 +188,10 @@ class TestTeamsChatsExtractor:
             enabled=True,
             poll_interval_minutes=5,
             max_messages_per_chat=2,
+            download_attachments=False,
+            download_inline_images=False,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
         )
         httpx_mock.add_response(
             url=re.compile(r".*/me/chats\?.*"),
@@ -223,7 +231,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        teams_chats.run(client, storage, {}, config)
+        teams_chats.run(client, storage, {}, config, {})
 
         files = storage.list_files("teams-chats")
         assert len(files) == 1
@@ -264,7 +272,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        teams_chats.run(client, storage, {}, teams_config)
+        teams_chats.run(client, storage, {}, teams_config, {})
 
         files = storage.list_files("teams-chats")
         assert len(files) == 1
@@ -310,7 +318,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        teams_chats.run(client, storage, {}, teams_config)
+        teams_chats.run(client, storage, {}, teams_config, {})
 
         files = storage.list_files("teams-chats")
         assert len(files) == 1
@@ -357,7 +365,7 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        teams_chats.run(client, storage, {}, teams_config)
+        teams_chats.run(client, storage, {}, teams_config, {})
 
         files = storage.list_files("teams-chats")
         assert len(files) == 1
@@ -389,9 +397,123 @@ class TestTeamsChatsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        state, count = teams_chats.run(client, storage, {}, teams_config)
+        state, count = teams_chats.run(client, storage, {}, teams_config, {})
         assert count == 0
         assert storage.list_files("teams-chats") == []
+        client.close()
+
+
+class TestFolderLayout:
+    """Tests covering the per-chat folder layout and attachment link rendering."""
+
+    def test_message_md_written_under_chat_folder(self, httpx_mock: HTTPXMock, tmp_path, graph_config, teams_config):
+        """Each chat lives in its own directory with a messages.md inside."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": "chat-folder",
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-1",
+                        "messageType": "message",
+                        "createdDateTime": "2026-03-12T10:00:00Z",
+                        "from": {"user": {"displayName": "Alice", "id": "u1"}},
+                        "body": {"contentType": "text", "content": "Hi"},
+                    },
+                ]
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        teams_chats.run(client, storage, {}, teams_config, {})
+
+        files = storage.list_files("teams-chats")
+        assert any(f.endswith("/messages.md") for f in files)
+        assert all("/messages.md" in f for f in files if f.endswith(".md"))
+        client.close()
+
+    def test_attachment_inline_link_rendered_in_body(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """When an attachment is downloaded, messages.md contains an inline link."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=True,
+            download_inline_images=False,
+            max_attachment_size_mb=100,
+            attachment_convert_extensions=[],
+        )
+        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        import base64 as _b64
+
+        encoded = "u!" + _b64.urlsafe_b64encode(content_url.encode()).decode().rstrip("=")
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": "chat-att",
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={
+                "value": [
+                    {
+                        "id": "msg-att",
+                        "messageType": "message",
+                        "createdDateTime": "2026-03-12T10:00:00Z",
+                        "from": {"user": {"displayName": "Alice", "id": "u1"}},
+                        "body": {"contentType": "text", "content": "see attached"},
+                        "attachments": [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+            json={
+                "id": "drive-item",
+                "size": 64,
+                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            content=b"%PDF-1.4 fake",
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        teams_chats.run(client, storage, {}, config, {})
+
+        files = storage.list_files("teams-chats")
+        messages_md = [f for f in files if f.endswith("/messages.md")][0]
+        content = storage.read_file(messages_md)
+        assert "**Attachments:**" in content
+        assert "[spec.pdf](attachments/msg-att/spec.pdf)" in content
+        assert any(f.endswith("attachments/msg-att/spec.pdf") for f in files)
         client.close()
 
 
@@ -407,18 +529,18 @@ class TestProcessChat:
             "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
         }
 
-    def test_returns_false_on_graph_api_error(self, chat):
+    def test_returns_false_on_graph_api_error(self, chat, teams_config):
         """When get_paginated raises GraphApiError, _process_chat returns False."""
         mock_client = MagicMock(spec=GraphClient)
         mock_client.get_paginated.side_effect = GraphApiError("403 Forbidden")
         mock_storage = MagicMock()
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
 
         assert result is False
         mock_storage.write_file.assert_not_called()
 
-    def test_skips_write_when_last_message_unchanged(self, chat):
+    def test_skips_write_when_last_message_unchanged(self, chat, teams_config):
         """When existing file has same last_message_time, returns False without writing."""
         last_msg_time = "2026-03-12T10:00:00Z"
         mock_client = MagicMock(spec=GraphClient)
@@ -441,12 +563,12 @@ class TestProcessChat:
         mock_storage.file_exists.return_value = True
         mock_storage.read_file.return_value = existing_content
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
 
         assert result is False
         mock_storage.write_file.assert_not_called()
 
-    def test_continues_write_on_existing_file_parse_failure(self, chat):
+    def test_continues_write_on_existing_file_parse_failure(self, chat, teams_config):
         """When loads_markdown raises ValueError, logs warning and writes the file."""
         mock_client = MagicMock(spec=GraphClient)
         mock_client.get_paginated.return_value = iter(
@@ -465,7 +587,7 @@ class TestProcessChat:
         mock_storage.file_exists.return_value = True
         mock_storage.read_file.side_effect = ValueError("invalid frontmatter")
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200)
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
 
         assert result is True
         mock_storage.write_file.assert_called_once()

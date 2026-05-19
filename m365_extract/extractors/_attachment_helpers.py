@@ -58,7 +58,13 @@ def download_attachments(
                 storage.write_bytes(f"{email_dir}/attachments/{att_name}", data)
                 ext = Path(att_name).suffix.lower()
                 if ext in config.attachment_convert_extensions:
-                    convert_and_store(storage, data, att_name, email_dir, converters_config)
+                    convert_and_store(
+                        storage,
+                        data,
+                        att_name,
+                        f"{email_dir}/attachments_converted/{att_name}.md",
+                        converters_config,
+                    )
             except (GraphApiError, httpx.TransportError, binascii.Error, StorageError, OSError) as exc:
                 log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
     except (GraphApiError, httpx.TransportError) as exc:
@@ -68,21 +74,26 @@ def download_attachments(
 def convert_and_store(
     storage: StorageBackend,
     data: bytes,
-    att_name: str,
-    email_dir: str,
+    source_name: str,
+    target_path: str,
     converters_config: dict,
 ) -> None:
-    """Convert an attachment binary to markdown and write to storage."""
-    suffix = Path(att_name).suffix
+    """Convert an attachment binary to markdown and write to ``target_path``.
+
+    ``source_name`` provides the original filename so the converter can pick a
+    backend by suffix; ``target_path`` is the absolute storage path the
+    converted markdown should be written to (including the ``.md`` extension).
+    """
+    suffix = Path(source_name).suffix
     tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp_path = Path(tmp.name)
             tmp_path.write_bytes(data)
         md_content = convert_document(tmp_path, converters_config)
-        storage.write_file(f"{email_dir}/attachments_converted/{att_name}.md", md_content)
+        storage.write_file(target_path, md_content)
     except (OSError, ImportError, StorageError) as exc:
-        log.warning("email.attachment_convert_failed", name=att_name, error=str(exc))
+        log.warning("attachment.convert_failed", name=source_name, error=str(exc))
     finally:
         if tmp_path is not None and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)

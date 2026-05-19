@@ -120,6 +120,10 @@ def teams_chats_config():
         enabled=True,
         poll_interval_minutes=5,
         max_messages_per_chat=200,
+        download_attachments=False,
+        download_inline_images=False,
+        max_attachment_size_mb=25,
+        attachment_convert_extensions=[],
     )
 
 
@@ -189,6 +193,10 @@ def full_config(tmp_path):
                 enabled=True,
                 poll_interval_minutes=5,
                 max_messages_per_chat=200,
+                download_attachments=False,
+                download_inline_images=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
             ),
             teams_channels=TeamsChannelsExtractorConfig(
                 enabled=False,
@@ -305,6 +313,10 @@ def full_web_config(tmp_path, web_config):
                 enabled=False,
                 poll_interval_minutes=5,
                 max_messages_per_chat=200,
+                download_attachments=False,
+                download_inline_images=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
             ),
             teams_channels=TeamsChannelsExtractorConfig(
                 enabled=False,

@@ -148,7 +148,7 @@ def _extract_event_data(event: dict) -> tuple[CalendarEventData, str] | None:
     body_obj = event.get("body", {})
     content_type = body_obj.get("contentType", "text")
     raw_body = body_obj.get("content", "")
-    body_md = html_to_markdown(raw_body) if content_type == "html" else raw_body
+    body_md = html_to_markdown(raw_body, strip_images=True) if content_type == "html" else raw_body
 
     data = CalendarEventData(
         subject=subject,

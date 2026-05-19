@@ -1210,7 +1210,9 @@ class TestNarrowedExceptionHandling:
         """OSError during attachment conversion is caught (log-and-continue)."""
         storage = LocalBackend(str(tmp_path / "vault"))
         with patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=OSError("disk full")):
-            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+            _attachment_helpers.convert_and_store(
+                storage, b"data", "file.pdf", "emails/dir/attachments_converted/file.pdf.md", _NO_CONVERTERS
+            )
 
     def test_convert_attribute_error_propagates(self, tmp_path):
         """AttributeError during conversion propagates (programming error)."""
@@ -1219,7 +1221,9 @@ class TestNarrowedExceptionHandling:
             patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=AttributeError("oops")),
             pytest.raises(AttributeError),
         ):
-            _attachment_helpers.convert_and_store(storage, b"data", "file.pdf", "emails/dir", _NO_CONVERTERS)
+            _attachment_helpers.convert_and_store(
+                storage, b"data", "file.pdf", "emails/dir/attachments_converted/file.pdf.md", _NO_CONVERTERS
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1237,8 +1241,8 @@ class TestConvertAndStore:
             _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"binary-data",
-                att_name="report.pdf",
-                email_dir="emails/2026/2026-03-12/sub-abc123",
+                source_name="report.pdf",
+                target_path="emails/2026/2026-03-12/sub-abc123/attachments_converted/report.pdf.md",
                 converters_config={},
             )
 
@@ -1267,15 +1271,15 @@ class TestConvertAndStore:
             _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"junk",
-                att_name="bad.pdf",
-                email_dir="emails/2026/2026-03-12/dir",
+                source_name="bad.pdf",
+                target_path="emails/2026/2026-03-12/dir/attachments_converted/bad.pdf.md",
                 converters_config={},
             )
 
         # storage.write_file must NOT have been called when conversion fails
         storage.write_file.assert_not_called()
 
-        convert_failures = [w for w in warnings if w["event"] == "email.attachment_convert_failed"]
+        convert_failures = [w for w in warnings if w["event"] == "attachment.convert_failed"]
         assert len(convert_failures) == 1
         assert convert_failures[0]["name"] == "bad.pdf"
         assert "bad pdf" in convert_failures[0]["error"]
@@ -1294,8 +1298,8 @@ class TestConvertAndStore:
             _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
-                att_name="doc.docx",
-                email_dir="emails/2026/2026-03-12/dir",
+                source_name="doc.docx",
+                target_path="emails/2026/2026-03-12/dir/attachments_converted/doc.docx.md",
                 converters_config={},
             )
 
@@ -1316,8 +1320,8 @@ class TestConvertAndStore:
             _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"bytes",
-                att_name="doc.docx",
-                email_dir="emails/2026/2026-03-12/dir",
+                source_name="doc.docx",
+                target_path="emails/2026/2026-03-12/dir/attachments_converted/doc.docx.md",
                 converters_config={},
             )
 

@@ -205,7 +205,7 @@ def _write_email(
     raw_body = body_obj.get("content", "")
 
     if content_type == "html":
-        body_md = html_to_markdown(raw_body)
+        body_md = html_to_markdown(raw_body, strip_images=True)
     else:
         body_md = raw_body
 

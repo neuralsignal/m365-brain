@@ -64,6 +64,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -176,6 +180,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -274,6 +282,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -367,6 +379,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -464,6 +480,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -560,6 +580,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -655,6 +679,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -752,6 +780,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -847,6 +879,10 @@ class TestLoadConfig:
                 enabled: true
                 poll_interval_minutes: 5
                 max_messages_per_chat: 200
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
@@ -938,6 +974,10 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
         enabled: true
         poll_interval_minutes: 5
         max_messages_per_chat: 200
+        download_attachments: false
+        download_inline_images: false
+        max_attachment_size_mb: 25
+        attachment_convert_extensions: []
       teams_channels:
         enabled: false
         poll_interval_minutes: 5
