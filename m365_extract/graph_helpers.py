@@ -18,7 +18,7 @@ ALLOWED_DOWNLOAD_DOMAINS: frozenset[str] = frozenset(
         ".office.com",
         ".office365.com",
         ".cdn.office.net",
-        "svc.ms",
+        ".svc.ms",
     }
 )
 
