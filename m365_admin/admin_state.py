@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import desc
 from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
@@ -26,7 +27,7 @@ class AdminState(AuthState):
                 latest_status = session.exec(
                     select(ExtractorStatus)
                     .where(ExtractorStatus.user_id == u.user_id)
-                    .order_by(ExtractorStatus.last_run_at.desc())  # type: ignore[union-attr]
+                    .order_by(desc(ExtractorStatus.last_run_at))
                 ).first()
 
                 self.users.append(
