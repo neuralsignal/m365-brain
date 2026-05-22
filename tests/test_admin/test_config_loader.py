@@ -71,6 +71,10 @@ def _write_config_yaml(tmp_path, full_web_config):
                 "enabled": False,
                 "poll_interval_minutes": 5,
                 "max_messages_per_chat": 200,
+                "download_attachments": False,
+                "download_inline_images": False,
+                "max_attachment_size_mb": 25,
+                "attachment_convert_extensions": [],
             },
             "teams_channels": {
                 "enabled": False,
@@ -246,6 +250,10 @@ class TestGetConfig:
                     "enabled": False,
                     "poll_interval_minutes": 5,
                     "max_messages_per_chat": 200,
+                    "download_attachments": False,
+                    "download_inline_images": False,
+                    "max_attachment_size_mb": 25,
+                    "attachment_convert_extensions": [],
                 },
                 "teams_channels": {
                     "enabled": False,
