@@ -52,23 +52,26 @@ AUTO_DISCOVER_SKIP_DISPLAY = {
     "Files",
 }
 
-# Process-lifetime cache of resolved folder IDs, keyed by (address, display_name).
-_resolved_folder_ids: dict[tuple[str, str], str] = {}
 
-
-def resolve_folder_id(client: GraphClient, endpoint_base: str, address: str, folder: str) -> str:
+def resolve_folder_id(
+    client: GraphClient,
+    endpoint_base: str,
+    address: str,
+    folder: str,
+    folder_cache: dict[tuple[str, str], str],
+) -> str:
     """Resolve a folder display name to its Graph API folder ID for a mailbox.
 
     Well-known folders (Inbox, SentItems, etc.) use predefined IDs. Custom
-    folders are resolved via Graph API query and cached for the process
-    lifetime, keyed by (address, folder).
+    folders are resolved via Graph API query and cached in the caller-owned
+    ``folder_cache``, keyed by (address, folder).
     """
     if folder in FOLDER_IDS:
         return FOLDER_IDS[folder]
 
     cache_key = (address, folder)
-    if cache_key in _resolved_folder_ids:
-        return _resolved_folder_ids[cache_key]
+    if cache_key in folder_cache:
+        return folder_cache[cache_key]
 
     data = client.get(
         f"{endpoint_base}/mailFolders",
@@ -83,7 +86,7 @@ def resolve_folder_id(client: GraphClient, endpoint_base: str, address: str, fol
         )
 
     folder_id = folders[0]["id"]
-    _resolved_folder_ids[cache_key] = folder_id
+    folder_cache[cache_key] = folder_id
     log.info("email.folder_resolved", mailbox=address, display_name=folder, folder_id=folder_id[:20])
     return folder_id
 
@@ -120,6 +123,6 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
     return result
 
 
-def cache_folder_id(address: str, display: str, folder_id: str) -> None:
-    """Insert a (address, display) → folder_id entry into the resolved-id cache."""
-    _resolved_folder_ids[(address, display)] = folder_id
+def cache_folder_id(folder_cache: dict[tuple[str, str], str], address: str, display: str, folder_id: str) -> None:
+    """Insert a (address, display) → folder_id entry into the caller-owned cache."""
+    folder_cache[(address, display)] = folder_id

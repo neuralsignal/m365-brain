@@ -907,12 +907,6 @@ class TestEmailAttachments:
 class TestSharedMailbox:
     """Verify the shared mailbox path uses /users/{address}/... and namespaces storage."""
 
-    @pytest.fixture(autouse=True)
-    def _clear_folder_cache(self):
-        _folder_helpers._resolved_folder_ids.clear()
-        yield
-        _folder_helpers._resolved_folder_ids.clear()
-
     def _config(self, mailboxes: list[MailboxConfig]) -> EmailExtractorConfig:
         return EmailExtractorConfig(
             enabled=True,
@@ -1074,28 +1068,23 @@ class TestSharedMailbox:
 
 
 class TestResolveFolderId:
-    """Tests for _resolve_folder_id: well-known folders, Graph API lookup, and caching."""
-
-    @pytest.fixture(autouse=True)
-    def _clear_folder_cache(self):
-        """Reset module-level cache before each test to avoid ordering dependencies."""
-        _folder_helpers._resolved_folder_ids.clear()
-        yield
-        _folder_helpers._resolved_folder_ids.clear()
+    """Tests for resolve_folder_id: well-known folders, Graph API lookup, and caching."""
 
     def test_well_known_folder_returns_predefined_id(self):
         """Well-known folders (Inbox, SentItems, etc.) return their predefined ID without calling the API."""
         client = MagicMock(spec=GraphClient)
-        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "Inbox") == "Inbox"
-        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "SentItems") == "SentItems"
+        cache: dict[tuple[str, str], str] = {}
+        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "Inbox", cache) == "Inbox"
+        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "SentItems", cache) == "SentItems"
         client.get.assert_not_called()
 
     def test_custom_folder_resolved_via_graph_api(self):
         """Custom folder name is resolved to its ID via Graph API query."""
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "abc123", "displayName": "Archive-Custom"}]}
+        cache: dict[tuple[str, str], str] = {}
 
-        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "Archive-Custom")
+        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "Archive-Custom", cache)
 
         assert result == "abc123"
         client.get.assert_called_once_with(
@@ -1107,9 +1096,10 @@ class TestResolveFolderId:
         """Second call with the same custom folder name uses cache — Graph API not called again."""
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "folder-xyz", "displayName": "Projects"}]}
+        cache: dict[tuple[str, str], str] = {}
 
-        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
-        second = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
+        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
+        second = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
 
         assert first == "folder-xyz"
         assert second == "folder-xyz"
@@ -1119,19 +1109,21 @@ class TestResolveFolderId:
         """Empty response from Graph API raises GraphApiError with helpful message."""
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": []}
+        cache: dict[tuple[str, str], str] = {}
 
         with pytest.raises(GraphApiError, match="Mail folder not found: 'NonExistent'"):
-            _folder_helpers.resolve_folder_id(client, "/me", "me", "NonExistent")
+            _folder_helpers.resolve_folder_id(client, "/me", "me", "NonExistent", cache)
 
     def test_not_found_folder_not_cached(self):
         """Failed resolution does not pollute the cache."""
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": []}
+        cache: dict[tuple[str, str], str] = {}
 
         with pytest.raises(GraphApiError):
-            _folder_helpers.resolve_folder_id(client, "/me", "me", "Ghost")
+            _folder_helpers.resolve_folder_id(client, "/me", "me", "Ghost", cache)
 
-        assert ("me", "Ghost") not in _folder_helpers._resolved_folder_ids
+        assert ("me", "Ghost") not in cache
 
     def test_custom_folder_cache_keyed_by_mailbox(self):
         """The same folder name in different mailboxes resolves independently."""
@@ -1140,15 +1132,51 @@ class TestResolveFolderId:
             {"value": [{"id": "id-personal", "displayName": "Projects"}]},
             {"value": [{"id": "id-shared", "displayName": "Projects"}]},
         ]
+        cache: dict[tuple[str, str], str] = {}
 
-        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects")
-        second = _folder_helpers.resolve_folder_id(client, "/users/ai@sanoptis.com", "ai@sanoptis.com", "Projects")
+        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
+        second = _folder_helpers.resolve_folder_id(
+            client, "/users/ai@sanoptis.com", "ai@sanoptis.com", "Projects", cache
+        )
 
         assert first == "id-personal"
         assert second == "id-shared"
         assert client.get.call_count == 2
-        # The second call must use the /users/... endpoint base.
         assert client.get.call_args_list[1].args[0] == "/users/ai@sanoptis.com/mailFolders"
+
+
+class TestFolderCacheIsolation:
+    """Concurrent extractions for different users must not share folder-id state."""
+
+    def test_concurrent_users_get_independent_caches(self):
+        """Two threads resolving the same folder name get independent cache dicts."""
+        import threading
+
+        results: dict[str, str] = {}
+        errors: list[Exception] = []
+
+        def resolve_for_user(address: str, expected_id: str) -> None:
+            try:
+                client = MagicMock(spec=GraphClient)
+                client.get.return_value = {"value": [{"id": expected_id, "displayName": "Projects"}]}
+                cache: dict[tuple[str, str], str] = {}
+                result = _folder_helpers.resolve_folder_id(client, f"/users/{address}", address, "Projects", cache)
+                results[address] = result
+                assert (address, "Projects") in cache
+            except Exception as exc:
+                errors.append(exc)
+
+        t1 = threading.Thread(target=resolve_for_user, args=("alice@example.com", "id-alice"))
+        t2 = threading.Thread(target=resolve_for_user, args=("bob@example.com", "id-bob"))
+
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert not errors, f"Thread errors: {errors}"
+        assert results["alice@example.com"] == "id-alice"
+        assert results["bob@example.com"] == "id-bob"
 
 
 class TestNarrowedExceptionHandling:
@@ -1368,12 +1396,6 @@ class TestAttachmentEmptyPathName:
 
 class TestListAllFoldersGuardBranches:
     """list_all_folders skips folder entries with missing displayName or id."""
-
-    @pytest.fixture(autouse=True)
-    def _clear_folder_cache(self):
-        _folder_helpers._resolved_folder_ids.clear()
-        yield
-        _folder_helpers._resolved_folder_ids.clear()
 
     def test_skips_missing_display_name(self):
         """Folder with displayName=None is excluded from the result."""
