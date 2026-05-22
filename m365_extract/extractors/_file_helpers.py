@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,19 @@ class FileProcessingConfig:
     convertible_extensions: list[str]
     max_file_size_mb: int
     converters_config: dict
+
+
+@dataclass(frozen=True)
+class DriveItemMetadata:
+    """Common metadata extracted from a Graph API drive item."""
+
+    file_name: str
+    item_id: str
+    size: int
+    modified_time: str
+    modified_by: str
+    parent_path: str
+    web_url: str
 
 
 def extract_parent_path(parent_reference: dict) -> str:
@@ -180,6 +194,69 @@ def process_drive_item(
     content = dumps_markdown(frontmatter, "\n".join(body_parts))
     storage.write_file(storage_path, content)
     return True
+
+
+def iterate_drive_items(
+    client: GraphClient,
+    storage: StorageBackend,
+    items: list[dict],
+    file_paths: dict[str, str],
+    prefix: str,
+    build_frontmatter: Callable[[DriveItemMetadata], dict],
+    file_config: FileProcessingConfig,
+) -> int:
+    """Iterate over Graph API drive items, filtering, tracking, and processing each one.
+
+    Returns the number of items written.
+    """
+    written = 0
+    for item in items:
+        item_id = item.get("id", "")
+
+        if "@removed" in item:
+            handle_removed_item(storage, item_id, file_paths)
+            continue
+
+        if "folder" in item:
+            continue
+
+        if "file" not in item:
+            continue
+
+        file_name = item.get("name", "")
+        if not file_name:
+            continue
+
+        parent_ref = item.get("parentReference", {})
+        parent_path = extract_parent_path(parent_ref)
+        storage_path = build_storage_path(prefix, parent_path, file_name, item_id)
+
+        file_paths[item_id] = storage_path
+
+        modified_by_obj = item.get("lastModifiedBy", {}).get("user", {})
+        meta = DriveItemMetadata(
+            file_name=file_name,
+            item_id=item_id,
+            size=item.get("size", 0),
+            modified_time=item.get("lastModifiedDateTime", ""),
+            modified_by=modified_by_obj.get("displayName", ""),
+            parent_path=parent_path,
+            web_url=item.get("webUrl", ""),
+        )
+
+        fm = build_frontmatter(meta)
+
+        if process_drive_item(
+            client=client,
+            storage=storage,
+            item=item,
+            storage_path=storage_path,
+            frontmatter=fm,
+            file_config=file_config,
+        ):
+            written += 1
+
+    return written
 
 
 def handle_removed_item(
