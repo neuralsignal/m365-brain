@@ -12,11 +12,9 @@ import structlog
 
 from m365_extract.config import OneDriveExtractorConfig
 from m365_extract.extractors._file_helpers import (
+    DriveItemMetadata,
     FileProcessingConfig,
-    build_storage_path,
-    extract_parent_path,
-    handle_removed_item,
-    process_drive_item,
+    iterate_drive_items,
 )
 from m365_extract.frontmatter import OneDriveFileData, build_onedrive_frontmatter
 from m365_extract.graph_client import GraphClient
@@ -59,63 +57,29 @@ def run(
     if new_delta_link:
         state["delta_link"] = new_delta_link
 
-    written = 0
-    for item in items:
-        item_id = item.get("id", "")
-
-        # Handle removed items
-        if "@removed" in item:
-            handle_removed_item(storage, item_id, file_paths)
-            continue
-
-        # Skip folders
-        if "folder" in item:
-            continue
-
-        # Skip items without file metadata
-        if "file" not in item:
-            continue
-
-        file_name = item.get("name", "")
-        if not file_name:
-            continue
-
-        parent_ref = item.get("parentReference", {})
-        parent_path = extract_parent_path(parent_ref)
-        storage_path = build_storage_path("onedrive", parent_path, file_name, item_id)
-
-        # Track file paths for deletion
-        file_paths[item_id] = storage_path
-
-        # Extract metadata
-        size = item.get("size", 0)
-        modified = item.get("lastModifiedDateTime", "")
-        modified_by_obj = item.get("lastModifiedBy", {}).get("user", {})
-        modified_by = modified_by_obj.get("displayName", "")
-        web_url = item.get("webUrl", "")
-
-        fm = build_onedrive_frontmatter(
+    def _build_fm(meta: DriveItemMetadata) -> dict:
+        return build_onedrive_frontmatter(
             OneDriveFileData(
-                file_name=file_name,
-                item_id=item_id,
-                size=size,
-                modified_time=modified,
-                modified_by=modified_by,
-                parent_path=parent_path,
-                web_url=web_url,
+                file_name=meta.file_name,
+                item_id=meta.item_id,
+                size=meta.size,
+                modified_time=meta.modified_time,
+                modified_by=meta.modified_by,
+                parent_path=meta.parent_path,
+                web_url=meta.web_url,
                 conversion_status="pending",
             )
         )
 
-        if process_drive_item(
-            client=client,
-            storage=storage,
-            item=item,
-            storage_path=storage_path,
-            frontmatter=fm,
-            file_config=file_config,
-        ):
-            written += 1
+    written = iterate_drive_items(
+        client=client,
+        storage=storage,
+        items=items,
+        file_paths=file_paths,
+        prefix="onedrive",
+        build_frontmatter=_build_fm,
+        file_config=file_config,
+    )
 
     state["file_paths"] = file_paths
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
