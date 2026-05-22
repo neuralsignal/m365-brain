@@ -10,11 +10,10 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
 import structlog
 
 from m365_extract.converters.document import convert_document
-from m365_extract.graph_client import GraphClient
+from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
@@ -121,7 +120,7 @@ def process_drive_item(
                         },
                     )
                     download_url = full_item.get("@microsoft.graph.downloadUrl", "")
-                except httpx.HTTPStatusError as exc:
+                except GraphApiError as exc:
                     log.warning("file_helpers.item_fetch_failed", file=file_name, error=str(exc))
 
         if not download_url:
@@ -134,7 +133,7 @@ def process_drive_item(
 
         try:
             file_bytes = client.get_bytes(download_url)
-        except httpx.HTTPStatusError as exc:
+        except GraphApiError as exc:
             log.error("file_helpers.download_failed", file=file_name, error=str(exc))
             frontmatter["conversion_status"] = "error_download"
             body = f"# {file_name}\n\nDownload failed: {exc}"
