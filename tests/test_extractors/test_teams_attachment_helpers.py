@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
 from m365_extract.extractors import _teams_attachment_helpers as helpers
 from m365_extract.graph_client import GraphApiError, GraphClient
+from m365_extract.storage.base import StorageBackend
+from m365_extract.storage.exceptions import StorageError
 from m365_extract.storage.local import LocalBackend
 
 
@@ -264,6 +269,40 @@ class TestDownloadMessageAttachments:
         assert not any(".." in f for f in files)
         client.close()
 
+    def test_storage_write_failure_logged_and_skipped(self, tmp_path, graph_config) -> None:
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.get.return_value = {
+            "id": "drive-item",
+            "size": 16,
+            "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+        }
+        mock_client.get_bytes.return_value = b"data"
+
+        mock_storage = MagicMock(spec=StorageBackend)
+        mock_storage.write_bytes.side_effect = StorageError("disk full")
+
+        msg = {
+            "id": "msg-write-fail",
+            "attachments": [
+                {"contentType": "reference", "name": "doc.pdf", "contentUrl": "https://sanoptis.sharepoint.com/x"}
+            ],
+        }
+
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            refs = helpers.download_message_attachments(
+                mock_client, mock_storage, msg, "teams-chats/foo_abc", _config(), {}
+            )
+
+        assert refs == []
+        write_failures = [w for w in warnings if w["event"] == "teams_chats.attachment_write_failed"]
+        assert len(write_failures) == 1
+        assert write_failures[0]["name"] == "doc.pdf"
+
     def test_download_failure_logged_and_continued(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
         content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
@@ -411,6 +450,44 @@ class TestDownloadInlineImages:
 
         assert hosted_map == {}
 
+    def test_empty_hosted_content_id_skipped(self, tmp_path, graph_config) -> None:
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.max_pages = 5
+        mock_client.get_paginated.return_value = iter([{"id": ""}, {}])
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+
+        hosted_map = helpers.download_inline_images(
+            mock_client, storage, "19:pqr", {"id": "msg-empty-hid"}, "teams-chats/foo_abc", _config()
+        )
+
+        assert hosted_map == {}
+        mock_client.get_bytes_with_content_type.assert_not_called()
+
+    def test_storage_write_failure_excludes_image(self, tmp_path, graph_config) -> None:
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.max_pages = 5
+        mock_client.get_paginated.return_value = iter([{"id": "HID-W"}])
+        mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG", "image/png")
+
+        mock_storage = MagicMock(spec=StorageBackend)
+        mock_storage.write_bytes.side_effect = StorageError("write denied")
+
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            hosted_map = helpers.download_inline_images(
+                mock_client, mock_storage, "19:stu", {"id": "msg-write-fail"}, "teams-chats/foo_abc", _config()
+            )
+
+        assert hosted_map == {}
+        write_failures = [w for w in warnings if w["event"] == "teams_chats.hosted_content_write_failed"]
+        assert len(write_failures) == 1
+        assert write_failures[0]["hid"] == "HID-W"
+
     def test_no_msg_id_returns_empty(self, tmp_path, graph_config) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
@@ -459,3 +536,17 @@ class TestFraudulentDomainSSRF:
 
         refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
         assert refs == []
+
+
+class TestEncodeShareUrlProperty:
+    @given(url=st.text(min_size=1))
+    def test_always_starts_with_u_bang(self, url: str) -> None:
+        assert helpers._encode_share_url(url).startswith("u!")
+
+
+class TestSanitizeFilenameProperty:
+    @given(name=st.text(min_size=1))
+    def test_never_contains_path_separator(self, name: str) -> None:
+        result = helpers._sanitize_filename(name)
+        assert os.sep not in result
+        assert "/" not in result
