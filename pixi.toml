@@ -42,6 +42,7 @@ requests = ">=2.33.0, <3"
 mkdocs = ">=1.6, <2"
 mkdocs-material = ">=9.5, <10"
 mkdocstrings = {version = ">=0.29, <1", extras = ["python"]}
+pymdown-extensions = ">=10.21.3, <11"
 
 [tasks]
 lint = "ruff check m365_extract/ m365_admin/ tests/"
