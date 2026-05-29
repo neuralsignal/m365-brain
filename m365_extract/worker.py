@@ -222,9 +222,8 @@ def _run_cycle(
                 # means the finally block or another path re-raised.
                 log.error("worker.job_error", user_id=uid, extractor=ext, exc_info=True)
             except Exception:
-                # Safety net: prevent one unhandled thread-pool error from
-                # aborting result collection for remaining futures.
                 log.critical("worker.job_unhandled_error", user_id=uid, extractor=ext, exc_info=True)
+                raise
 
 
 def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
@@ -243,9 +242,8 @@ def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state
             except _KNOWN_ERRORS:
                 log.error("worker.cycle_failed", exc_info=True)
             except Exception:
-                # Daemon resilience: log and continue so a single unexpected
-                # failure (e.g. transient DB error) does not kill the worker.
                 log.critical("worker.cycle_unhandled_error", exc_info=True)
+                raise
 
             time.sleep(poll_interval)
     except KeyboardInterrupt:
@@ -279,9 +277,8 @@ def start_worker_thread(
             except _KNOWN_ERRORS:
                 log.error("worker.cycle_failed", exc_info=True)
             except Exception:
-                # Daemon resilience: log and continue so a single unexpected
-                # failure (e.g. transient DB error) does not kill the worker.
                 log.critical("worker.cycle_unhandled_error", exc_info=True)
+                raise
             stop.wait(timeout=poll_interval)
 
         log.info("worker.thread_stopped")
