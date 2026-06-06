@@ -7,6 +7,8 @@ where web modules imported private functions from the CLI layer.
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import ModuleType
+from typing import Any
 
 import structlog
 
@@ -28,7 +30,9 @@ from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
 
-EXTRACTORS: dict[str, tuple] = {
+type ExtractorEntry = tuple[ModuleType, Callable[[Config], Any], bool]
+
+EXTRACTORS: dict[str, ExtractorEntry] = {
     "email": (email, lambda cfg: cfg.extractors.email, True),
     "calendar": (calendar, lambda cfg: cfg.extractors.calendar, False),
     "teams_chats": (teams_chats, lambda cfg: cfg.extractors.teams_chats, True),
