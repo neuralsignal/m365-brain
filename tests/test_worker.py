@@ -360,23 +360,14 @@ class TestWorkerLoop:
         with patch("m365_extract.worker.get_due_jobs", side_effect=KeyboardInterrupt):
             worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
 
-    def test_cycle_exception_resilience(self, full_config, engine):
-        """worker_loop survives one unexpected exception and continues."""
-        call_count = 0
-
-        def fake_get_due_jobs(eng, cfg):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise RuntimeError("db gone")
-            raise KeyboardInterrupt
-
+    def test_cycle_unexpected_exception_crashes(self, full_config, engine):
+        """worker_loop re-raises unexpected exceptions instead of swallowing them."""
         with (
-            patch("m365_extract.worker.get_due_jobs", side_effect=fake_get_due_jobs),
+            patch("m365_extract.worker.get_due_jobs", side_effect=RuntimeError("db gone")),
             patch("m365_extract.worker.time.sleep"),
+            pytest.raises(RuntimeError, match="db gone"),
         ):
             worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
-        assert call_count == 2
 
     def test_cycle_known_error_resilience(self, full_config, engine):
         """worker_loop survives a known error and continues."""
@@ -512,8 +503,8 @@ class TestRunCycleFutureErrors:
         critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
         assert "worker.job_unhandled_error" not in critical_events
 
-    def test_unhandled_error_in_future_logs_critical(self, seeded_engine, full_config, tmp_path):
-        """An unexpected exception raised from the thread pool logs worker.job_unhandled_error critical."""
+    def test_unhandled_error_in_future_logs_critical_and_raises(self, seeded_engine, full_config, tmp_path):
+        """An unexpected exception raised from the thread pool logs critical then re-raises."""
         user = get_enabled_users(seeded_engine)[0]
 
         with (
@@ -521,6 +512,7 @@ class TestRunCycleFutureErrors:
             patch("m365_extract.worker.try_advisory_lock", return_value=True),
             patch("m365_extract.worker.run_single_extractor", side_effect=RuntimeError("surprise")),
             patch("m365_extract.worker.log") as mock_log,
+            pytest.raises(RuntimeError, match="surprise"),
         ):
             _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
 
@@ -555,8 +547,8 @@ class TestStartWorkerThreadErrorPaths:
         error_events = [c.args[0] for c in mock_log.error.call_args_list if c.args]
         assert "worker.cycle_failed" in error_events
 
-    def test_unhandled_error_logs_cycle_unhandled_critical(self, full_config, engine, tmp_path):
-        """start_worker_thread logs worker.cycle_unhandled_error critical when _run_cycle raises unexpected."""
+    def test_unhandled_error_kills_thread(self, full_config, engine, tmp_path):
+        """start_worker_thread's loop terminates when _run_cycle raises unexpected error."""
         seen = threading.Event()
 
         def fake_run_cycle(*args, **kwargs):
@@ -567,8 +559,12 @@ class TestStartWorkerThreadErrorPaths:
             patch("m365_extract.worker._run_cycle", side_effect=fake_run_cycle),
             patch("m365_extract.worker.log") as mock_log,
         ):
-            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
-            self._run_until_seen(seen, stop)
+            start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            assert seen.wait(timeout=5), "mocked cycle was never called"
+            for t in threading.enumerate():
+                if t.name == "sync-worker":
+                    t.join(timeout=5)
+                    assert not t.is_alive()
 
         critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
         assert "worker.cycle_unhandled_error" in critical_events
