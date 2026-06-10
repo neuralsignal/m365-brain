@@ -73,10 +73,10 @@ class TestCreateUserStorage:
             local=LocalStorageConfig(base_path=str(tmp_path / "vault")),
             azure_blob=None,
         )
-        backend = create_user_storage(config, "user-abc-123")
+        uid = "a1b2c3d4-0001-4000-8000-000000000001"
+        backend = create_user_storage(config, uid)
         assert isinstance(backend, LocalBackend)
-        # The resolved base should end with the user_id
-        assert str(backend._base).endswith("user-abc-123")
+        assert str(backend._base).endswith(uid)
 
     def test_azure_blob_appends_user_id_to_prefix(self):
         config = StorageConfig(
@@ -88,13 +88,13 @@ class TestCreateUserStorage:
                 prefix="dev/",
             ),
         )
+        uid = "a1b2c3d4-0002-4000-8000-000000000002"
         with patch("azure.storage.blob.ContainerClient"):
             from m365_extract.storage.azure_blob import AzureBlobBackend
 
-            backend = create_user_storage(config, "user-xyz-789")
+            backend = create_user_storage(config, uid)
             assert isinstance(backend, AzureBlobBackend)
-            # Prefix should be dev/user-xyz-789/
-            assert backend._prefix == "dev/user-xyz-789/"
+            assert backend._prefix == f"dev/{uid}/"
 
     def test_local_missing_config_crashes(self):
         config = StorageConfig(
@@ -103,7 +103,7 @@ class TestCreateUserStorage:
             azure_blob=None,
         )
         with pytest.raises(ConfigError):
-            create_user_storage(config, "user-1")
+            create_user_storage(config, "a1b2c3d4-0001-4000-8000-000000000001")
 
     def test_azure_blob_missing_config_crashes(self):
         config = StorageConfig(
@@ -112,7 +112,7 @@ class TestCreateUserStorage:
             azure_blob=None,
         )
         with pytest.raises(ConfigError):
-            create_user_storage(config, "user-1")
+            create_user_storage(config, "a1b2c3d4-0001-4000-8000-000000000001")
 
     def test_unknown_backend_crashes(self):
         config = StorageConfig(
@@ -121,4 +121,13 @@ class TestCreateUserStorage:
             azure_blob=None,
         )
         with pytest.raises(ConfigError):
-            create_user_storage(config, "user-1")
+            create_user_storage(config, "a1b2c3d4-0001-4000-8000-000000000001")
+
+    def test_rejects_non_uuid_user_id(self, tmp_path):
+        config = StorageConfig(
+            backend="local",
+            local=LocalStorageConfig(base_path=str(tmp_path / "vault")),
+            azure_blob=None,
+        )
+        with pytest.raises(ConfigError, match="Invalid user_id format"):
+            create_user_storage(config, "../traversal")

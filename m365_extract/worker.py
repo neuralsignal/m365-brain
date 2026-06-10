@@ -29,6 +29,7 @@ from m365_extract.models import ExtractorPreference, ExtractorStatus, User
 from m365_extract.state import SyncState
 from m365_extract.storage import create_user_storage
 from m365_extract.sync import EXTRACTORS, run_extractors
+from m365_extract.validation import validate_user_id
 
 log = structlog.get_logger()
 
@@ -163,6 +164,7 @@ def run_single_extractor(
     state_dir: str,
 ) -> None:
     """Run one extractor for one user. Unit of work for the thread pool."""
+    validate_user_id(user.user_id)
     log.info("worker.job_started", user_id=user.user_id, extractor=extractor_name)
     upsert_extractor_status(engine, user.user_id, extractor_name, "running", 0, None)
 
