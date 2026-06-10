@@ -1103,6 +1103,19 @@ class TestResolveFolderId:
             {"$filter": "displayName eq 'Archive-Custom'", "$select": "id,displayName", "$top": "1"},
         )
 
+    def test_single_quotes_escaped_in_odata_filter(self):
+        """Single quotes in folder names are doubled to prevent OData filter injection."""
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {"value": [{"id": "obrien-id", "displayName": "O'Brien"}]}
+
+        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "O'Brien")
+
+        assert result == "obrien-id"
+        client.get.assert_called_once_with(
+            "/me/mailFolders",
+            {"$filter": "displayName eq 'O''Brien'", "$select": "id,displayName", "$top": "1"},
+        )
+
     def test_custom_folder_cached_after_first_resolution(self):
         """Second call with the same custom folder name uses cache — Graph API not called again."""
         client = MagicMock(spec=GraphClient)
