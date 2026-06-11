@@ -27,7 +27,18 @@ from m365_extract.storage.exceptions import StorageError
 log = structlog.get_logger()
 
 # Teams chatMessage.attachment contentType values that never carry a file payload.
-_SKIPPED_CONTENT_TYPES: frozenset[str] = frozenset({"messageReference", "meetingReference"})
+_SKIPPED_CONTENT_TYPES: frozenset[str] = frozenset(
+    {
+        "messageReference",
+        "meetingReference",
+        "forwardedMessageReference",
+        "application/vnd.microsoft.card.adaptive",
+    }
+)
+
+# HTTP statuses that mean the attachment will never become downloadable for this
+# account (no access / gone), so retrying on later sync cycles is pure waste.
+_PERMANENT_FAILURE_STATUSES: frozenset[int] = frozenset({403, 404})
 
 # Map response Content-Type (lower-cased, no params) to file extension.
 _CONTENT_TYPE_EXT: dict[str, str] = {
@@ -94,6 +105,7 @@ def download_message_attachments(
     chat_dir: str,
     config: TeamsChatsExtractorConfig,
     converters_config: dict,
+    failed_attachments: dict[str, str],
 ) -> list[AttachmentRef]:
     """Download file attachments referenced by a Teams chat message.
 
@@ -101,6 +113,11 @@ def download_message_attachments(
     renderer can emit inline links beneath the message. Skipped entries
     (message/meeting references, missing fields, oversized, transport errors)
     are logged and excluded.
+
+    ``failed_attachments`` is the extractor's persistent skip-list (part of
+    sync state), keyed ``"{msg_id}:{name}"``. Downloads that fail with a
+    permanent status (403/404 — e.g. files in another user's OneDrive) are
+    recorded there in place and never re-attempted on later sync cycles.
     """
     msg_id = msg.get("id", "")
     if not msg_id:
@@ -135,9 +152,37 @@ def download_message_attachments(
             )
             continue
 
+        failure_key = f"{msg_id}:{name}"
+        if failure_key in failed_attachments:
+            log.debug(
+                "teams_chats.attachment_skipped_previously_failed",
+                msg_id=msg_id,
+                name=name,
+                error=failed_attachments[failure_key],
+            )
+            continue
+
         try:
             data = _resolve_reference_bytes(client, content_url, max_bytes)
-        except (GraphApiError, httpx.TransportError) as exc:
+        except GraphApiError as exc:
+            if exc.status_code in _PERMANENT_FAILURE_STATUSES:
+                failed_attachments[failure_key] = f"http_{exc.status_code}"
+                log.warning(
+                    "teams_chats.attachment_download_failed_permanently",
+                    msg_id=msg_id,
+                    name=name,
+                    status=exc.status_code,
+                    error=str(exc),
+                )
+            else:
+                log.warning(
+                    "teams_chats.attachment_download_failed",
+                    msg_id=msg_id,
+                    name=name,
+                    error=str(exc),
+                )
+            continue
+        except httpx.TransportError as exc:
             log.warning(
                 "teams_chats.attachment_download_failed",
                 msg_id=msg_id,

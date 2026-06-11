@@ -1161,7 +1161,7 @@ class TestNarrowedExceptionHandling:
         client.get_paginated.return_value = iter(
             [{"name": "file.pdf", "size": 100, "isInline": False, "@microsoft.graph.downloadUrl": "https://cdn/f"}]
         )
-        client.get_bytes.side_effect = GraphApiError("404 Not Found")
+        client.get_bytes.side_effect = GraphApiError("404 Not Found", 404)
 
         config = _attachment_config()
         _attachment_helpers.download_attachments(
@@ -1172,7 +1172,7 @@ class TestNarrowedExceptionHandling:
         """GraphApiError during attachment list fetch is caught (log-and-continue)."""
         storage = LocalBackend(str(tmp_path / "vault"))
         client = MagicMock(spec=GraphClient)
-        client.get_paginated.side_effect = GraphApiError("500 Server Error")
+        client.get_paginated.side_effect = GraphApiError("500 Server Error", 500)
 
         config = _attachment_config()
         _attachment_helpers.download_attachments(

@@ -154,7 +154,7 @@ class TestTeamsChannelsExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        with patch.object(client, "get_delta", side_effect=GraphApiError("403 Forbidden")):
+        with patch.object(client, "get_delta", side_effect=GraphApiError("403 Forbidden", 403)):
             state, count = teams_channels.run(client, storage, {}, channels_config)
 
         assert count == 0

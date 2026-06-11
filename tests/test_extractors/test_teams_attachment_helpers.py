@@ -82,7 +82,7 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert len(refs) == 1
         assert refs[0].name == "spec.pdf"
@@ -103,7 +103,7 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert refs == []
         assert httpx_mock.get_requests() == []
@@ -129,7 +129,7 @@ class TestDownloadMessageAttachments:
         }
 
         refs = helpers.download_message_attachments(
-            client, storage, msg, "teams-chats/foo_abc", _config(max_mb=100), {}
+            client, storage, msg, "teams-chats/foo_abc", _config(max_mb=100), {}, {}
         )
 
         assert refs == []
@@ -151,7 +151,7 @@ class TestDownloadMessageAttachments:
             "attachments": [{"contentType": "reference", "name": "nourl.pdf", "contentUrl": content_url}],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert refs == []
         client.close()
@@ -167,7 +167,7 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert refs == []
         client.close()
@@ -186,7 +186,7 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert refs == []
         client.close()
@@ -222,6 +222,7 @@ class TestDownloadMessageAttachments:
                 "teams-chats/foo_abc",
                 _config(convert=[".pdf"]),
                 {"backends": {"pdf": "markitdown"}},
+                {},
             )
 
         assert mock_conv.call_count == 1
@@ -254,7 +255,7 @@ class TestDownloadMessageAttachments:
             "attachments": [{"contentType": "reference", "name": "../../escape.txt", "contentUrl": content_url}],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
 
         assert len(refs) == 1
         assert refs[0].name == "escape.txt"
@@ -264,14 +265,18 @@ class TestDownloadMessageAttachments:
         assert not any(".." in f for f in files)
         client.close()
 
-    def test_download_failure_logged_and_continued(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+    def test_transient_download_failure_logged_and_not_recorded(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config
+    ) -> None:
         content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
-        httpx_mock.add_response(
-            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
-            status_code=404,
-            text='{"error":{"code":"itemNotFound","message":"gone"}}',
-        )
+        # max_retries=1 → the client attempts twice before raising
+        for _ in range(2):
+            httpx_mock.add_response(
+                url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+                status_code=500,
+                text='{"error":{"code":"InternalError","message":"boom"}}',
+            )
 
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
@@ -285,12 +290,101 @@ class TestDownloadMessageAttachments:
         def capture(event, **kwargs):
             warnings.append({"event": event, **kwargs})
 
+        failed: dict[str, str] = {}
         with patch.object(helpers.log, "warning", side_effect=capture):
-            refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+            refs = helpers.download_message_attachments(
+                client, storage, msg, "teams-chats/foo_abc", _config(), {}, failed
+            )
 
         assert refs == []
         download_failures = [w for w in warnings if w["event"] == "teams_chats.attachment_download_failed"]
         assert len(download_failures) == 1
+        assert failed == {}
+        client.close()
+
+
+class TestPermanentFailureSkipList:
+    def _msg(self, content_url: str) -> dict:
+        return {
+            "id": "msg-denied",
+            "attachments": [{"contentType": "reference", "name": "secret.pdf", "contentUrl": content_url}],
+        }
+
+    @pytest.mark.parametrize("status,code", [(403, "accessDenied"), (404, "itemNotFound")])
+    def test_permanent_failure_recorded_and_logged(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, status, code
+    ) -> None:
+        content_url = "https://sanoptis-my.sharepoint.com/personal/other_user/secret.pdf"
+        encoded = helpers._encode_share_url(content_url)
+        httpx_mock.add_response(
+            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+            status_code=status,
+            text=f'{{"error":{{"code":"{code}","message":"denied"}}}}',
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        failed: dict[str, str] = {}
+
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            refs = helpers.download_message_attachments(
+                client, storage, self._msg(content_url), "teams-chats/foo_abc", _config(), {}, failed
+            )
+
+        assert refs == []
+        assert failed == {"msg-denied:secret.pdf": f"http_{status}"}
+        events = [w["event"] for w in warnings]
+        assert events == ["teams_chats.attachment_download_failed_permanently"]
+        client.close()
+
+    def test_previously_failed_skipped_without_request(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+        content_url = "https://sanoptis-my.sharepoint.com/personal/other_user/secret.pdf"
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        failed = {"msg-denied:secret.pdf": "http_403"}
+
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            refs = helpers.download_message_attachments(
+                client, storage, self._msg(content_url), "teams-chats/foo_abc", _config(), {}, failed
+            )
+
+        assert refs == []
+        assert warnings == []
+        assert httpx_mock.get_requests() == []
+        client.close()
+
+    def test_nonfile_reference_types_silently_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        msg = {
+            "id": "msg-fwd",
+            "attachments": [
+                {"contentType": "forwardedMessageReference", "id": "a1"},
+                {"contentType": "application/vnd.microsoft.card.adaptive", "id": "a2"},
+            ],
+        }
+
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+
+        assert refs == []
+        assert warnings == []
+        assert httpx_mock.get_requests() == []
         client.close()
 
 
@@ -423,7 +517,7 @@ class TestSkipsEmpty:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
         assert (
-            helpers.download_message_attachments(client, storage, {"id": "x"}, "teams-chats/foo_abc", _config(), {})
+            helpers.download_message_attachments(client, storage, {"id": "x"}, "teams-chats/foo_abc", _config(), {}, {})
             == []
         )
         client.close()
@@ -432,7 +526,9 @@ class TestSkipsEmpty:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
         msg = {"attachments": [{"contentType": "reference", "name": "x", "contentUrl": "https://y"}]}
-        assert helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}) == []
+        assert (
+            helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {}) == []
+        )
         client.close()
 
 
@@ -448,7 +544,7 @@ class TestFraudulentDomainSSRF:
             "size": 32,
             "@microsoft.graph.downloadUrl": "https://evil.example.com/payload",
         }
-        client.get_bytes.side_effect = GraphApiError("Download URL blocked: ...")
+        client.get_bytes.side_effect = GraphApiError("Download URL blocked: ...", None)
 
         msg = {
             "id": "msg-evil",
@@ -457,5 +553,5 @@ class TestFraudulentDomainSSRF:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {})
+        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
         assert refs == []

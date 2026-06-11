@@ -52,6 +52,10 @@ def run(
     """
     last_sync_str = state.get("last_sync")
     max_messages = config.max_messages_per_chat
+    # Persistent skip-list of permanently failed attachment downloads
+    # ("{msg_id}:{name}" -> error). Mutated in place by the download helper so
+    # updates land in the returned state without re-threading.
+    failed_attachments = state.setdefault("failed_attachments", {})
 
     chats = list(
         client.get_paginated(
@@ -64,7 +68,9 @@ def run(
 
     written = 0
     for chat in chats:
-        if _process_chat(client, storage, chat, last_sync_str, max_messages, config, converters_config):
+        if _process_chat(
+            client, storage, chat, last_sync_str, max_messages, config, converters_config, failed_attachments
+        ):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -119,6 +125,7 @@ def _write_chat(
     chat_dir: str,
     config: TeamsChatsExtractorConfig,
     converters_config: dict,
+    failed_attachments: dict[str, str],
 ) -> bool:
     """Build frontmatter and markdown body for a chat, then write to storage."""
     fm = build_teams_chat_frontmatter(data)
@@ -154,7 +161,9 @@ def _write_chat(
             hosted_map = {}
 
         if config.download_attachments:
-            attachment_refs = download_message_attachments(client, storage, msg, chat_dir, config, converters_config)
+            attachment_refs = download_message_attachments(
+                client, storage, msg, chat_dir, config, converters_config, failed_attachments
+            )
         else:
             attachment_refs = []
 
@@ -185,6 +194,7 @@ def _process_chat(
     max_messages: int,
     config: TeamsChatsExtractorConfig,
     converters_config: dict,
+    failed_attachments: dict[str, str],
 ) -> bool:
     """Process a single chat: fetch messages and write markdown. Returns True if written."""
     chat_id = chat.get("id", "")
@@ -227,4 +237,4 @@ def _process_chat(
                 error=str(exc),
             )
 
-    return _write_chat(client, storage, data, messages_sorted, chat_dir, config, converters_config)
+    return _write_chat(client, storage, data, messages_sorted, chat_dir, config, converters_config, failed_attachments)

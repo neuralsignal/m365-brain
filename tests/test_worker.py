@@ -205,7 +205,7 @@ class TestRunSingleExtractor:
 
         with (
             patch("m365_extract.worker.make_web_token_provider", return_value=_fake_token_provider),
-            patch("m365_extract.worker.run_extractors", side_effect=GraphApiError("Graph API down")),
+            patch("m365_extract.worker.run_extractors", side_effect=GraphApiError("Graph API down", None)),
             patch("m365_extract.worker.release_advisory_lock"),
         ):
             run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
@@ -287,7 +287,7 @@ class TestRunSingleExtractor:
 
         with (
             patch("m365_extract.worker.make_web_token_provider", return_value=_fake_token_provider),
-            patch("m365_extract.worker.run_extractors", side_effect=GraphApiError("boom")),
+            patch("m365_extract.worker.run_extractors", side_effect=GraphApiError("boom", None)),
             patch("m365_extract.worker.release_advisory_lock") as mock_release,
         ):
             run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
@@ -377,7 +377,7 @@ class TestWorkerLoop:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise GraphApiError("rate limited")
+                raise GraphApiError("rate limited", 429)
             raise KeyboardInterrupt
 
         with (
@@ -493,7 +493,7 @@ class TestRunCycleFutureErrors:
         with (
             patch("m365_extract.worker.get_due_jobs", return_value=[(user, "email")]),
             patch("m365_extract.worker.try_advisory_lock", return_value=True),
-            patch("m365_extract.worker.run_single_extractor", side_effect=GraphApiError("boom")),
+            patch("m365_extract.worker.run_single_extractor", side_effect=GraphApiError("boom", None)),
             patch("m365_extract.worker.log") as mock_log,
         ):
             _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
@@ -535,7 +535,7 @@ class TestStartWorkerThreadErrorPaths:
 
         def fake_run_cycle(*args, **kwargs):
             seen.set()
-            raise GraphApiError("rate limited")
+            raise GraphApiError("rate limited", 429)
 
         with (
             patch("m365_extract.worker._run_cycle", side_effect=fake_run_cycle),

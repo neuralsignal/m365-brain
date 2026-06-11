@@ -79,7 +79,8 @@ def resolve_folder_id(client: GraphClient, endpoint_base: str, address: str, fol
     if not folders:
         raise GraphApiError(
             f"Mail folder not found: '{folder}' (mailbox={address}). "
-            "Check the folder name in Outlook (case-sensitive, top-level folders only)."
+            "Check the folder name in Outlook (case-sensitive, top-level folders only).",
+            None,
         )
 
     folder_id = folders[0]["id"]

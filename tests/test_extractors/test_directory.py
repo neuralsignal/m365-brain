@@ -350,7 +350,7 @@ class TestDirectoryExtractor:
 
     def test_fetch_direct_reports_links_graph_api_error(self):
         client = MagicMock(spec=GraphClient)
-        client.get_paginated.side_effect = GraphApiError("not found")
+        client.get_paginated.side_effect = GraphApiError("not found", 404)
         client.max_pages = 10
 
         result = directory._fetch_direct_reports_links(client, "user-123")

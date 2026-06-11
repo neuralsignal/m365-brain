@@ -27,7 +27,16 @@ GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 
 class GraphApiError(Exception):
-    """Raised when a Graph API request fails after exhausting retries."""
+    """Raised when a Graph API request fails after exhausting retries.
+
+    ``status_code`` carries the HTTP status when the failure came from an HTTP
+    response (``None`` for logical/transport-level failures), so callers can
+    distinguish permanent failures (403/404) from transient ones.
+    """
+
+    def __init__(self, message: str, status_code: int | None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class GraphClient:
@@ -114,7 +123,7 @@ class GraphClient:
                     error_code=error_code,
                     error_message=error_message,
                 )
-                raise GraphApiError(_friendly_error(401, error_code, error_message, log_ref))
+                raise GraphApiError(_friendly_error(401, error_code, error_message, log_ref), 401)
 
             if response.status_code in RETRYABLE_STATUS_CODES:
                 if attempt == self._max_retries:
@@ -124,7 +133,10 @@ class GraphClient:
                         status=response.status_code,
                         path=log_ref,
                     )
-                    raise GraphApiError(_friendly_error(response.status_code, error_code, error_message, log_ref))
+                    raise GraphApiError(
+                        _friendly_error(response.status_code, error_code, error_message, log_ref),
+                        response.status_code,
+                    )
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After", "5")
@@ -157,10 +169,13 @@ class GraphClient:
                 error_code=error_code,
                 error_message=error_message,
             )
-            raise GraphApiError(_friendly_error(response.status_code, error_code, error_message, log_ref))
+            raise GraphApiError(
+                _friendly_error(response.status_code, error_code, error_message, log_ref),
+                response.status_code,
+            )
 
         msg = f"Graph API request failed after {self._max_retries} retries: {log_ref}"
-        raise GraphApiError(msg)
+        raise GraphApiError(msg, None)
 
     @property
     def max_pages(self) -> int:
@@ -186,7 +201,8 @@ class GraphClient:
         """
         if url.startswith("https://") and not _is_allowed_download_domain(url):
             raise GraphApiError(
-                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}"
+                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}",
+                None,
             )
 
         return self._execute_with_retry(
@@ -207,7 +223,8 @@ class GraphClient:
         """
         if url.startswith("https://") and not _is_allowed_download_domain(url):
             raise GraphApiError(
-                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}"
+                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}",
+                None,
             )
 
         return self._execute_with_retry(

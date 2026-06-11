@@ -118,7 +118,7 @@ class TestDryRun:
         from m365_extract.graph_client import GraphApiError
 
         mock_client = MagicMock()
-        mock_client.get.side_effect = GraphApiError("HTTP 401 — token expired")
+        mock_client.get.side_effect = GraphApiError("HTTP 401 — token expired", 401)
 
         with (
             _patch_cli("load_config") as mock_load,
@@ -150,7 +150,7 @@ class TestDryRun:
             if call_count == 1:
                 return {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
             # Second call is email probe — fail
-            raise GraphApiError("HTTP 403 — Authorization_RequestDenied")
+            raise GraphApiError("HTTP 403 — Authorization_RequestDenied", 403)
 
         mock_client = MagicMock()
         mock_client.get.side_effect = side_effect

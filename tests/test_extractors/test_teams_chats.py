@@ -532,10 +532,10 @@ class TestProcessChat:
     def test_returns_false_on_graph_api_error(self, chat, teams_config):
         """When get_paginated raises GraphApiError, _process_chat returns False."""
         mock_client = MagicMock(spec=GraphClient)
-        mock_client.get_paginated.side_effect = GraphApiError("403 Forbidden")
+        mock_client.get_paginated.side_effect = GraphApiError("403 Forbidden", 403)
         mock_storage = MagicMock()
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {}, {})
 
         assert result is False
         mock_storage.write_file.assert_not_called()
@@ -563,7 +563,7 @@ class TestProcessChat:
         mock_storage.file_exists.return_value = True
         mock_storage.read_file.return_value = existing_content
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {}, {})
 
         assert result is False
         mock_storage.write_file.assert_not_called()
@@ -587,7 +587,7 @@ class TestProcessChat:
         mock_storage.file_exists.return_value = True
         mock_storage.read_file.side_effect = ValueError("invalid frontmatter")
 
-        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {})
+        result = teams_chats._process_chat(mock_client, mock_storage, chat, None, 200, teams_config, {}, {})
 
         assert result is True
         mock_storage.write_file.assert_called_once()
