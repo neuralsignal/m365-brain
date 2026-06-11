@@ -41,7 +41,7 @@ azure = [
     "azure-storage-blob>=12.24,<13",
 ]
 convert = [
-    "obsidian-import[markitdown,docling]>=1.0.1,<2",
+    "obsidian-import[markitdown,docling]>=1.2.0,<2",
 ]
 admin = [
     "reflex>=0.8.28,<0.9",

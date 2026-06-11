@@ -21,9 +21,7 @@ class TestConvertDocument:
 
         mock_config = MagicMock()
         with (
-            patch("obsidian_import.config._load_default_yaml", return_value={}) as mock_defaults,
-            patch("obsidian_import.config._deep_merge", return_value=SAMPLE_CONVERTERS_CONFIG) as mock_merge,
-            patch("obsidian_import.config._build_config", return_value=mock_config) as mock_build,
+            patch("obsidian_import.config_from_overrides", return_value=mock_config) as mock_overrides,
             patch("obsidian_import.extract_text", return_value="# Converted") as mock_extract,
         ):
             result = convert_document(
@@ -32,9 +30,7 @@ class TestConvertDocument:
             )
 
         assert result == "# Converted"
-        mock_defaults.assert_called_once()
-        mock_merge.assert_called_once_with({}, SAMPLE_CONVERTERS_CONFIG)
-        mock_build.assert_called_once_with(SAMPLE_CONVERTERS_CONFIG, config_dir=None)
+        mock_overrides.assert_called_once_with(SAMPLE_CONVERTERS_CONFIG)
         mock_extract.assert_called_once_with(test_file, mock_config)
 
     def test_import_error_propagates(self, tmp_path):
@@ -47,25 +43,18 @@ class TestConvertDocument:
                 converters_config=SAMPLE_CONVERTERS_CONFIG,
             )
 
-    def test_empty_config_merges_with_defaults(self, tmp_path):
+    def test_overrides_passed_verbatim(self, tmp_path):
         test_file = tmp_path / "test.txt"
         test_file.write_bytes(b"hello")
 
-        mock_config = MagicMock()
-        defaults = {"extraction": {"timeout_seconds": 120}}
+        overrides = {"extraction": {"timeout_seconds": 120}}
         with (
-            patch("obsidian_import.config._load_default_yaml", return_value=defaults),
-            patch("obsidian_import.config._deep_merge", return_value=defaults) as mock_merge,
-            patch("obsidian_import.config._build_config", return_value=mock_config),
+            patch("obsidian_import.config_from_overrides", return_value=MagicMock()) as mock_overrides,
             patch("obsidian_import.extract_text", return_value="hello"),
         ):
-            result = convert_document(
-                file_path=test_file,
-                converters_config={},
-            )
+            convert_document(file_path=test_file, converters_config=overrides)
 
-        assert result == "hello"
-        mock_merge.assert_called_once_with(defaults, {})
+        mock_overrides.assert_called_once_with(overrides)
 
 
 class TestObsidianImportErrorBoundary:
@@ -77,9 +66,7 @@ class TestObsidianImportErrorBoundary:
         test_file.write_bytes(b"fake xlsx")
 
         with (
-            patch("obsidian_import.config._load_default_yaml", return_value={}),
-            patch("obsidian_import.config._deep_merge", return_value=SAMPLE_CONVERTERS_CONFIG),
-            patch("obsidian_import.config._build_config", return_value=MagicMock()),
+            patch("obsidian_import.config_from_overrides", return_value=MagicMock()),
             patch("obsidian_import.extract_text", side_effect=ExtractionTimeoutError("timed out after 120s")),
             pytest.raises(DocumentConversionError, match="big.xlsx"),
         ):

@@ -25,13 +25,10 @@ def convert_document(
     Raises ImportError if obsidian-import is not installed and
     DocumentConversionError if the conversion itself fails.
     """
-    from obsidian_import import extract_text
-    from obsidian_import.config import _build_config, _deep_merge, _load_default_yaml
+    from obsidian_import import config_from_overrides, extract_text
     from obsidian_import.exceptions import ObsidianImportError
 
-    defaults = _load_default_yaml()
-    merged = _deep_merge(defaults, converters_config)
-    config = _build_config(merged, config_dir=None)
+    config = config_from_overrides(converters_config)
     try:
         return extract_text(file_path, config)
     except ObsidianImportError as exc:

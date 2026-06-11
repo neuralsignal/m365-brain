@@ -244,7 +244,9 @@ def full_config(tmp_path):
         ),
         converters=ConvertersConfig(
             backends={"pdf": "markitdown", "docx": "markitdown", "default": "native"},
-            extraction=ExtractionConfig(timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500),
+            extraction=ExtractionConfig(
+                timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500, isolation="thread"
+            ),
             slug_max_length=80,
             hash_length=6,
         ),
@@ -370,7 +372,9 @@ def full_web_config(tmp_path, web_config):
         ),
         converters=ConvertersConfig(
             backends={"pdf": "markitdown", "docx": "markitdown", "default": "native"},
-            extraction=ExtractionConfig(timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500),
+            extraction=ExtractionConfig(
+                timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500, isolation="thread"
+            ),
             slug_max_length=80,
             hash_length=6,
         ),

@@ -100,6 +100,7 @@ converters:
     docx: "markitdown"
     default: "native"
   extraction:
+    isolation: "process"   # true kill on timeout; use "thread" for lowest CLI latency
     timeout_seconds: 30
     max_file_size_mb: 100
     xlsx_max_rows_per_sheet: 500

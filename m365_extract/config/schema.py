@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
@@ -188,6 +190,7 @@ class ExtractionConfig(BaseModel):
     timeout_seconds: int
     max_file_size_mb: int
     xlsx_max_rows_per_sheet: int
+    isolation: Literal["thread", "process"]
 
 
 class ConvertersConfig(BaseModel):

@@ -21,3 +21,4 @@ vault/
 .web/
 .states/
 assets/external/
+.claude/
