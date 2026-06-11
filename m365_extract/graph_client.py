@@ -30,8 +30,7 @@ class GraphApiError(Exception):
     """Raised when a Graph API request fails after exhausting retries.
 
     ``status_code`` carries the HTTP status when the failure came from an HTTP
-    response (``None`` for logical/transport-level failures), so callers can
-    distinguish permanent failures (403/404) from transient ones.
+    response (``None`` for logical/transport-level failures).
     """
 
     def __init__(self, message: str, status_code: int | None) -> None:
@@ -82,8 +81,8 @@ class GraphClient:
     ) -> Any:
         """Execute a GET request with retry, backoff, and token-refresh logic.
 
-        Handles 401 (token refresh via provider), 429 (rate limit), and transient errors.
-        The extract callable determines what to return from a successful response.
+        Handles 401 (token refresh), 429, and transient errors; ``extract``
+        maps a successful response to the return value.
         """
         request_url = url
         if request_url.startswith("https://"):
@@ -191,23 +190,26 @@ class GraphClient:
             extract=lambda r: r.json(),
         )
 
-    def get_bytes(self, url: str) -> bytes:
-        """Download binary content from a URL. Returns the raw response bytes.
+    def _validated_download_ref(self, url: str) -> str:
+        """SSRF-guard a download URL; return a SAS-token-free log reference.
 
-        Used for downloading files via @microsoft.graph.downloadUrl.
-        Validates that absolute URLs point to allowed Microsoft CDN domains
-        to prevent SSRF. Strips query parameters from log output to avoid
-        leaking SAS tokens.
+        Absolute URLs must point at allowed Microsoft CDN domains; query
+        parameters are stripped from the log reference (SAS tokens).
         """
-        if url.startswith("https://") and not _is_allowed_download_domain(url):
+        if not url.startswith("https://"):
+            return url
+        if not _is_allowed_download_domain(url):
             raise GraphApiError(
                 f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}",
                 None,
             )
+        return _sanitize_log_url(url)
 
+    def get_bytes(self, url: str) -> bytes:
+        """Download binary content from a URL (e.g. @microsoft.graph.downloadUrl)."""
         return self._execute_with_retry(
             url=url,
-            log_ref=_sanitize_log_url(url) if url.startswith("https://") else url,
+            log_ref=self._validated_download_ref(url),
             params=None,
             extract=lambda r: r.content,
         )
@@ -216,54 +218,41 @@ class GraphClient:
         """Download binary content and return ``(bytes, content_type)``.
 
         The Teams ``hostedContents/{id}/$value`` endpoint returns inline image
-        bytes without revealing the MIME type elsewhere; we need the response
-        ``Content-Type`` header to choose a file extension. ``url`` may be a
-        relative Graph path or an absolute Microsoft CDN URL (validated by
-        the same SSRF guard as ``get_bytes``).
+        bytes without revealing the MIME type elsewhere; the response
+        ``Content-Type`` header drives the file-extension choice.
         """
-        if url.startswith("https://") and not _is_allowed_download_domain(url):
-            raise GraphApiError(
-                f"Download URL blocked: host is not an allowed Microsoft domain: {_sanitize_log_url(url)}",
-                None,
-            )
-
         return self._execute_with_retry(
             url=url,
-            log_ref=_sanitize_log_url(url) if url.startswith("https://") else url,
+            log_ref=self._validated_download_ref(url),
             params=None,
             extract=lambda r: (r.content, r.headers.get("Content-Type", "application/octet-stream")),
         )
 
-    def get_paginated(
-        self,
-        path: str,
-        params: dict[str, Any] | None,
-        max_pages: int,
-    ) -> Iterator[dict]:
-        """Iterate over paginated Graph API results.
+    def get_pages(self, path: str, params: dict[str, Any] | None, max_pages: int) -> tuple[list[dict], bool]:
+        """Fetch up to ``max_pages`` pages of a collection. Returns (items, truncated).
 
-        Yields individual items from the 'value' array across all pages.
-        Follows @odata.nextLink for pagination.
-        Returns the last response's @odata.deltaLink via the final yield if present.
+        ``truncated`` is True when an @odata.nextLink remained unfetched at the
+        page cap — the only reliable completeness signal for capped fetches.
         """
-        url = path
+        url: str | None = path
         page = 0
-        limit = max_pages
+        items: list[dict] = []
 
-        while url and page < limit:
+        while url and page < max_pages:
             data = self.get(url, params=params if page == 0 else None)
-            items = data.get("value", [])
-
-            yield from items
-
+            items.extend(data.get("value", []))
             url = data.get("@odata.nextLink")
             page += 1
 
-            if url:
-                log.debug("graph.following_next_link", page=page)
+        truncated = bool(url)
+        if url:
+            log.warning("graph.max_pages_reached", max_pages=max_pages, path=path, next_link=_sanitize_log_url(url))
+        return items, truncated
 
-        if page >= limit:
-            log.warning("graph.max_pages_reached", max_pages=limit, path=path)
+    def get_paginated(self, path: str, params: dict[str, Any] | None, max_pages: int) -> Iterator[dict]:
+        """Iterate items from a paginated collection (thin wrapper over ``get_pages``)."""
+        items, _ = self.get_pages(path, params, max_pages)
+        yield from items
 
     def get_delta(
         self,
@@ -272,17 +261,17 @@ class GraphClient:
         params: dict[str, Any] | None,
         max_pages: int,
     ) -> tuple[list[dict], str | None]:
-        """Execute a delta query. Returns (items, new_delta_link).
+        """Execute a delta query. Returns (items, resume_link).
 
-        If delta_link is provided, uses it instead of path for incremental sync.
+        Uses delta_link instead of path when provided. When the page cap
+        interrupts the round, the pending @odata.nextLink is the resume link.
         """
         url = delta_link if delta_link else path
         page = 0
-        limit = max_pages
         items: list[dict] = []
         new_delta_link: str | None = None
 
-        while url and page < limit:
+        while url and page < max_pages:
             data = self.get(url, params=params if page == 0 and not delta_link else None)
             items.extend(data.get("value", []))
 
@@ -290,8 +279,10 @@ class GraphClient:
             url = data.get("@odata.nextLink")
             page += 1
 
-        if page >= limit:
-            log.warning("graph.delta_max_pages_reached", max_pages=limit, path=path)
+        if url:
+            ref = _sanitize_log_url(url)
+            log.warning("graph.delta_max_pages_reached", max_pages=max_pages, path=path, next_link=ref)
+            new_delta_link = url
 
         log.info(
             "graph.delta_complete",

@@ -1,36 +1,43 @@
-"""Teams chat extractor — syncs 1:1 and group chat messages via Graph API.
+"""Teams chat extractor — merge-based incremental sync of 1:1 and group chats.
 
-Uses /me/chats for chat list and /me/chats/{id}/messages for messages.
-Each chat is written as a folder ``teams-chats/<slug>_<hash>/`` containing:
+Uses /me/chats for the chat list and /me/chats/{id}/messages for messages.
+Each chat is a folder ``teams-chats/<slug>_<hash>/`` containing:
 
-- ``messages.md`` — the concatenated message timeline with frontmatter
-- ``attachments/<msg-id>/<name>`` — raw bytes for file attachments and
-  inline images
-- ``attachments_converted/<msg-id>/<name>.md`` — converted-to-markdown
-  text for attachments whose extension matches
-  ``attachment_convert_extensions``
+- ``messages.jsonl`` — per-chat message store, the source of truth
+- ``messages.md`` — rendered day-grouped timeline (derived artifact)
+- ``attachments/<msg-id>/<name>`` and ``attachments_converted/<msg-id>/<name>.md``
 
-Inline-image ``<img src>`` URLs that point at Graph ``hostedContents`` are
-rewritten to the local relative path before HTML→markdown conversion so the
-rendered timeline links to the on-disk copy.
+Incremental sync keys off a per-chat ``lastModifiedDateTime`` watermark kept
+in extractor state. The Graph chat-messages endpoint applies ``$filter`` only
+when ``$orderby`` targets the same property — the two are always paired here.
+Fetched messages merge into the store, so history older than the current
+fetch window is never lost. Incremental fetches are bounded by the global
+``graph.max_pages``; if even that bound truncates the window, the watermark
+is NOT advanced (loud refusal beats silent loss — the next cycle retries).
 """
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
+import httpx
 import structlog
 
 from m365_extract.config import TeamsChatsExtractorConfig
-from m365_extract.extractors._message_helpers import extract_content, extract_sender
-from m365_extract.extractors._teams_attachment_helpers import (
-    AttachmentRef,
-    download_inline_images,
-    download_message_attachments,
+from m365_extract.extractors._message_renderer import render_chat_body
+from m365_extract.extractors._message_store import (
+    StoredMessage,
+    load_store,
+    merge_messages,
+    save_store,
+    sort_key,
 )
+from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
+from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChatData, build_teams_chat_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.markdown_writer import dumps_markdown, loads_markdown, short_hash, slugify
+from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
@@ -46,21 +53,15 @@ def run(
     config: TeamsChatsExtractorConfig,
     converters_config: dict,
 ) -> tuple[dict, int]:
-    """Extract Teams chat messages.
-
-    Returns (updated_state, items_written).
-    """
-    last_sync_str = state.get("last_sync")
-    max_messages = config.max_messages_per_chat
-    # Persistent skip-list of permanently failed attachment downloads
-    # ("{msg_id}:{name}" -> error). Mutated in place by the download helper so
-    # updates land in the returned state without re-threading.
-    failed_attachments = state.setdefault("failed_attachments", {})
+    """Extract Teams chat messages. Returns (updated_state, items_written)."""
+    state.setdefault("watermarks", {})
+    state.setdefault("history_complete", {})
+    state.setdefault("failed_attachments", {})
 
     chats = list(
         client.get_paginated(
             "/me/chats",
-            params={"$expand": "members", "$top": "50"},
+            params={"$expand": "members", "$top": str(GRAPH_PAGE_SIZE)},
             max_pages=client.max_pages,
         )
     )
@@ -68,9 +69,7 @@ def run(
 
     written = 0
     for chat in chats:
-        if _process_chat(
-            client, storage, chat, last_sync_str, max_messages, config, converters_config, failed_attachments
-        ):
+        if _process_chat(client, storage, chat, state, config, converters_config):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -80,66 +79,47 @@ def run(
     return state, written
 
 
-def _extract_chat_data(chat: dict, messages: list[dict], max_messages: int) -> tuple[TeamsChatData, list[dict], str]:
-    """Extract chat frontmatter data, sort messages, and compute the chat directory."""
-    chat_id = chat.get("id", "")
-    chat_type = chat.get("chatType", "oneOnOne")
+def _chat_title_and_dir(chat: dict) -> tuple[str, str, list[str]]:
+    """Derive (title, chat_dir, participants) from a Graph chat object."""
     topic = chat.get("topic") or ""
-
     participants = [m.get("displayName", "") for m in chat.get("members", []) if m.get("displayName", "")]
     title = topic if topic else ", ".join(sorted(participants)) if participants else "Chat"
-
-    messages_sorted = sorted(messages, key=lambda m: m.get("createdDateTime", ""))
-    last_message_time = messages_sorted[-1].get("createdDateTime", "") if messages_sorted else ""
-
-    slug = slugify(title, 80)
-    hsh = short_hash(chat_id, 6)
-    chat_dir = f"teams-chats/{slug}_{hsh}"
-
-    data = TeamsChatData(
-        title=title,
-        conversation_id=chat_id,
-        conversation_type=chat_type,
-        participants=participants,
-        last_message_time=last_message_time,
-        message_limit_reached=len(messages) >= max_messages,
-    )
-    return data, messages_sorted, chat_dir
-
-
-def _render_attachment_links(refs: list[AttachmentRef]) -> str:
-    """Render an inline-link line for attachments beneath a message body."""
-    parts: list[str] = []
-    for ref in refs:
-        parts.append(f"[{ref.name}]({ref.relative_path})")
-        if ref.converted_path is not None:
-            parts.append(f"[{ref.name} (text)]({ref.converted_path})")
-    return "**Attachments:** " + " · ".join(parts)
+    chat_dir = f"teams-chats/{slugify(title, 80)}_{short_hash(chat.get('id', ''), 6)}"
+    return title, chat_dir, participants
 
 
 def _write_chat(
-    client: GraphClient,
     storage: StorageBackend,
-    data: TeamsChatData,
-    messages: list[dict],
+    chat: dict,
+    store: dict[str, StoredMessage],
     chat_dir: str,
-    config: TeamsChatsExtractorConfig,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
-) -> bool:
-    """Build frontmatter and markdown body for a chat, then write to storage."""
+    history_complete: bool,
+) -> None:
+    """Render the store and write messages.md with frontmatter and skeleton."""
+    title, _, participants = _chat_title_and_dir(chat)
+    ordered = sorted(store.values(), key=sort_key)
+    last_message_time = ordered[-1].created if ordered else ""
+
+    data = TeamsChatData(
+        title=title,
+        conversation_id=chat.get("id", ""),
+        conversation_type=chat.get("chatType", "oneOnOne"),
+        participants=participants,
+        last_message_time=last_message_time,
+        message_count=len(store),
+        history_complete=history_complete,
+    )
     fm = build_teams_chat_frontmatter(data)
 
-    body_parts = [f"# {data.title}\n"]
-
+    body_parts = [f"# {title}\n"]
     body_parts.append("## Observations\n")
     body_parts.append(f"- [conversation_type] {data.conversation_type}")
-    body_parts.append(f"- [participants] {', '.join(data.participants)}")
-    body_parts.append(f"- [last_message_time] {data.last_message_time}")
-    body_parts.append(f"- [message_count] {len(messages)}")
+    body_parts.append(f"- [participants] {', '.join(participants)}")
+    body_parts.append(f"- [last_message_time] {last_message_time}")
+    body_parts.append(f"- [message_count] {len(store)}")
 
     relations = []
-    for p_name in data.participants:
+    for p_name in participants:
         contact_slug = slugify(p_name, 80)
         if contact_slug and contact_slug != "untitled" and len(contact_slug) > 5:
             relations.append(f"- participant [[contact-{contact_slug}]]")
@@ -149,92 +129,113 @@ def _write_chat(
 
     body_parts.append("\n---\n")
     body_parts.append("## Messages\n")
+    body_parts.append(render_chat_body(store))
 
-    for msg in messages:
-        msg_type = msg.get("messageType", "")
-        if msg_type == "systemEventMessage":
-            continue
-
-        if config.download_inline_images:
-            hosted_map = download_inline_images(client, storage, data.conversation_id, msg, chat_dir, config)
-        else:
-            hosted_map = {}
-
-        if config.download_attachments:
-            attachment_refs = download_message_attachments(
-                client, storage, msg, chat_dir, config, converters_config, failed_attachments
-            )
-        else:
-            attachment_refs = []
-
-        sender_name = extract_sender(msg)
-        created = msg.get("createdDateTime", "")
-        content = extract_content(msg, hosted_map)
-
-        timestamp_short = created[:16].replace("T", " ") if created else ""
-        header = f"### {timestamp_short} -- {sender_name}\n" if sender_name else f"### {timestamp_short}\n"
-        body_parts.append(header)
-        if content:
-            body_parts.append(content)
-        if attachment_refs:
-            body_parts.append(_render_attachment_links(attachment_refs))
-        body_parts.append("")
-
-    content_str = dumps_markdown(fm, "\n".join(body_parts))
-    storage.write_file(f"{chat_dir}/messages.md", content_str)
-    log.debug("teams_chats.wrote", title=data.title, messages=len(messages))
-    return True
+    storage.write_file(f"{chat_dir}/messages.md", dumps_markdown(fm, "\n".join(body_parts)))
+    log.debug("teams_chats.wrote", title=title, messages=len(store))
 
 
 def _process_chat(
     client: GraphClient,
     storage: StorageBackend,
     chat: dict,
-    last_sync: str | None,
-    max_messages: int,
+    state: dict,
     config: TeamsChatsExtractorConfig,
     converters_config: dict,
-    failed_attachments: dict[str, str],
 ) -> bool:
-    """Process a single chat: fetch messages and write markdown. Returns True if written."""
-    chat_id = chat.get("id", "")
+    """Process a single chat: fetch, merge, render. Returns True if written.
 
-    params: dict = {"$top": "50", "$orderby": "createdDateTime desc"}
-    if last_sync:
-        params["$filter"] = f"lastModifiedDateTime gt {last_sync}"
+    Errors are contained per chat: a fetch/media/store failure skips this chat
+    (without advancing its watermark) and the sync cycle continues.
+    """
+    chat_id = chat.get("id", "")
+    _, chat_dir, _ = _chat_title_and_dir(chat)
+    store_path = f"{chat_dir}/messages.jsonl"
+
+    watermark = state["watermarks"].get(chat_id)
+    if watermark and not storage.file_exists(store_path):
+        log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
+        watermark = None
+
+    params: dict = {"$top": str(GRAPH_PAGE_SIZE)}
+    if watermark:
+        params["$orderby"] = "lastModifiedDateTime desc"
+        params["$filter"] = f"lastModifiedDateTime gt {watermark}"
+        # The $filter bounds the window; the global page cap is a safety bound.
+        max_pages = client.max_pages
+    else:
+        max_pages = max(1, math.ceil(config.max_messages_per_chat / GRAPH_PAGE_SIZE))
 
     try:
-        messages = list(
-            client.get_paginated(
-                f"/me/chats/{chat_id}/messages",
-                params=params,
-                max_pages=max(1, max_messages // 50),
-            )
-        )
+        fetched_raw, truncated = client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
     except GraphApiError as exc:
         log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
         return False
-
-    if not messages:
+    except httpx.TransportError as exc:
+        log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
         return False
 
-    data, messages_sorted, chat_dir = _extract_chat_data(chat, messages, max_messages)
-    file_path = f"{chat_dir}/messages.md"
+    if watermark is None:
+        state["history_complete"][chat_id] = not truncated
 
-    if data.message_limit_reached:
-        log.warning("teams_chats.message_limit_reached", chat_id=chat_id, messages=len(messages), limit=max_messages)
+    if not fetched_raw:
+        return False
 
-    if storage.file_exists(file_path):
-        try:
-            existing_content = storage.read_file(file_path)
-            existing_fm, _ = loads_markdown(existing_content)
-            if existing_fm.get("last_message_time") == data.last_message_time:
-                return False
-        except (ValueError, KeyError) as exc:
-            log.warning(
-                "teams_chats.existing_file_parse_failed",
-                file_path=file_path,
-                error=str(exc),
+    advance_watermark = True
+    if watermark is not None and truncated:
+        log.error(
+            "teams_chats.incremental_truncated",
+            chat_id=chat_id,
+            max_pages=max_pages,
+            detail="watermark not advanced; the next cycle retries the window",
+        )
+        advance_watermark = False
+
+    try:
+        store = load_store(storage, store_path)
+    except MessageStoreError as exc:
+        log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
+        return False
+
+    fetched: list[StoredMessage] = []
+    try:
+        for msg in fetched_raw:
+            if msg.get("messageType") != "message":
+                continue
+            prior = store.get(msg.get("id", ""))
+            if is_etag_fresh(prior, msg):
+                continue
+            fetched.append(
+                to_stored_message(
+                    client,
+                    storage,
+                    msg,
+                    None,
+                    f"/chats/{chat_id}/messages/{msg.get('id', '')}",
+                    chat_dir,
+                    config,
+                    converters_config,
+                    state["failed_attachments"],
+                    prior,
+                )
             )
+    except httpx.TransportError as exc:
+        log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
+        return False
 
-    return _write_chat(client, storage, data, messages_sorted, chat_dir, config, converters_config, failed_attachments)
+    merged, changed = merge_messages(store, fetched)
+
+    if advance_watermark:
+        new_watermark = max(m.get("lastModifiedDateTime") or m.get("createdDateTime", "") for m in fetched_raw)
+        if new_watermark:
+            state["watermarks"][chat_id] = max(watermark or "", new_watermark)
+
+    if changed or not storage.file_exists(store_path):
+        # Always persist the store once a watermark exists — even empty — so
+        # file existence matches the watermark and backfill never re-triggers.
+        save_store(storage, store_path, merged)
+
+    if not changed:
+        return False
+    _write_chat(storage, chat, merged, chat_dir, state["history_complete"].get(chat_id, False))
+    return True

@@ -1,17 +1,41 @@
-"""Teams channel extractor — syncs channel messages via Graph API.
+"""Teams channel extractor — merge-based incremental sync of channel threads.
 
-Uses /teams/{id}/channels and /teams/{id}/channels/{id}/messages.
-Requires ChannelMessage.Read.All permission.
+Uses the non-delta list endpoint ``/teams/{tid}/channels/{cid}/messages`` with
+``$expand=replies`` (the delta endpoint is undocumented, flaky, and never
+returns replies). The response is sorted by last-modified of the entire reply
+chain, descending, which enables early-stop paging against a per-channel
+watermark ``{team_id}:{channel_id}`` kept in extractor state.
+
+Each channel is a folder ``teams-channels/<team-slug>/<channel-slug>-<hash6>/``
+containing ``messages.jsonl`` (source of truth), ``messages.md`` (derived),
+and ``attachments/`` / ``attachments_converted/`` beside them.
+
+Channel selection: ``channels: null`` is discovery mode (walks
+``/me/joinedTeams`` + ``/teams/{id}/channels``; additionally requires the
+``Team.ReadBasic.All`` + ``Channel.ReadBasic.All`` delegated scopes), while an
+explicit ``channels`` list iterates the configured entries with no discovery
+calls at all, so the ``required_scopes`` minimum below is sufficient.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx
 import structlog
 
 from m365_extract.config import TeamsChannelsExtractorConfig
-from m365_extract.extractors._message_helpers import extract_content, extract_sender
+from m365_extract.extractors._message_renderer import render_channel_body
+from m365_extract.extractors._message_store import (
+    StoredMessage,
+    load_store,
+    merge_messages,
+    save_store,
+    sort_key,
+)
+from m365_extract.extractors._teams_channel_targets import discover_targets, explicit_targets
+from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
+from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChannelData, build_teams_channel_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.markdown_writer import dumps_markdown, short_hash, slugify
@@ -20,7 +44,7 @@ from m365_extract.storage.base import StorageBackend
 log = structlog.get_logger()
 
 name = "teams_channels"
-required_scopes = ["ChannelMessage.Read.All"]
+required_scopes = ["ChannelMessage.Read.All", "Files.Read.All"]
 
 
 def run(
@@ -28,36 +52,174 @@ def run(
     storage: StorageBackend,
     state: dict,
     config: TeamsChannelsExtractorConfig,
+    converters_config: dict,
 ) -> tuple[dict, int]:
-    """Extract Teams channel messages.
+    """Extract Teams channel messages. Returns (updated_state, items_written)."""
+    state.setdefault("watermarks", {})
+    state.setdefault("history_complete", {})
+    state.setdefault("failed_attachments", {})
+    for stale_key in [key for key in state if key.startswith("delta_")]:
+        del state[stale_key]
 
-    Returns (updated_state, items_written).
-    """
-    # Discover teams the user is a member of
-    teams = list(client.get_paginated("/me/joinedTeams", params=None, max_pages=client.max_pages))
-    log.info("teams_channels.fetched_teams", count=len(teams))
+    if config.channels is None:
+        targets = discover_targets(client)
+    else:
+        targets = explicit_targets(config.channels)
 
     written = 0
-    for team in teams:
-        team_id = team.get("id", "")
-        team_name = team.get("displayName", "Unknown Team")
-
-        channels = list(
-            client.get_paginated(
-                f"/teams/{team_id}/channels",
-                params={"$top": "50"},
-                max_pages=client.max_pages,
-            )
-        )
-
-        for channel in channels:
-            if _process_channel(client, storage, team_id, team_name, channel, state):
-                written += 1
+    for team_id, team_name, channel in targets:
+        if _process_channel(client, storage, team_id, team_name, channel, state, config, converters_config):
+            written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     state["channels_written"] = written
     log.info("teams_channels.sync_complete", written=written)
     return state, written
+
+
+def _chain_modified(root: dict, replies: list[dict]) -> str:
+    """Max lastModifiedDateTime across a root message and all its replies."""
+    times = [root.get("lastModifiedDateTime") or root.get("createdDateTime", "")]
+    times.extend(r.get("lastModifiedDateTime") or r.get("createdDateTime", "") for r in replies)
+    return max(times)
+
+
+def _fetch_chains(
+    client: GraphClient,
+    team_id: str,
+    channel_id: str,
+    watermark: str | None,
+    max_messages: int,
+) -> tuple[list[tuple[dict, list[dict]]], bool]:
+    """Fetch (root, replies) chains in chain-modified-descending order.
+
+    Stops paging as soon as a chain at or below the watermark appears (the
+    server sort guarantees everything after it is older). During backfill
+    (no watermark), stops once ``max_messages`` total messages are collected.
+    Returns ``(chains, truncated_by_cap)``.
+    """
+    url: str | None = f"/teams/{team_id}/channels/{channel_id}/messages"
+    params: dict = {"$top": str(GRAPH_PAGE_SIZE), "$expand": "replies"}
+    chains: list[tuple[dict, list[dict]]] = []
+    total = 0
+    truncated = False
+    first_page = True
+
+    while url:
+        data = client.get(url, params=params if first_page else None)
+        first_page = False
+        stop = False
+        for root in data.get("value", []):
+            replies = list(root.get("replies") or [])
+            next_link = root.get("replies@odata.nextLink")
+            while next_link:
+                reply_page = client.get(next_link, params=None)
+                replies.extend(reply_page.get("value", []))
+                next_link = reply_page.get("@odata.nextLink")
+
+            if watermark and _chain_modified(root, replies) <= watermark:
+                stop = True
+                break
+            chains.append((root, replies))
+            total += 1 + len(replies)
+            if watermark is None and total >= max_messages:
+                truncated = True
+                stop = True
+                break
+        if stop:
+            break
+        url = data.get("@odata.nextLink")
+
+    return chains, truncated
+
+
+def _convert_chains(
+    client: GraphClient,
+    storage: StorageBackend,
+    chains: list[tuple[dict, list[dict]]],
+    store: dict[str, StoredMessage],
+    base: str,
+    conv_dir: str,
+    config: TeamsChannelsExtractorConfig,
+    converters_config: dict,
+    failed_attachments: dict[str, str],
+) -> list[StoredMessage]:
+    """Convert fetched chains to StoredMessages, skipping fresh and non-message entries."""
+    fetched: list[StoredMessage] = []
+    for root, replies in chains:
+        root_id = root.get("id", "")
+        if root.get("messageType") == "message" and not is_etag_fresh(store.get(root_id), root):
+            fetched.append(
+                to_stored_message(
+                    client,
+                    storage,
+                    root,
+                    None,
+                    f"{base}/{root_id}",
+                    conv_dir,
+                    config,
+                    converters_config,
+                    failed_attachments,
+                    store.get(root_id),
+                )
+            )
+        for reply in replies:
+            reply_id = reply.get("id", "")
+            if reply.get("messageType") != "message" or is_etag_fresh(store.get(reply_id), reply):
+                continue
+            fetched.append(
+                to_stored_message(
+                    client,
+                    storage,
+                    reply,
+                    root_id,
+                    f"{base}/{root_id}/replies/{reply_id}",
+                    conv_dir,
+                    config,
+                    converters_config,
+                    failed_attachments,
+                    store.get(reply_id),
+                )
+            )
+    return fetched
+
+
+def _write_channel(
+    storage: StorageBackend,
+    team_name: str,
+    channel_name: str,
+    channel_id: str,
+    store: dict[str, StoredMessage],
+    conv_dir: str,
+    history_complete: bool,
+) -> None:
+    """Render the store and write messages.md with frontmatter and skeleton."""
+    ordered = sorted(store.values(), key=sort_key)
+    last_message_time = ordered[-1].created if ordered else ""
+
+    fm = build_teams_channel_frontmatter(
+        TeamsChannelData(
+            team_name=team_name,
+            channel_name=channel_name,
+            channel_id=channel_id,
+            last_message_time=last_message_time,
+            message_count=len(store),
+            history_complete=history_complete,
+        )
+    )
+
+    body_parts = [f"# {team_name} / {channel_name}\n"]
+    body_parts.append("## Observations\n")
+    body_parts.append(f"- [team] {team_name}")
+    body_parts.append(f"- [channel] {channel_name}")
+    body_parts.append(f"- [last_message_time] {last_message_time}")
+    body_parts.append(f"- [message_count] {len(store)}")
+    body_parts.append("\n---\n")
+    body_parts.append("## Messages\n")
+    body_parts.append(render_channel_body(store))
+
+    storage.write_file(f"{conv_dir}/messages.md", dumps_markdown(fm, "\n".join(body_parts)))
+    log.debug("teams_channels.wrote", team=team_name, channel=channel_name, messages=len(store))
 
 
 def _process_channel(
@@ -67,85 +229,71 @@ def _process_channel(
     team_name: str,
     channel: dict,
     state: dict,
+    config: TeamsChannelsExtractorConfig,
+    converters_config: dict,
 ) -> bool:
-    """Process a single channel. Returns True if written."""
+    """Process a single channel: fetch, merge, render. Returns True if written.
+
+    Errors are contained per channel: a fetch/media/store failure skips this
+    channel (without advancing its watermark) and the sync cycle continues.
+    """
     channel_id = channel.get("id", "")
     channel_name = channel.get("displayName", "General")
+    key = f"{team_id}:{channel_id}"
+    conv_dir = f"teams-channels/{slugify(team_name, 80)}/{slugify(channel_name, 80)}-{short_hash(channel_id, 6)}"
+    store_path = f"{conv_dir}/messages.jsonl"
 
-    # Use delta for channel messages
-    delta_key = f"delta_{team_id}_{channel_id}"
-    delta_link = state.get(delta_key)
+    watermark = state["watermarks"].get(key)
+    if watermark and not storage.file_exists(store_path):
+        log.warning("teams_channels.store_missing_backfill", team=team_name, channel=channel_name)
+        watermark = None
 
     try:
-        messages, new_delta_link = client.get_delta(
-            f"/teams/{team_id}/channels/{channel_id}/messages/delta",
-            delta_link,
-            params={"$top": "50"},
-            max_pages=client.max_pages,
-        )
+        chains, truncated = _fetch_chains(client, team_id, channel_id, watermark, config.max_messages_per_channel)
     except GraphApiError as exc:
-        log.warning(
-            "teams_channels.fetch_failed",
-            team=team_name,
-            channel=channel_name,
-            error=str(exc),
+        log.warning("teams_channels.fetch_failed", team=team_name, channel=channel_name, error=str(exc))
+        return False
+    except httpx.TransportError as exc:
+        log.error("teams_channels.fetch_transport_error", team=team_name, channel=channel_name, error=str(exc))
+        return False
+
+    if watermark is None:
+        state["history_complete"][key] = not truncated
+
+    if not chains:
+        return False
+
+    try:
+        store = load_store(storage, store_path)
+    except MessageStoreError as exc:
+        log.error(
+            "teams_channels.store_corrupt", team=team_name, channel=channel_name, store=store_path, error=str(exc)
         )
         return False
 
-    if new_delta_link:
-        state[delta_key] = new_delta_link
-
-    if not messages:
+    base = f"/teams/{team_id}/channels/{channel_id}/messages"
+    try:
+        fetched = _convert_chains(
+            client, storage, chains, store, base, conv_dir, config, converters_config, state["failed_attachments"]
+        )
+    except httpx.TransportError as exc:
+        log.error("teams_channels.media_transport_error", team=team_name, channel=channel_name, error=str(exc))
         return False
 
-    # Sort chronologically
-    messages.sort(key=lambda m: m.get("createdDateTime", ""))
+    merged, changed = merge_messages(store, fetched)
 
-    last_msg_time = messages[-1].get("createdDateTime", "") if messages else ""
+    new_watermark = max(_chain_modified(root, replies) for root, replies in chains)
+    if new_watermark:
+        state["watermarks"][key] = max(watermark or "", new_watermark)
 
-    fm = build_teams_channel_frontmatter(
-        TeamsChannelData(
-            team_name=team_name,
-            channel_name=channel_name,
-            channel_id=channel_id,
-            last_message_time=last_msg_time,
-        )
+    if changed or not storage.file_exists(store_path):
+        # Always persist the store once a watermark exists — even empty — so
+        # file existence matches the watermark and backfill never re-triggers.
+        save_store(storage, store_path, merged)
+
+    if not changed:
+        return False
+    _write_channel(
+        storage, team_name, channel_name, channel_id, merged, conv_dir, state["history_complete"].get(key, False)
     )
-
-    body_parts = [f"# {team_name} / {channel_name}\n"]
-
-    body_parts.append("## Observations\n")
-    body_parts.append(f"- [team] {team_name}")
-    body_parts.append(f"- [channel] {channel_name}")
-    body_parts.append(f"- [last_message_time] {last_msg_time}")
-    body_parts.append(f"- [message_count] {len(messages)}")
-
-    body_parts.append("\n---\n")
-    body_parts.append("## Messages\n")
-
-    for msg in messages:
-        sender = extract_sender(msg)
-        created = msg.get("createdDateTime", "")
-        content = extract_content(msg, {})
-        msg_type = msg.get("messageType", "")
-
-        if msg_type == "systemEventMessage":
-            continue
-
-        timestamp_short = created[:16].replace("T", " ") if created else ""
-        header = f"### {timestamp_short} -- {sender}\n" if sender else f"### {timestamp_short}\n"
-        body_parts.append(header)
-        if content:
-            body_parts.append(content)
-        body_parts.append("")
-
-    content_str = dumps_markdown(fm, "\n".join(body_parts))
-
-    team_slug = slugify(team_name, 80)
-    channel_slug = slugify(channel_name, 80)
-    hsh = short_hash(channel_id, 6)
-    file_path = f"teams-channels/{team_slug}/{channel_slug}-{hsh}.md"
-
-    storage.write_file(file_path, content_str)
-    log.debug("teams_channels.wrote", team=team_name, channel=channel_name, messages=len(messages))
     return True

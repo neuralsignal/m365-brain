@@ -79,6 +79,12 @@ def _write_config_yaml(tmp_path, full_web_config):
             "teams_channels": {
                 "enabled": False,
                 "poll_interval_minutes": 5,
+                "max_messages_per_channel": 200,
+                "channels": None,
+                "download_attachments": False,
+                "download_inline_images": False,
+                "max_attachment_size_mb": 25,
+                "attachment_convert_extensions": [],
             },
             "onedrive": {
                 "enabled": False,
@@ -258,6 +264,12 @@ class TestGetConfig:
                 "teams_channels": {
                     "enabled": False,
                     "poll_interval_minutes": 5,
+                    "max_messages_per_channel": 200,
+                    "channels": None,
+                    "download_attachments": False,
+                    "download_inline_images": False,
+                    "max_attachment_size_mb": 25,
+                    "attachment_convert_extensions": [],
                 },
                 "onedrive": {
                     "enabled": False,

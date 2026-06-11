@@ -227,15 +227,18 @@ class TestBuildTeamsChatFrontmatter:
                 conversation_type="oneOnOne",
                 participants=["Alice", "Bob"],
                 last_message_time="2026-03-12T10:00:00Z",
-                message_limit_reached=False,
+                message_count=12,
+                history_complete=True,
             )
         )
         assert fm["type"] == "teams_chat"
         assert "teams-oneonone" in fm["tags"]
         assert fm["participants"] == ["Alice", "Bob"]
+        assert fm["message_count"] == 12
+        assert fm["history_complete"] is True
         assert "message_limit_reached" not in fm
 
-    def test_truncated_chat(self):
+    def test_incomplete_history_chat(self):
         fm = build_teams_chat_frontmatter(
             TeamsChatData(
                 title="Big Group",
@@ -243,10 +246,11 @@ class TestBuildTeamsChatFrontmatter:
                 conversation_type="group",
                 participants=["Alice", "Bob", "Carol"],
                 last_message_time="2026-03-12T10:00:00Z",
-                message_limit_reached=True,
+                message_count=1000,
+                history_complete=False,
             )
         )
-        assert fm["message_limit_reached"] is True
+        assert fm["history_complete"] is False
 
 
 class TestBuildOneDriveFrontmatter:
@@ -324,12 +328,16 @@ class TestBuildTeamsChannelFrontmatter:
                 channel_name="General",
                 channel_id="ch-123",
                 last_message_time="2026-03-12T10:00:00Z",
+                message_count=3,
+                history_complete=True,
             )
         )
         assert fm["type"] == "teams_channel"
         assert fm["title"] == "Engineering / General"
         assert fm["team"] == "Engineering"
         assert fm["channel"] == "General"
+        assert fm["message_count"] == 3
+        assert fm["history_complete"] is True
 
 
 class TestBuildContactFrontmatter:

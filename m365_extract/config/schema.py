@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class AuthConfig(BaseModel):
@@ -95,10 +95,38 @@ class TeamsChatsExtractorConfig(BaseModel):
     attachment_convert_extensions: list[str]
 
 
+class ExplicitChannel(BaseModel):
+    """A channel to sync without Graph discovery.
+
+    Names must come from config: fetching displayNames requires the
+    Team.ReadBasic.All / Channel.ReadBasic.All scopes that explicit mode
+    exists to avoid.
+    """
+
+    model_config = ConfigDict(frozen=True, strict=True)
+    team_id: str
+    channel_id: str
+    team_name: str
+    channel_name: str
+
+
 class TeamsChannelsExtractorConfig(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True)
     enabled: bool
     poll_interval_minutes: int
+    max_messages_per_channel: int
+    download_attachments: bool
+    download_inline_images: bool
+    max_attachment_size_mb: int
+    attachment_convert_extensions: list[str]
+    channels: list[ExplicitChannel] | None
+
+    @field_validator("channels")
+    @classmethod
+    def _channels_not_empty(cls, value: list[ExplicitChannel] | None) -> list[ExplicitChannel] | None:
+        if value is not None and len(value) == 0:
+            raise ValueError("explicit mode with zero channels is a misconfiguration — use null for discovery mode")
+        return value
 
 
 class OneDriveExtractorConfig(BaseModel):

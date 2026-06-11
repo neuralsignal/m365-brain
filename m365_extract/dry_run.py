@@ -51,7 +51,7 @@ def dry_run(config: Config, token_provider: Callable[[], str], names: list[str])
     # Step 1: Validate token by calling /me
     with GraphClient(config.graph, token_provider) as client:
         try:
-            me = client.get("/me?$select=displayName,userPrincipalName")
+            me = client.get("/me?$select=displayName,userPrincipalName", params=None)
             display_name = me.get("displayName", "unknown")
             upn = me.get("userPrincipalName", "unknown")
             log.info("cli.dry_run_auth_ok", user=display_name, upn=upn)
@@ -81,7 +81,7 @@ def dry_run(config: Config, token_provider: Callable[[], str], names: list[str])
                 continue
 
             try:
-                data = client.get(probe_path)
+                data = client.get(probe_path, params=None)
                 item_count = len(data.get("value", []))
                 log.info("cli.dry_run_probe_ok", name=ext_name, items=item_count)
                 passed += 1

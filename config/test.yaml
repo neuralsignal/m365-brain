@@ -64,6 +64,12 @@ extractors:
   teams_channels:
     enabled: false
     poll_interval_minutes: 5
+    max_messages_per_channel: 200
+    channels: null
+    download_attachments: false
+    download_inline_images: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
   onedrive:
     enabled: false
     poll_interval_minutes: 120

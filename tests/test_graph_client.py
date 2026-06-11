@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -11,6 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
+import m365_extract.graph_client as graph_client_module
 from m365_extract.config import GraphConfig
 from m365_extract.graph_client import (
     GRAPH_BASE_URL,
@@ -221,6 +222,39 @@ class TestGetPaginated:
         items = list(client.get_paginated("/me/messages", params=None, max_pages=1))
         assert len(items) == 1
 
+    def test_warns_only_on_true_truncation(self, httpx_mock: HTTPXMock, client):
+        """max_pages_reached fires when a nextLink remains unfetched after the page cap."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            },
+        )
+        events: list[str] = []
+        with patch.object(graph_client_module.log, "warning", side_effect=lambda e, **kw: events.append(e)):
+            list(client.get_paginated("/me/messages", params=None, max_pages=1))
+        assert "graph.max_pages_reached" in events
+
+    def test_no_warning_when_final_allowed_page_completes(self, httpx_mock: HTTPXMock, client):
+        """No max_pages_reached warning when the last allowed page has no nextLink."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            },
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            json={"value": [{"id": "2"}]},
+        )
+        events: list[str] = []
+        with patch.object(graph_client_module.log, "warning", side_effect=lambda e, **kw: events.append(e)):
+            items = list(client.get_paginated("/me/messages", params=None, max_pages=2))
+        assert len(items) == 2
+        assert "graph.max_pages_reached" not in events
+
     def test_absolute_nextlink_urls(self, httpx_mock: HTTPXMock, client):
         """Absolute URLs from @odata.nextLink must not get base_url double-prepended."""
         absolute_next = f"{GRAPH_BASE_URL}/me/messages?$skip=1&$top=10"
@@ -246,6 +280,56 @@ class TestGetPaginated:
         )
         items = list(client.get_paginated("/me/messages", params=None, max_pages=10))
         assert items == []
+
+
+class TestGetPages:
+    def test_complete_fetch_returns_items_and_not_truncated(self, httpx_mock: HTTPXMock, client):
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            },
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            json={"value": [{"id": "2"}]},
+        )
+        items, truncated = client.get_pages("/me/messages", params=None, max_pages=10)
+        assert [item["id"] for item in items] == ["1", "2"]
+        assert truncated is False
+
+    def test_truncated_when_next_link_remains_at_cap(self, httpx_mock: HTTPXMock, client):
+        """truncated=True (with a warning) when a nextLink remained unfetched at the page cap."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            },
+        )
+        events: list[str] = []
+        with patch.object(graph_client_module.log, "warning", side_effect=lambda e, **kw: events.append(e)):
+            items, truncated = client.get_pages("/me/messages", params=None, max_pages=1)
+        assert len(items) == 1
+        assert truncated is True
+        assert "graph.max_pages_reached" in events
+
+    def test_params_sent_on_first_page_only(self, httpx_mock: HTTPXMock, client):
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages?$top=50",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            },
+        )
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages?$skip=1",
+            json={"value": [{"id": "2"}]},
+        )
+        items, truncated = client.get_pages("/me/messages", params={"$top": "50"}, max_pages=10)
+        assert len(items) == 2
+        assert truncated is False
 
 
 class TestGetDelta:
@@ -657,24 +741,48 @@ class TestMaxRetriesExhausted:
 
 
 class TestGetDeltaMaxPages:
-    def test_logs_warning_when_max_pages_reached(self, httpx_mock: HTTPXMock, client, caplog):
-        """Cover line 326: delta_max_pages_reached warning."""
+    def test_returns_pending_next_link_at_cap(self, httpx_mock: HTTPXMock, client):
+        """When the page cap interrupts a delta round, the pending nextLink is the resume link."""
+        pending = f"{GRAPH_BASE_URL}/me/messages/delta?skip=1"
         httpx_mock.add_response(
             url=f"{GRAPH_BASE_URL}/me/messages/delta",
             json={
                 "value": [{"id": "1"}],
-                "@odata.nextLink": f"{GRAPH_BASE_URL}/me/messages/delta?skip=1",
+                "@odata.nextLink": pending,
             },
         )
-        # The second page won't be fetched because max_pages=1
-        items, delta_link = client.get_delta(
-            "/me/messages/delta",
-            None,
-            params=None,
-            max_pages=1,
-        )
+        events: list[str] = []
+        with patch.object(graph_client_module.log, "warning", side_effect=lambda e, **kw: events.append(e)):
+            items, resume_link = client.get_delta(
+                "/me/messages/delta",
+                None,
+                params=None,
+                max_pages=1,
+            )
         assert len(items) == 1
-        assert delta_link is None
+        assert resume_link == pending
+        assert "graph.delta_max_pages_reached" in events
+
+    def test_no_warning_when_delta_round_completes_on_final_page(self, httpx_mock: HTTPXMock, client):
+        """No truncation warning when the last allowed page carries the deltaLink."""
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/messages/delta",
+            json={
+                "value": [{"id": "1"}],
+                "@odata.deltaLink": "https://graph.microsoft.com/delta?token=done",
+            },
+        )
+        events: list[str] = []
+        with patch.object(graph_client_module.log, "warning", side_effect=lambda e, **kw: events.append(e)):
+            items, delta_link = client.get_delta(
+                "/me/messages/delta",
+                None,
+                params=None,
+                max_pages=1,
+            )
+        assert len(items) == 1
+        assert delta_link == "https://graph.microsoft.com/delta?token=done"
+        assert "graph.delta_max_pages_reached" not in events
 
 
 class TestExtractGraphErrorProperty:

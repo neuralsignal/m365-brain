@@ -119,6 +119,26 @@ extractors:
   teams_channels:
     enabled: false
     poll_interval_minutes: 5
+    max_messages_per_channel: 200
+    download_attachments: false
+    download_inline_images: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
+    # Discovery mode: list all channels of all joined teams. Additionally
+    # requires the Team.ReadBasic.All + Channel.ReadBasic.All scopes.
+    channels: null
+    # Explicit mode: sync only the listed channels — works with
+    # ChannelMessage.Read.All alone (no discovery calls). Names must be
+    # configured because fetching displayNames needs the ReadBasic scopes.
+    # To get the IDs, use Teams "Get link to channel" on the channel:
+    #   https://teams.microsoft.com/l/channel/19%3Aabc...%40thread.tacv2/General?groupId=<team-id>&...
+    #   channel_id = the URL-decoded path segment after /channel/ ("19:abc...@thread.tacv2")
+    #   team_id    = the groupId query parameter
+    # channels:
+    #   - team_id: "00000000-0000-0000-0000-000000000000"
+    #     channel_id: "19:abc123def456@thread.tacv2"
+    #     team_name: "Engineering"
+    #     channel_name: "General"
   onedrive:
     enabled: false
     poll_interval_minutes: 120
@@ -316,6 +336,7 @@ graph LR
 | `Calendars.Read` | Calendar extractor |
 | `Chat.Read` | Teams chats extractor |
 | `ChannelMessage.Read.All` | Teams channels extractor |
+| `Team.ReadBasic.All` + `Channel.ReadBasic.All` | Teams channels extractor — discovery mode only (`channels: null`); not needed with an explicit `channels` list |
 | `Files.Read.All` | OneDrive + SharePoint extractors |
 | `Sites.Read.All` | SharePoint extractor |
 | `Contacts.Read` | Contacts extractor |

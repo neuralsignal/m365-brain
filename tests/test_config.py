@@ -6,8 +6,16 @@ import os
 import textwrap
 
 import pytest
+from pydantic import ValidationError
 
-from m365_extract.config import Config, ConfigError, ConvertersConfig, load_config
+from m365_extract.config import (
+    Config,
+    ConfigError,
+    ConvertersConfig,
+    ExplicitChannel,
+    TeamsChannelsExtractorConfig,
+    load_config,
+)
 from m365_extract.config.loader import _deep_merge
 
 
@@ -71,6 +79,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -187,6 +201,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -289,6 +309,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -386,6 +412,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -487,6 +519,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -587,6 +625,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -686,6 +730,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -787,6 +837,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -886,6 +942,12 @@ class TestLoadConfig:
               teams_channels:
                 enabled: false
                 poll_interval_minutes: 5
+                max_messages_per_channel: 200
+                channels: null
+                download_attachments: false
+                download_inline_images: false
+                max_attachment_size_mb: 25
+                attachment_convert_extensions: []
               onedrive:
                 enabled: false
                 poll_interval_minutes: 120
@@ -981,6 +1043,12 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       teams_channels:
         enabled: false
         poll_interval_minutes: 5
+        max_messages_per_channel: 200
+        channels: null
+        download_attachments: false
+        download_inline_images: false
+        max_attachment_size_mb: 25
+        attachment_convert_extensions: []
       onedrive:
         enabled: false
         poll_interval_minutes: 120
@@ -1016,6 +1084,87 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       slug_max_length: 80
       hash_length: 6
 """)
+
+
+class TestTeamsChannelsExplicitMode:
+    """channels: null = discovery mode; populated list = explicit mode; empty list = misconfiguration."""
+
+    @staticmethod
+    def _base_kwargs() -> dict:
+        return {
+            "enabled": True,
+            "poll_interval_minutes": 5,
+            "max_messages_per_channel": 200,
+            "download_attachments": False,
+            "download_inline_images": False,
+            "max_attachment_size_mb": 25,
+            "attachment_convert_extensions": [],
+        }
+
+    def test_channels_null_is_discovery_mode(self):
+        config = TeamsChannelsExtractorConfig(**self._base_kwargs(), channels=None)
+        assert config.channels is None
+
+    def test_channels_populated_list_is_explicit_mode(self):
+        channel = ExplicitChannel(
+            team_id="t-1",
+            channel_id="19:abc@thread.tacv2",
+            team_name="Engineering",
+            channel_name="General",
+        )
+        config = TeamsChannelsExtractorConfig(**self._base_kwargs(), channels=[channel])
+        assert config.channels == [channel]
+        assert config.channels[0].channel_id == "19:abc@thread.tacv2"
+
+    def test_channels_empty_list_raises(self):
+        with pytest.raises(ValidationError, match="discovery mode"):
+            TeamsChannelsExtractorConfig(**self._base_kwargs(), channels=[])
+
+    def test_channels_field_is_required(self):
+        with pytest.raises(ValidationError):
+            TeamsChannelsExtractorConfig(**self._base_kwargs())
+
+    @pytest.mark.parametrize("missing", ["team_id", "channel_id", "team_name", "channel_name"])
+    def test_explicit_channel_missing_subfield_raises(self, missing: str):
+        kwargs = {
+            "team_id": "t-1",
+            "channel_id": "19:abc@thread.tacv2",
+            "team_name": "Engineering",
+            "channel_name": "General",
+        }
+        del kwargs[missing]
+        with pytest.raises(ValidationError):
+            ExplicitChannel(**kwargs)
+
+    def test_explicit_channels_load_from_yaml(self, tmp_path):
+        yaml_text = _MINIMAL_CONFIG.replace(
+            "    channels: null\n",
+            "    channels:\n"
+            '      - team_id: "t-1"\n'
+            '        channel_id: "19:abc@thread.tacv2"\n'
+            '        team_name: "Engineering"\n'
+            '        channel_name: "General"\n',
+        )
+        assert yaml_text != _MINIMAL_CONFIG
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml_text)
+        config = load_config(str(config_file))
+        assert config.extractors.teams_channels.channels == [
+            ExplicitChannel(
+                team_id="t-1",
+                channel_id="19:abc@thread.tacv2",
+                team_name="Engineering",
+                channel_name="General",
+            )
+        ]
+
+    def test_empty_channels_list_in_yaml_raises(self, tmp_path):
+        yaml_text = _MINIMAL_CONFIG.replace("    channels: null\n", "    channels: []\n")
+        assert yaml_text != _MINIMAL_CONFIG
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(yaml_text)
+        with pytest.raises(ConfigError, match="discovery mode"):
+            load_config(str(config_file))
 
 
 class TestDeepMerge:

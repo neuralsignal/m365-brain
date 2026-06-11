@@ -132,6 +132,12 @@ def teams_channels_config():
     return TeamsChannelsExtractorConfig(
         enabled=True,
         poll_interval_minutes=5,
+        max_messages_per_channel=200,
+        download_attachments=False,
+        download_inline_images=False,
+        max_attachment_size_mb=25,
+        attachment_convert_extensions=[],
+        channels=None,
     )
 
 
@@ -201,6 +207,12 @@ def full_config(tmp_path):
             teams_channels=TeamsChannelsExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=5,
+                max_messages_per_channel=200,
+                download_attachments=False,
+                download_inline_images=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
+                channels=None,
             ),
             onedrive=OneDriveExtractorConfig(
                 enabled=False,
@@ -321,6 +333,12 @@ def full_web_config(tmp_path, web_config):
             teams_channels=TeamsChannelsExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=5,
+                max_messages_per_channel=200,
+                download_attachments=False,
+                download_inline_images=False,
+                max_attachment_size_mb=25,
+                attachment_convert_extensions=[],
+                channels=None,
             ),
             onedrive=OneDriveExtractorConfig(
                 enabled=False,

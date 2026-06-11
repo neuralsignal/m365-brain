@@ -155,7 +155,8 @@ class TestContactsExtractor:
         assert "# " in body
         client.close()
 
-    def test_max_items_per_sync_caps_output(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+    def test_everything_fetched_is_processed_no_post_hoc_slice(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """B2: max_items_per_sync bounds the page budget; nothing fetched is sliced away and lost."""
         config = ContactsExtractorConfig(
             enabled=True,
             poll_interval_minutes=1440,
@@ -190,7 +191,62 @@ class TestContactsExtractor:
         client = GraphClient(graph_config, lambda: "test-token")
 
         state, count = contacts.run(client, storage, {}, config)
+        assert count == 2
+        assert state["delta_link"] == "https://delta?token=cap"
+        client.close()
+
+    def test_capped_fetch_resumes_from_pending_next_link(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """B2 regression: a delta round capped mid-way resumes next cycle; the tail is never skipped."""
+        config = ContactsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=1440,
+            max_items_per_sync=1,
+            include_contact_folders=False,
+        )
+        pending = "https://graph.microsoft.com/v1.0/me/contacts/delta?$skiptoken=tail"
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta$"),
+            json={
+                "value": [
+                    {
+                        "id": "c1",
+                        "displayName": "Contact One",
+                        "emailAddresses": [],
+                        "businessPhones": [],
+                        "categories": [],
+                    }
+                ],
+                "@odata.nextLink": pending,
+            },
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = contacts.run(client, storage, {}, config)
         assert count == 1
+        assert state["delta_link"] == pending
+
+        httpx_mock.add_response(
+            url=pending,
+            json={
+                "value": [
+                    {
+                        "id": "c2",
+                        "displayName": "Contact Two",
+                        "emailAddresses": [],
+                        "businessPhones": [],
+                        "categories": [],
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=final",
+            },
+        )
+        state, count = contacts.run(client, storage, state, config)
+
+        assert count == 1
+        assert state["delta_link"] == "https://delta?token=final"
+        assert len(storage.list_files("contacts")) == 2
         client.close()
 
     def test_contact_folders_sync(self, httpx_mock: HTTPXMock, tmp_path, graph_config):

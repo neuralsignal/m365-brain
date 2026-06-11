@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from m365_extract.converters.document import convert_document
+from m365_extract.converters.document import DocumentConversionError, convert_document
 
 SAMPLE_CONVERTERS_CONFIG = {
     "backends": {"pdf": "markitdown", "docx": "markitdown", "default": "native"},
@@ -66,3 +66,24 @@ class TestConvertDocument:
 
         assert result == "hello"
         mock_merge.assert_called_once_with(defaults, {})
+
+
+class TestObsidianImportErrorBoundary:
+    def test_extraction_error_wrapped_as_document_conversion_error(self, tmp_path):
+        """obsidian-import failures surface as the package's own boundary exception."""
+        from obsidian_import.exceptions import ExtractionTimeoutError
+
+        test_file = tmp_path / "big.xlsx"
+        test_file.write_bytes(b"fake xlsx")
+
+        with (
+            patch("obsidian_import.config._load_default_yaml", return_value={}),
+            patch("obsidian_import.config._deep_merge", return_value=SAMPLE_CONVERTERS_CONFIG),
+            patch("obsidian_import.config._build_config", return_value=MagicMock()),
+            patch("obsidian_import.extract_text", side_effect=ExtractionTimeoutError("timed out after 120s")),
+            pytest.raises(DocumentConversionError, match="big.xlsx"),
+        ):
+            convert_document(
+                file_path=test_file,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            )

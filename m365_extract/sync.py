@@ -36,7 +36,7 @@ EXTRACTORS: dict[str, ExtractorEntry] = {
     "email": (email, lambda cfg: cfg.extractors.email, True),
     "calendar": (calendar, lambda cfg: cfg.extractors.calendar, False),
     "teams_chats": (teams_chats, lambda cfg: cfg.extractors.teams_chats, True),
-    "teams_channels": (teams_channels, lambda cfg: cfg.extractors.teams_channels, False),
+    "teams_channels": (teams_channels, lambda cfg: cfg.extractors.teams_channels, True),
     "onedrive": (onedrive, lambda cfg: cfg.extractors.onedrive, True),
     "sharepoint": (sharepoint, lambda cfg: cfg.extractors.sharepoint, True),
     "contacts": (contacts, lambda cfg: cfg.extractors.contacts, False),

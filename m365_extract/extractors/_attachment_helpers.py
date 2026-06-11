@@ -11,7 +11,7 @@ import httpx
 import structlog
 
 from m365_extract.config import EmailExtractorConfig
-from m365_extract.converters.document import convert_document
+from m365_extract.converters.document import DocumentConversionError, convert_document
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.base import StorageBackend
 from m365_extract.storage.exceptions import StorageError
@@ -77,12 +77,14 @@ def convert_and_store(
     source_name: str,
     target_path: str,
     converters_config: dict,
-) -> None:
+) -> bool:
     """Convert an attachment binary to markdown and write to ``target_path``.
 
     ``source_name`` provides the original filename so the converter can pick a
     backend by suffix; ``target_path`` is the absolute storage path the
     converted markdown should be written to (including the ``.md`` extension).
+    Returns True when the converted file was written, False when conversion
+    failed (logged; callers must not record a converted-file link).
     """
     suffix = Path(source_name).suffix
     tmp_path: Path | None = None
@@ -92,8 +94,10 @@ def convert_and_store(
             tmp_path.write_bytes(data)
         md_content = convert_document(tmp_path, converters_config)
         storage.write_file(target_path, md_content)
-    except (OSError, ImportError, StorageError) as exc:
+        return True
+    except (OSError, ImportError, StorageError, DocumentConversionError) as exc:
         log.warning("attachment.convert_failed", name=source_name, error=str(exc))
+        return False
     finally:
         if tmp_path is not None and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)

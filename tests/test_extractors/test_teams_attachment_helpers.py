@@ -12,6 +12,7 @@ from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
 from m365_extract.extractors import _teams_attachment_helpers as helpers
+from m365_extract.extractors import _teams_hosted_content as hosted_content
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -227,9 +228,46 @@ class TestDownloadMessageAttachments:
 
         assert mock_conv.call_count == 1
         assert refs[0].converted_path == "attachments_converted/msg-7/spec.pdf.md"
-        # Verify the target_path passed to convert_and_store includes the per-message subdir
         target_path = mock_conv.call_args.args[3]
         assert target_path == "teams-chats/foo_abc/attachments_converted/msg-7/spec.pdf.md"
+        client.close()
+
+    def test_failed_conversion_clears_converted_path(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+        """When conversion fails, the ref must not carry a dangling converted link."""
+        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        encoded = helpers._encode_share_url(content_url)
+        httpx_mock.add_response(
+            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+            json={
+                "id": "drive-item",
+                "size": 1024,
+                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            content=b"%PDF-1.4 fake",
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        msg = {
+            "id": "msg-7",
+            "attachments": [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}],
+        }
+
+        with patch.object(helpers, "convert_and_store", return_value=False):
+            refs = helpers.download_message_attachments(
+                client,
+                storage,
+                msg,
+                "teams-chats/foo_abc",
+                _config(convert=[".pdf"]),
+                {"backends": {"pdf": "markitdown"}},
+                {},
+            )
+
+        assert refs[0].converted_path is None
         client.close()
 
     def test_path_traversal_in_name_stripped(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
@@ -297,7 +335,7 @@ class TestDownloadMessageAttachments:
             )
 
         assert refs == []
-        download_failures = [w for w in warnings if w["event"] == "teams_chats.attachment_download_failed"]
+        download_failures = [w for w in warnings if w["event"] == "teams_attachments.attachment_download_failed"]
         assert len(download_failures) == 1
         assert failed == {}
         client.close()
@@ -339,7 +377,7 @@ class TestPermanentFailureSkipList:
         assert refs == []
         assert failed == {"msg-denied:secret.pdf": f"http_{status}"}
         events = [w["event"] for w in warnings]
-        assert events == ["teams_chats.attachment_download_failed_permanently"]
+        assert events == ["teams_attachments.attachment_download_failed_permanently"]
         client.close()
 
     def test_previously_failed_skipped_without_request(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
@@ -407,7 +445,9 @@ class TestDownloadInlineImages:
         client = GraphClient(graph_config, lambda: "test-token")
         msg = {"id": msg_id}
 
-        hosted_map = helpers.download_inline_images(client, storage, chat_id, msg, "teams-chats/foo_abc", _config())
+        hosted_map = hosted_content.download_inline_images(
+            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config()
+        )
 
         assert hosted_map == {hid: f"attachments/{msg_id}/inline_0.png"}
         files = storage.list_files("teams-chats")
@@ -432,7 +472,9 @@ class TestDownloadInlineImages:
         client = GraphClient(graph_config, lambda: "test-token")
         msg = {"id": msg_id}
 
-        hosted_map = helpers.download_inline_images(client, storage, chat_id, msg, "teams-chats/foo_abc", _config())
+        hosted_map = hosted_content.download_inline_images(
+            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config()
+        )
 
         assert hosted_map[hid].endswith("inline_0.bin")
         client.close()
@@ -456,8 +498,8 @@ class TestDownloadInlineImages:
         client = GraphClient(graph_config, lambda: "test-token")
         msg = {"id": msg_id}
 
-        hosted_map = helpers.download_inline_images(
-            client, storage, chat_id, msg, "teams-chats/foo_abc", _config(max_mb=1)
+        hosted_map = hosted_content.download_inline_images(
+            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config(max_mb=1)
         )
 
         assert hosted_map == {}
@@ -481,8 +523,8 @@ class TestDownloadInlineImages:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
 
-        hosted_map = helpers.download_inline_images(
-            client, storage, chat_id, {"id": msg_id}, "teams-chats/foo_abc", _config()
+        hosted_map = hosted_content.download_inline_images(
+            client, storage, f"/chats/{chat_id}/messages/{msg_id}", {"id": msg_id}, "teams-chats/foo_abc", _config()
         )
 
         assert hosted_map == {}
@@ -499,8 +541,13 @@ class TestDownloadInlineImages:
         mock_client.get_paginated.return_value = iter([{"id": "HID-X"}])
         mock_client.get_bytes_with_content_type.side_effect = httpx.ConnectError("boom")
 
-        hosted_map = helpers.download_inline_images(
-            mock_client, storage, chat_id, {"id": msg_id}, "teams-chats/foo_abc", _config()
+        hosted_map = hosted_content.download_inline_images(
+            mock_client,
+            storage,
+            f"/chats/{chat_id}/messages/{msg_id}",
+            {"id": msg_id},
+            "teams-chats/foo_abc",
+            _config(),
         )
 
         assert hosted_map == {}
@@ -508,7 +555,12 @@ class TestDownloadInlineImages:
     def test_no_msg_id_returns_empty(self, tmp_path, graph_config) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
-        assert helpers.download_inline_images(client, storage, "19:abc", {}, "teams-chats/foo_abc", _config()) == {}
+        assert (
+            hosted_content.download_inline_images(
+                client, storage, "/chats/19:abc/messages/x", {}, "teams-chats/foo_abc", _config()
+            )
+            == {}
+        )
         client.close()
 
 

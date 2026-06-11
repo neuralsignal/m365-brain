@@ -363,6 +363,94 @@ class TestEmailExtractor:
         client.close()
 
 
+class TestDeltaPageBudget:
+    """B2: the delta page budget derives from max_items_per_sync and nothing fetched is sliced away."""
+
+    @staticmethod
+    def _msg(msg_id: str, subject: str, received: str) -> dict:
+        return {
+            "id": msg_id,
+            "subject": subject,
+            "body": {"contentType": "text", "content": "body"},
+            "from": {"emailAddress": {"name": "Test", "address": "test@example.com"}},
+            "toRecipients": [],
+            "receivedDateTime": received,
+            "importance": "normal",
+            "hasAttachments": False,
+            "webLink": "",
+            "parentFolderId": "inbox",
+        }
+
+    @staticmethod
+    def _small_config() -> EmailExtractorConfig:
+        return EmailExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=3,
+            mailboxes=[MailboxConfig(address="me", folders=["Inbox"], output_subdir="")],
+            lookback_days=30,
+            max_items_per_sync=2,
+            download_attachments=False,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
+        )
+
+    def test_everything_fetched_is_processed_no_post_hoc_slice(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """A page can exceed max_items_per_sync; every fetched message must still be written."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
+            json={
+                "value": [
+                    self._msg("m1", "First", "2026-03-12T15:01:00Z"),
+                    self._msg("m2", "Second", "2026-03-12T15:02:00Z"),
+                    self._msg("m3", "Third", "2026-03-12T15:03:00Z"),
+                ],
+                "@odata.deltaLink": "https://graph.microsoft.com/delta?token=done",
+            },
+        )
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, self._small_config(), _NO_CONVERTERS)
+
+        assert count == 3
+        assert len(storage.list_files("emails")) == 3
+        client.close()
+
+    def test_capped_fetch_resumes_from_pending_next_link(self, httpx_mock: HTTPXMock, tmp_path, graph_config):
+        """Regression: a delta round capped mid-way resumes next cycle; the tail is never skipped."""
+        pending = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$skiptoken=tail"
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/mailFolders/Inbox/messages/delta\?.*"),
+            json={
+                "value": [
+                    self._msg("m1", "First", "2026-03-12T15:01:00Z"),
+                    self._msg("m2", "Second", "2026-03-12T15:02:00Z"),
+                ],
+                "@odata.nextLink": pending,
+            },
+        )
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, self._small_config(), _NO_CONVERTERS)
+        assert count == 2
+        assert state["delta_link_me_Inbox"] == pending
+
+        httpx_mock.add_response(
+            url=pending,
+            json={
+                "value": [self._msg("m3", "Third", "2026-03-12T15:03:00Z")],
+                "@odata.deltaLink": "https://graph.microsoft.com/delta?token=final",
+            },
+        )
+        state, count = email.run(client, storage, state, self._small_config(), _NO_CONVERTERS)
+
+        assert count == 1
+        assert state["delta_link_me_Inbox"] == "https://graph.microsoft.com/delta?token=final"
+        assert len(storage.list_files("emails")) == 3
+        client.close()
+
+
 # ---------------------------------------------------------------------------
 # Deduplication
 # ---------------------------------------------------------------------------
@@ -1234,11 +1322,32 @@ class TestNarrowedExceptionHandling:
 class TestConvertAndStore:
     """Unit tests for _convert_and_store covering happy path, failure, and tmp cleanup."""
 
+    def test_conversion_error_returns_false_without_raising(self, tmp_path):
+        """An obsidian-import failure (e.g. timeout) must not propagate past convert_and_store."""
+        from m365_extract.converters.document import DocumentConversionError
+
+        storage = MagicMock()
+        with patch.object(
+            _attachment_helpers,
+            "convert_document",
+            side_effect=DocumentConversionError("markitdown extraction timed out after 120s: big.xlsx"),
+        ):
+            ok = _attachment_helpers.convert_and_store(
+                storage=storage,
+                data=b"binary-data",
+                source_name="big.xlsx",
+                target_path="x/attachments_converted/big.xlsx.md",
+                converters_config={},
+            )
+
+        assert ok is False
+        storage.write_file.assert_not_called()
+
     def test_happy_path_writes_markdown(self, tmp_path):
         """convert_document returns markdown; storage.write_file gets correct path/content."""
         storage = MagicMock()
         with patch.object(_attachment_helpers, "convert_document", return_value="# Hello\n\ncontent") as mock_conv:
-            _attachment_helpers.convert_and_store(
+            ok = _attachment_helpers.convert_and_store(
                 storage=storage,
                 data=b"binary-data",
                 source_name="report.pdf",
@@ -1246,6 +1355,7 @@ class TestConvertAndStore:
                 converters_config={},
             )
 
+        assert ok is True
         mock_conv.assert_called_once()
         called_path = mock_conv.call_args.args[0]
         assert isinstance(called_path, Path)

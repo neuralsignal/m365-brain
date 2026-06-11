@@ -6,6 +6,7 @@ Writes Obsidian-compatible markdown files with YAML frontmatter.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 import structlog
@@ -27,6 +28,12 @@ _CONTACT_SELECT = (
     "businessAddress,homeAddress,personalNotes,birthday,categories,"
     "createdDateTime,lastModifiedDateTime"
 )
+
+# Graph's documented default page size for personal-contact collections; the
+# contacts delta endpoint rejects $top, so the page budget assumes this server
+# default: ceil(max_items_per_sync / page size) pages per cycle. A round
+# interrupted by the budget resumes from the pending nextLink next cycle.
+_DELTA_DEFAULT_PAGE_SIZE = 10
 
 
 def run(
@@ -108,12 +115,15 @@ def _sync_contacts(
     max_items: int,
 ) -> tuple[int, str | None]:
     """Sync contacts from a single delta endpoint. Returns (items_written, new_delta_link)."""
-    # Contacts delta endpoint rejects $select, $top, $filter, etc.
-    # Only pass params on non-delta (initial) requests via get_paginated fallback.
-    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=client.max_pages)
+    # Contacts delta endpoint rejects $select, $top, $filter, etc. The page
+    # budget bounds per-cycle work; everything fetched IS processed — slicing
+    # after the fetch would skip the tail forever once the (resume) delta link
+    # is persisted.
+    max_pages = max(1, math.ceil(max_items / _DELTA_DEFAULT_PAGE_SIZE))
+    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=max_pages)
 
     written = 0
-    for contact in contacts[:max_items]:
+    for contact in contacts:
         extracted = _extract_contact_data(contact)
         if extracted is None:
             continue
