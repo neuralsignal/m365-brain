@@ -7,6 +7,7 @@ from pathlib import Path
 from m365_extract.config import StorageConfig
 from m365_extract.config.errors import ConfigError
 from m365_extract.storage.base import StorageBackend
+from m365_extract.validation import validate_user_id
 
 
 def create_storage(config: StorageConfig) -> StorageBackend:
@@ -38,6 +39,7 @@ def create_user_storage(config: StorageConfig, user_id: str) -> StorageBackend:
     Appends ``user_id`` to the storage prefix (azure_blob) or base_path (local)
     so each user's synced data lives in its own subdirectory.
     """
+    validate_user_id(user_id)
     if config.backend == "local":
         if config.local is None:
             raise ConfigError("backend is 'local' but storage.local section is missing")

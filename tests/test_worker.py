@@ -39,13 +39,18 @@ def engine():
     return eng
 
 
+UID_1 = "00000000-0000-4000-8000-000000000001"
+UID_2 = "00000000-0000-4000-8000-000000000002"
+UID_3 = "00000000-0000-4000-8000-000000000003"
+
+
 @pytest.fixture()
 def seeded_engine(engine):
     """Engine with two users: one enabled, one disabled."""
     with Session(engine) as session:
-        session.add(User(user_id="u-1", display_name="Alice", email="alice@example.com", enabled=True))
-        session.add(User(user_id="u-2", display_name="Bob", email="bob@example.com", enabled=False))
-        session.add(User(user_id="u-3", display_name="Carol", email="carol@example.com", enabled=True))
+        session.add(User(user_id=UID_1, display_name="Alice", email="alice@example.com", enabled=True))
+        session.add(User(user_id=UID_2, display_name="Bob", email="bob@example.com", enabled=False))
+        session.add(User(user_id=UID_3, display_name="Carol", email="carol@example.com", enabled=True))
         session.commit()
     return engine
 
@@ -54,7 +59,7 @@ class TestGetEnabledUsers:
     def test_returns_only_enabled(self, seeded_engine):
         users = get_enabled_users(seeded_engine)
         user_ids = [u.user_id for u in users]
-        assert user_ids == ["u-1", "u-3"]
+        assert user_ids == [UID_1, UID_3]
 
     def test_empty_table(self, engine):
         users = get_enabled_users(engine)
@@ -64,28 +69,28 @@ class TestGetEnabledUsers:
 class TestGetUserExtractors:
     def test_returns_enabled(self, seeded_engine):
         with Session(seeded_engine) as session:
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="email", enabled=True))
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="calendar", enabled=False))
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="contacts", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="calendar", enabled=False))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="contacts", enabled=True))
             session.commit()
 
-        names = get_user_extractors(seeded_engine, "u-1")
+        names = get_user_extractors(seeded_engine, UID_1)
         assert sorted(names) == ["contacts", "email"]
 
     def test_no_prefs_returns_empty(self, seeded_engine):
         """No ExtractorPreference rows = nothing enabled, no fallback."""
-        names = get_user_extractors(seeded_engine, "u-1")
+        names = get_user_extractors(seeded_engine, UID_1)
         assert names == []
 
 
 class TestUpsertExtractorStatus:
     def test_inserts_new(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, "u-1", "email", "running", 0, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", "running", 0, None)
 
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -94,13 +99,13 @@ class TestUpsertExtractorStatus:
             assert row.items_synced == 0
 
     def test_updates_existing(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, "u-1", "email", "running", 0, None)
-        upsert_extractor_status(seeded_engine, "u-1", "email", "success", 42, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", "running", 0, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 42, None)
 
         with Session(seeded_engine) as session:
             rows = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).all()
@@ -109,10 +114,10 @@ class TestUpsertExtractorStatus:
             assert rows[0].items_synced == 42
 
     def test_stores_error(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, "u-1", "email", "failed", 0, "Token expired")
+        upsert_extractor_status(seeded_engine, UID_1, "email", "failed", 0, "Token expired")
 
         with Session(seeded_engine) as session:
-            row = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == "u-1")).first()
+            row = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == UID_1)).first()
             assert row.error_message == "Token expired"
 
 
@@ -120,37 +125,37 @@ class TestGetDueJobs:
     def test_new_user_is_due(self, seeded_engine, full_config):
         """Users with no ExtractorStatus rows are always due."""
         with Session(seeded_engine) as session:
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="email", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
             session.commit()
 
         due = get_due_jobs(seeded_engine, full_config)
         pairs = [(u.user_id, ext) for u, ext in due]
-        assert ("u-1", "email") in pairs
+        assert (UID_1, "email") in pairs
 
     def test_recently_synced_not_due(self, seeded_engine, full_config):
         """User with a recent sync is not due yet."""
         with Session(seeded_engine) as session:
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="email", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
             session.commit()
 
-        upsert_extractor_status(seeded_engine, "u-1", "email", "success", 10, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 10, None)
 
         due = get_due_jobs(seeded_engine, full_config)
         pairs = [(u.user_id, ext) for u, ext in due]
-        assert ("u-1", "email") not in pairs
+        assert (UID_1, "email") not in pairs
 
     def test_old_sync_is_due(self, seeded_engine, full_config):
         """User with an old sync is due again."""
         with Session(seeded_engine) as session:
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="email", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
             session.commit()
 
-        upsert_extractor_status(seeded_engine, "u-1", "email", "success", 10, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 10, None)
 
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -160,7 +165,7 @@ class TestGetDueJobs:
 
         due = get_due_jobs(seeded_engine, full_config)
         pairs = [(u.user_id, ext) for u, ext in due]
-        assert ("u-1", "email") in pairs
+        assert (UID_1, "email") in pairs
 
 
 def _fake_token_provider():
@@ -191,7 +196,7 @@ class TestRunSingleExtractor:
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -213,7 +218,7 @@ class TestRunSingleExtractor:
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -233,7 +238,7 @@ class TestRunSingleExtractor:
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -254,7 +259,7 @@ class TestRunSingleExtractor:
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -274,7 +279,7 @@ class TestRunSingleExtractor:
         with Session(seeded_engine) as session:
             row = session.exec(
                 select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == "u-1",
+                    ExtractorStatus.user_id == UID_1,
                     ExtractorStatus.extractor_name == "email",
                 )
             ).first()
@@ -292,16 +297,26 @@ class TestRunSingleExtractor:
         ):
             run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
 
-        mock_release.assert_called_once_with(seeded_engine, "u-1", "email")
+        mock_release.assert_called_once_with(seeded_engine, UID_1, "email")
+
+    def test_rejects_non_uuid_user_id(self, engine, full_config, tmp_path):
+        with Session(engine) as session:
+            bad_user = User(user_id="../traversal", display_name="Evil", email="evil@example.com", enabled=True)
+            session.add(bad_user)
+            session.commit()
+            session.refresh(bad_user)
+
+            with pytest.raises(ConfigError, match="Invalid user_id format"):
+                run_single_extractor(full_config, engine, FakeTokenAdapter(), bad_user, "email", str(tmp_path))
 
 
 class TestLockKey:
     def test_deterministic(self):
-        assert _lock_key("u-1", "email") == _lock_key("u-1", "email")
+        assert _lock_key(UID_1, "email") == _lock_key(UID_1, "email")
 
     def test_different_inputs_differ(self):
-        assert _lock_key("u-1", "email") != _lock_key("u-2", "email")
-        assert _lock_key("u-1", "email") != _lock_key("u-1", "calendar")
+        assert _lock_key(UID_1, "email") != _lock_key(UID_2, "email")
+        assert _lock_key(UID_1, "email") != _lock_key(UID_1, "calendar")
 
     @given(
         user_id=st.text(min_size=1, max_size=100),
@@ -316,12 +331,12 @@ class TestGetDueJobsEdgeCases:
     def test_skips_unknown_extractor(self, seeded_engine, full_config):
         """Extractor name not in EXTRACTORS dict is skipped."""
         with Session(seeded_engine) as session:
-            session.add(ExtractorPreference(user_id="u-1", extractor_name="nonexistent", enabled=True))
+            session.add(ExtractorPreference(user_id=UID_1, extractor_name="nonexistent", enabled=True))
             session.commit()
 
         due = get_due_jobs(seeded_engine, full_config)
         pairs = [(u.user_id, ext) for u, ext in due]
-        assert ("u-1", "nonexistent") not in pairs
+        assert (UID_1, "nonexistent") not in pairs
 
 
 class TestStartWorkerThread:
@@ -451,13 +466,13 @@ class TestTryAdvisoryLock:
             mock_session = mock_session_cls.return_value.__enter__.return_value
             mock_session.exec.return_value.one.return_value = (True,)
 
-            result = try_advisory_lock("engine-stub", "u-1", "email")
+            result = try_advisory_lock("engine-stub", UID_1, "email")
 
         assert result is True
         mock_session.exec.assert_called_once()
         stmt = mock_session.exec.call_args[0][0]
         assert "pg_try_advisory_lock" in str(stmt)
-        assert stmt._bindparams["key"].value == _lock_key("u-1", "email")
+        assert stmt._bindparams["key"].value == _lock_key(UID_1, "email")
 
     def test_returns_false_when_lock_unavailable(self):
         """Propagates False when the lock is already held."""
@@ -465,7 +480,7 @@ class TestTryAdvisoryLock:
             mock_session = mock_session_cls.return_value.__enter__.return_value
             mock_session.exec.return_value.one.return_value = (False,)
 
-            result = try_advisory_lock("engine-stub", "u-1", "email")
+            result = try_advisory_lock("engine-stub", UID_1, "email")
 
         assert result is False
 
@@ -476,13 +491,13 @@ class TestReleaseAdvisoryLock:
         with patch("m365_extract.worker.Session") as mock_session_cls:
             mock_session = mock_session_cls.return_value.__enter__.return_value
 
-            result = release_advisory_lock("engine-stub", "u-1", "email")
+            result = release_advisory_lock("engine-stub", UID_1, "email")
 
         assert result is None
         mock_session.exec.assert_called_once()
         stmt = mock_session.exec.call_args[0][0]
         assert "pg_advisory_unlock" in str(stmt)
-        assert stmt._bindparams["key"].value == _lock_key("u-1", "email")
+        assert stmt._bindparams["key"].value == _lock_key(UID_1, "email")
 
 
 class TestRunCycleFutureErrors:
