@@ -70,9 +70,10 @@ def resolve_folder_id(client: GraphClient, endpoint_base: str, address: str, fol
     if cache_key in _resolved_folder_ids:
         return _resolved_folder_ids[cache_key]
 
+    safe_folder = folder.replace("'", "''")
     data = client.get(
         f"{endpoint_base}/mailFolders",
-        {"$filter": f"displayName eq '{folder}'", "$select": "id,displayName", "$top": "1"},
+        {"$filter": f"displayName eq '{safe_folder}'", "$select": "id,displayName", "$top": "1"},
     )
     folders = data.get("value", [])
 
