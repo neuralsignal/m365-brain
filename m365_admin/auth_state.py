@@ -128,9 +128,6 @@ class AuthState(rx.State):
     user_id: str = ""
     auth_error: str = ""
 
-    # Backend-only vars (not sent to client) — only picklable types
-    _access_token: str = ""
-
     @rx.var
     def is_authenticated(self) -> bool:
         """True when a user has completed the OAuth flow."""
@@ -232,8 +229,6 @@ class AuthState(rx.State):
         self.user_id = user_info["user_id"]
         self.user_display_name = user_info["display_name"]
         self.user_email = user_info["email"]
-        self._access_token = token_response.get("access_token", "")
-
         return rx.redirect("/dashboard")
 
     def logout(self) -> rx.event.EventSpec:
@@ -242,7 +237,6 @@ class AuthState(rx.State):
         self.user_display_name = ""
         self.user_email = ""
         self.auth_error = ""
-        self._access_token = ""
         return rx.redirect("/login")
 
     def check_auth(self) -> rx.event.EventSpec | None:
