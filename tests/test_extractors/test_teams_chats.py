@@ -735,3 +735,94 @@ class TestChatTitle:
         content = storage.read_file(f"{chat_dir}/messages.md")
         assert "# Project Alpha Planning" in content
         assert "teams-group" in content
+
+
+class TestRelationsSection:
+    def test_long_participant_names_produce_relations(self, httpx_mock: HTTPXMock, storage, client):
+        """Participants with slugs > 5 chars emit Relations links."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": CHAT_ID,
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [
+                            {"displayName": "Matthias Christenson"},
+                            {"displayName": "Samuel Scholl"},
+                        ],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:00:00Z")]},
+        )
+
+        teams_chats.run(client, storage, {}, _config(), {})
+
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(CHAT_ID, 6)}"
+        content = storage.read_file(f"{chat_dir}/messages.md")
+        assert "## Relations" in content
+        assert "[[contact-matthias-christenson]]" in content
+        assert "[[contact-samuel-scholl]]" in content
+
+
+class TestFetchTransportError:
+    def test_transport_error_on_message_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        """An httpx.TransportError during message fetch must skip the chat gracefully."""
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("connection refused"),
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            is_reusable=True,
+        )
+
+        errors: list[str] = []
+        with patch.object(teams_chats.log, "error", side_effect=lambda e, **kw: errors.append(e)):
+            state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert "teams_chats.fetch_transport_error" in errors
+        assert CHAT_ID not in state["watermarks"]
+
+
+class TestConvertedAttachmentLink:
+    def test_converted_path_renders_text_link(self, httpx_mock: HTTPXMock, storage, client):
+        """An attachment with a non-None converted_path renders both raw and (text) links."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=True,
+            download_inline_images=False,
+            max_attachment_size_mb=100,
+            attachment_convert_extensions=[".docx"],
+        )
+        content_url = "https://sanoptis.sharepoint.com/sites/x/report.docx"
+
+        _mock_chats(httpx_mock)
+        msg = _graph_msg("msg-conv", "2026-06-10T09:00:00Z", content="see report")
+        msg["attachments"] = [{"contentType": "reference", "name": "report.docx", "contentUrl": content_url}]
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/shares/.*/driveItem.*"),
+            json={
+                "id": "di",
+                "size": 64,
+                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            content=b"PK\x03\x04fake docx",
+        )
+
+        with patch("m365_extract.extractors._attachment_helpers.convert_document", return_value="# Converted"):
+            teams_chats.run(client, storage, {}, config, {})
+
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "[report.docx](attachments/msg-conv/report.docx)" in content
+        assert "[report.docx (text)](attachments_converted/msg-conv/report.docx.md)" in content
