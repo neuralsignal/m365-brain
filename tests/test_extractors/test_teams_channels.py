@@ -306,6 +306,44 @@ class TestEmptyStoreInvariant:
         assert "teams_channels.store_missing_backfill" not in warnings
 
 
+class TestStoreMissingBackfill:
+    def test_watermark_reset_when_store_file_missing(self, httpx_mock: HTTPXMock, storage, client):
+        """When a watermark exists but the .jsonl store file is gone, the watermark
+        must be reset to None so a full re-fetch is triggered instead of an
+        incremental one."""
+        root = _graph_msg("root-1", "2026-06-11T09:00:00Z", content="backfilled")
+        root["replies"] = []
+        _mock_team_and_channel(httpx_mock)
+        httpx_mock.add_response(url=MESSAGES_URL, json={"value": [root]})
+
+        state = {"watermarks": {WATERMARK_KEY: "2026-06-10T12:00:00Z"}}
+
+        warnings: list[str] = []
+        with patch.object(teams_channels.log, "warning", side_effect=lambda e, **kw: warnings.append(e)):
+            state, count = teams_channels.run(client, storage, state, _config(), {})
+
+        assert "teams_channels.store_missing_backfill" in warnings
+        assert count == 1
+        content = storage.read_file(f"{CONV_DIR}/messages.md")
+        assert "backfilled" in content
+
+
+class TestGraphApiErrorOnFetch:
+    def test_graph_api_error_skips_channel(self, httpx_mock: HTTPXMock, storage, client):
+        """A GraphApiError from _fetch_chains (e.g. 403 on a private channel) must
+        log a warning and skip the channel without crashing the sync cycle."""
+        _mock_team_and_channel(httpx_mock)
+        httpx_mock.add_response(url=MESSAGES_URL, status_code=403, json={"error": {"message": "Forbidden"}})
+
+        warnings: list[str] = []
+        with patch.object(teams_channels.log, "warning", side_effect=lambda e, **kw: warnings.append(e)):
+            state, count = teams_channels.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert "teams_channels.fetch_failed" in warnings
+        assert WATERMARK_KEY not in state["watermarks"]
+
+
 class TestPerChannelIsolation:
     def test_transport_error_in_replies_pagination_skips_channel(self, httpx_mock: HTTPXMock, storage, client):
         """A TransportError escaping replies pagination must not kill the sync cycle."""
