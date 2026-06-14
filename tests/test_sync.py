@@ -105,6 +105,28 @@ class TestRunExtractors:
         call_args = mock_mod.run.call_args[0]
         assert call_args[4] == config.converters.model_dump()
 
+    def test_omits_converters_when_not_needed(self, full_config):
+        mock_mod = _make_mock_extractor(return_value=({}, 2))
+        original = EXTRACTORS["contacts"]
+        mock_state = MagicMock()
+        mock_state.load.return_value = {}
+        mock_storage = MagicMock()
+
+        with (
+            _patch_sync("GraphClient") as mock_gc,
+            patch.dict(EXTRACTORS, {"contacts": (mock_mod, original[1], original[2])}),
+        ):
+            mock_client = MagicMock()
+            mock_gc.return_value.__enter__ = MagicMock(return_value=mock_client)
+            mock_gc.return_value.__exit__ = MagicMock(return_value=False)
+
+            total = run_extractors(full_config, lambda: "token", mock_storage, mock_state, ["contacts"])
+
+        mock_mod.run.assert_called_once()
+        call_args = mock_mod.run.call_args[0]
+        assert len(call_args) == 4
+        assert total == 2
+
     def test_successful_run_saves_state(self, full_config):
         mock_mod = _make_mock_extractor(return_value=({"delta": "abc"}, 7))
         original = EXTRACTORS["email"]
