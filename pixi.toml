@@ -31,7 +31,7 @@ m365-extract = {path = ".", editable = true, extras = ["azure"]}
 obsidian-import = {version = ">=1.2.0,<2", extras = ["markitdown"]}
 lxml = ">=6.1.0, <7"
 pillow = ">=12.2.0, <13"
-pypdf = ">=6.9.2, <7"
+pypdf = ">=6.12.0, <7"
 pytest = ">=9.0.3, <10"
 hypothesis = ">=6.100, <7"
 pytest-httpx = ">=0.35, <1"
