@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.0](https://github.com/neuralsignal/m365-extract/compare/v1.0.0...v1.1.0) (2026-06-16)
+
+
+### Features
+
+* adopt obsidian-import 1.2.0 public API and extraction isolation ([8773a1d](https://github.com/neuralsignal/m365-extract/commit/8773a1d91197e887c3ead46b784ec1721cd82e05))
+* merge-based incremental Teams sync with whole-history retention ([e0d9378](https://github.com/neuralsignal/m365-extract/commit/e0d9378f4a5d87925ee72d2e89830d31ebd56f93))
+* skip non-file Teams attachment types and stop retrying permanent download failures ([912396a](https://github.com/neuralsignal/m365-extract/commit/912396acfae1874c738ba7b4064fbc5bc9effeca))
+* **teams_chats:** download file attachments and inline images ([6eae19c](https://github.com/neuralsignal/m365-extract/commit/6eae19c31852fe5f0ab1d68030718a197e14bc93))
+
+
+### Bug Fixes
+
+* add missing teams_chats attachment fields to admin config test fixtures ([fcd8bb0](https://github.com/neuralsignal/m365-extract/commit/fcd8bb04f29a33e3af7bda6ed363e9e6a390666d))
+* add missing teams_chats attachment fields to test config fixtures ([8638edf](https://github.com/neuralsignal/m365-extract/commit/8638edf0cf91518b19955d8f96f71a24f0e87a04))
+* escape single quotes in OData folder filter to prevent injection ([#214](https://github.com/neuralsignal/m365-extract/issues/214)) ([a967321](https://github.com/neuralsignal/m365-extract/commit/a9673216fd584b38c9eeb1ac28b2cbdafc95d415))
+* re-raise unexpected exceptions in worker instead of swallowing ([#207](https://github.com/neuralsignal/m365-extract/issues/207)) ([d22f9cc](https://github.com/neuralsignal/m365-extract/commit/d22f9cc58f21d885ece271f533f8db55e54a583b))
+* remove unused _access_token state var storing raw bearer token ([#215](https://github.com/neuralsignal/m365-extract/issues/215)) ([48ab25f](https://github.com/neuralsignal/m365-extract/commit/48ab25f6c250468d0efdf260266cd503be341e76))
+* validate user_id as UUID before filesystem path construction ([#216](https://github.com/neuralsignal/m365-extract/issues/216)) ([26ecb6f](https://github.com/neuralsignal/m365-extract/commit/26ecb6f3af79d69aa7c32317525fdea66c1d3eb5))
+
 ## [1.0.0](https://github.com/neuralsignal/m365-extract/compare/v0.3.0...v1.0.0) (2026-05-14)
 
 
