@@ -33,8 +33,8 @@ from m365_extract.extractors._message_store import (
     save_store,
     sort_key,
 )
+from m365_extract.extractors._teams_channel_ingest import chain_modified, convert_chains, fetch_chains
 from m365_extract.extractors._teams_channel_targets import discover_targets, explicit_targets
-from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChannelData, build_teams_channel_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
@@ -75,113 +75,6 @@ def run(
     state["channels_written"] = written
     log.info("teams_channels.sync_complete", written=written)
     return state, written
-
-
-def _chain_modified(root: dict, replies: list[dict]) -> str:
-    """Max lastModifiedDateTime across a root message and all its replies."""
-    times = [root.get("lastModifiedDateTime") or root.get("createdDateTime", "")]
-    times.extend(r.get("lastModifiedDateTime") or r.get("createdDateTime", "") for r in replies)
-    return max(times)
-
-
-def _fetch_chains(
-    client: GraphClient,
-    team_id: str,
-    channel_id: str,
-    watermark: str | None,
-    max_messages: int,
-) -> tuple[list[tuple[dict, list[dict]]], bool]:
-    """Fetch (root, replies) chains in chain-modified-descending order.
-
-    Stops paging as soon as a chain at or below the watermark appears (the
-    server sort guarantees everything after it is older). During backfill
-    (no watermark), stops once ``max_messages`` total messages are collected.
-    Returns ``(chains, truncated_by_cap)``.
-    """
-    url: str | None = f"/teams/{team_id}/channels/{channel_id}/messages"
-    params: dict = {"$top": str(GRAPH_PAGE_SIZE), "$expand": "replies"}
-    chains: list[tuple[dict, list[dict]]] = []
-    total = 0
-    truncated = False
-    first_page = True
-
-    while url:
-        data = client.get(url, params=params if first_page else None)
-        first_page = False
-        stop = False
-        for root in data.get("value", []):
-            replies = list(root.get("replies") or [])
-            next_link = root.get("replies@odata.nextLink")
-            while next_link:
-                reply_page = client.get(next_link, params=None)
-                replies.extend(reply_page.get("value", []))
-                next_link = reply_page.get("@odata.nextLink")
-
-            if watermark and _chain_modified(root, replies) <= watermark:
-                stop = True
-                break
-            chains.append((root, replies))
-            total += 1 + len(replies)
-            if watermark is None and total >= max_messages:
-                truncated = True
-                stop = True
-                break
-        if stop:
-            break
-        url = data.get("@odata.nextLink")
-
-    return chains, truncated
-
-
-def _convert_chains(
-    client: GraphClient,
-    storage: StorageBackend,
-    chains: list[tuple[dict, list[dict]]],
-    store: dict[str, StoredMessage],
-    base: str,
-    conv_dir: str,
-    config: TeamsChannelsExtractorConfig,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
-) -> list[StoredMessage]:
-    """Convert fetched chains to StoredMessages, skipping fresh and non-message entries."""
-    fetched: list[StoredMessage] = []
-    for root, replies in chains:
-        root_id = root.get("id", "")
-        if root.get("messageType") == "message" and not is_etag_fresh(store.get(root_id), root):
-            fetched.append(
-                to_stored_message(
-                    client,
-                    storage,
-                    root,
-                    None,
-                    f"{base}/{root_id}",
-                    conv_dir,
-                    config,
-                    converters_config,
-                    failed_attachments,
-                    store.get(root_id),
-                )
-            )
-        for reply in replies:
-            reply_id = reply.get("id", "")
-            if reply.get("messageType") != "message" or is_etag_fresh(store.get(reply_id), reply):
-                continue
-            fetched.append(
-                to_stored_message(
-                    client,
-                    storage,
-                    reply,
-                    root_id,
-                    f"{base}/{root_id}/replies/{reply_id}",
-                    conv_dir,
-                    config,
-                    converters_config,
-                    failed_attachments,
-                    store.get(reply_id),
-                )
-            )
-    return fetched
 
 
 def _write_channel(
@@ -249,7 +142,7 @@ def _process_channel(
         watermark = None
 
     try:
-        chains, truncated = _fetch_chains(client, team_id, channel_id, watermark, config.max_messages_per_channel)
+        chains, truncated = fetch_chains(client, team_id, channel_id, watermark, config.max_messages_per_channel)
     except GraphApiError as exc:
         log.warning("teams_channels.fetch_failed", team=team_name, channel=channel_name, error=str(exc))
         return False
@@ -273,7 +166,7 @@ def _process_channel(
 
     base = f"/teams/{team_id}/channels/{channel_id}/messages"
     try:
-        fetched = _convert_chains(
+        fetched = convert_chains(
             client, storage, chains, store, base, conv_dir, config, converters_config, state["failed_attachments"]
         )
     except httpx.TransportError as exc:
@@ -282,7 +175,7 @@ def _process_channel(
 
     merged, changed = merge_messages(store, fetched)
 
-    new_watermark = max(_chain_modified(root, replies) for root, replies in chains)
+    new_watermark = max(chain_modified(root, replies) for root, replies in chains)
     if new_watermark:
         state["watermarks"][key] = max(watermark or "", new_watermark)
 
