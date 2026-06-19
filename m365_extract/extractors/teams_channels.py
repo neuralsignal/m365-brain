@@ -173,6 +173,18 @@ def _load_and_convert(
     return merge_messages(store, fetched)
 
 
+def _advance_channel_watermark(
+    state: dict,
+    key: str,
+    chains: list[tuple[dict, list[dict]]],
+    watermark: str | None,
+) -> None:
+    """Advance the per-channel watermark to the max chain-modified time."""
+    new_watermark = max(chain_modified(root, replies) for root, replies in chains)
+    if new_watermark:
+        state["watermarks"][key] = max(watermark or "", new_watermark)
+
+
 def _persist_channel_data(
     storage: StorageBackend,
     state: dict,
@@ -188,9 +200,7 @@ def _persist_channel_data(
     channel_id: str,
 ) -> bool:
     """Advance the watermark, persist the store, and render markdown."""
-    new_watermark = max(chain_modified(root, replies) for root, replies in chains)
-    if new_watermark:
-        state["watermarks"][key] = max(watermark or "", new_watermark)
+    _advance_channel_watermark(state, key, chains, watermark)
     if changed or not storage.file_exists(store_path):
         # Always persist the store once a watermark exists — even empty — so
         # file existence matches the watermark and backfill never re-triggers.

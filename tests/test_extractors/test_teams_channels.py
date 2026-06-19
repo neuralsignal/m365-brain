@@ -584,3 +584,42 @@ class TestOrphanedReplies:
         content = storage.read_file(f"{CONV_DIR}/messages.md")
         assert "*(orphaned reply)*" in content
         assert "reply to system root" in content
+
+
+class TestAdvanceChannelWatermark:
+    def test_advance_sets_max_chain_modified(self):
+        state: dict = {"watermarks": {}}
+        chains: list[tuple[dict, list[dict]]] = [
+            (
+                {"lastModifiedDateTime": "2026-06-11T09:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"},
+                [{"lastModifiedDateTime": "2026-06-11T12:00:00Z", "createdDateTime": "2026-06-11T10:00:00Z"}],
+            ),
+        ]
+        teams_channels._advance_channel_watermark(state, "team:ch", chains, None)
+        assert state["watermarks"]["team:ch"] == "2026-06-11T12:00:00Z"
+
+    def test_advance_keeps_max_of_old_and_new(self):
+        state: dict = {"watermarks": {"team:ch": "2026-06-12T00:00:00Z"}}
+        chains: list[tuple[dict, list[dict]]] = [
+            (
+                {"lastModifiedDateTime": "2026-06-11T09:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"},
+                [],
+            ),
+        ]
+        teams_channels._advance_channel_watermark(state, "team:ch", chains, "2026-06-12T00:00:00Z")
+        assert state["watermarks"]["team:ch"] == "2026-06-12T00:00:00Z"
+
+    def test_multiple_chains_picks_max(self):
+        state: dict = {"watermarks": {}}
+        chains: list[tuple[dict, list[dict]]] = [
+            (
+                {"lastModifiedDateTime": "2026-06-11T09:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"},
+                [],
+            ),
+            (
+                {"lastModifiedDateTime": "2026-06-11T14:00:00Z", "createdDateTime": "2026-06-11T14:00:00Z"},
+                [{"lastModifiedDateTime": "2026-06-11T15:00:00Z", "createdDateTime": "2026-06-11T14:30:00Z"}],
+            ),
+        ]
+        teams_channels._advance_channel_watermark(state, "team:ch", chains, None)
+        assert state["watermarks"]["team:ch"] == "2026-06-11T15:00:00Z"

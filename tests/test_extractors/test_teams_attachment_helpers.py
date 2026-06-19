@@ -675,3 +675,135 @@ class TestFraudulentDomainSSRF:
 
         refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
         assert refs == []
+
+
+class TestIsDownloadable:
+    def test_reference_with_name_and_url(self) -> None:
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://example.com/spec.pdf"}
+        assert helpers._is_downloadable(att, "msg-1", {}) is True
+
+    def test_non_reference_type(self) -> None:
+        att = {"contentType": "messageReference", "name": "n", "contentUrl": "https://x"}
+        assert helpers._is_downloadable(att, "msg-1", {}) is False
+
+    def test_missing_name(self) -> None:
+        att = {"contentType": "reference", "name": "", "contentUrl": "https://x"}
+        assert helpers._is_downloadable(att, "msg-1", {}) is False
+
+    def test_missing_content_url(self) -> None:
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": ""}
+        assert helpers._is_downloadable(att, "msg-1", {}) is False
+
+    def test_previously_failed(self) -> None:
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://x"}
+        assert helpers._is_downloadable(att, "msg-1", {"msg-1:spec.pdf": "http_403"}) is False
+
+    def test_path_traversal_name_sanitized(self) -> None:
+        att = {"contentType": "reference", "name": "../../escape.txt", "contentUrl": "https://x"}
+        assert helpers._is_downloadable(att, "msg-1", {}) is True
+
+    def test_none_content_type_treated_as_non_reference(self) -> None:
+        att = {"name": "spec.pdf", "contentUrl": "https://x"}
+        assert helpers._is_downloadable(att, "msg-1", {}) is False
+
+
+class TestResolveAttachment:
+    def test_skipped_content_type_returns_none(self, tmp_path, graph_config) -> None:
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {"contentType": "messageReference", "name": "n", "contentUrl": "https://x"}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+        )
+        assert result is None
+        client.close()
+
+    def test_missing_fields_returns_none(self, tmp_path, graph_config) -> None:
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {"contentType": "reference", "name": "", "contentUrl": "https://x"}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+        )
+        assert result is None
+        client.close()
+
+    def test_unsupported_type_returns_none(self, tmp_path, graph_config) -> None:
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {
+            "contentType": "application/vnd.microsoft.card.codesnippet",
+            "name": "snippet",
+            "contentUrl": "https://x",
+        }
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+        )
+        assert result is None
+        client.close()
+
+    def test_previously_failed_returns_none(self, tmp_path, graph_config) -> None:
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://x"}
+        failed = {"msg-1:spec.pdf": "http_403"}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+        )
+        assert result is None
+        client.close()
+
+    def test_successful_download_returns_ref(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        encoded = helpers._encode_share_url(content_url)
+        httpx_mock.add_response(
+            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+        )
+        httpx_mock.add_response(url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+        )
+        assert result is not None
+        assert result.name == "spec.pdf"
+        assert result.relative_path == "attachments/msg-1/spec.pdf"
+        assert result.converted_path is None
+        client.close()
+
+    def test_permanent_failure_updates_skip_list(self, httpx_mock: HTTPXMock, tmp_path, graph_config) -> None:
+        content_url = "https://sanoptis.sharepoint.com/sites/x/secret.pdf"
+        encoded = helpers._encode_share_url(content_url)
+        httpx_mock.add_response(
+            url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
+            status_code=403,
+            text='{"error":{"code":"accessDenied","message":"denied"}}',
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        att = {"contentType": "reference", "name": "secret.pdf", "contentUrl": content_url}
+        failed: dict[str, str] = {}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+        )
+        assert result is None
+        assert failed == {"msg-1:secret.pdf": "http_403"}
+        client.close()
+
+    def test_transport_error_returns_none(self, tmp_path, graph_config) -> None:
+        from unittest.mock import MagicMock
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = MagicMock(spec=GraphClient)
+        client.get.side_effect = httpx.ConnectError("network down")
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://sanoptis.sharepoint.com/x"}
+        failed: dict[str, str] = {}
+        result = helpers._resolve_attachment(
+            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+        )
+        assert result is None
+        assert failed == {}
