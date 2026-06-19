@@ -735,3 +735,54 @@ class TestChatTitle:
         content = storage.read_file(f"{chat_dir}/messages.md")
         assert "# Project Alpha Planning" in content
         assert "teams-group" in content
+
+
+class TestBuildChatFetchParams:
+    def test_backfill_uses_cap_from_config(self):
+        config = _config(max_messages=200)
+        params, max_pages = teams_chats._build_chat_fetch_params(None, config, 10)
+        assert "$filter" not in params
+        assert "$orderby" not in params
+        assert params["$top"] == "50"
+        assert max_pages == 4
+
+    def test_incremental_uses_filter_and_client_max_pages(self):
+        config = _config(max_messages=200)
+        params, max_pages = teams_chats._build_chat_fetch_params("2026-06-10T09:00:00Z", config, 10)
+        assert params["$filter"] == "lastModifiedDateTime gt 2026-06-10T09:00:00Z"
+        assert params["$orderby"] == "lastModifiedDateTime desc"
+        assert max_pages == 10
+
+    def test_small_backfill_cap_rounds_up(self):
+        config = _config(max_messages=1)
+        _, max_pages = teams_chats._build_chat_fetch_params(None, config, 10)
+        assert max_pages == 1
+
+
+class TestAdvanceChatWatermark:
+    def test_advance_sets_max_last_modified(self):
+        state: dict = {"watermarks": {}}
+        fetched_raw = [
+            {"lastModifiedDateTime": "2026-06-11T10:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"},
+            {"lastModifiedDateTime": "2026-06-11T12:00:00Z", "createdDateTime": "2026-06-11T08:00:00Z"},
+        ]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, None, True)
+        assert state["watermarks"]["chat-1"] == "2026-06-11T12:00:00Z"
+
+    def test_no_advance_when_flag_is_false(self):
+        state: dict = {"watermarks": {"chat-1": "2026-06-10T09:00:00Z"}}
+        fetched_raw = [{"lastModifiedDateTime": "2026-06-11T12:00:00Z", "createdDateTime": "2026-06-11T08:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, "2026-06-10T09:00:00Z", False)
+        assert state["watermarks"]["chat-1"] == "2026-06-10T09:00:00Z"
+
+    def test_advance_keeps_max_of_old_and_new(self):
+        state: dict = {"watermarks": {"chat-1": "2026-06-12T00:00:00Z"}}
+        fetched_raw = [{"lastModifiedDateTime": "2026-06-11T10:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, "2026-06-12T00:00:00Z", True)
+        assert state["watermarks"]["chat-1"] == "2026-06-12T00:00:00Z"
+
+    def test_falls_back_to_created_when_last_modified_missing(self):
+        state: dict = {"watermarks": {}}
+        fetched_raw = [{"createdDateTime": "2026-06-11T09:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, None, True)
+        assert state["watermarks"]["chat-1"] == "2026-06-11T09:00:00Z"
