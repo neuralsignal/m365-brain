@@ -126,6 +126,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8c/49/cd14b789536ac6a4778c453c6a2338bc0a2fb60c5a5a41b4008328b9acc1/coverage-7.13.5-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/90/96/04b8e52da071d28f5e21a805b19cb9390aa17a47462ac87f5e2696b9566d/paginate-0.5.7-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/94/54/e7d793b573f298e1c9013b8c4dade17d481164aa517d1d7148619c2cedbf/markdown_it_py-4.0.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/94/56/2967e621598987905fb8cdfadd8f8de6b5c68c9351f0523c4df8409f28f1/pypdf-6.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/96/86/16815fddf056ca998853c6dc525397edf0b43559bb4073a80d2bc7fe8009/msal-1.35.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/99/37/e8730c3587a65eb5645d4aba2d27aae48e8003614d6aaf15dda67f702f1f/bidict-0.23.1-py3-none-any.whl
@@ -152,7 +153,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/c6/59/7d02447a55b2e55755011a647479041bc92a82e143f96a8195cb33bd0a1c/virtualenv-21.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ca/54/2e39566a131b13f6d8d193f974cb6a34e81bb7cc2fa6f7e03de067b36588/mammoth-1.11.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cb/17/378943705992f74e451a06de3401ce68e3213763c81e44d0614559c45599/pypdf-6.13.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/68/5707da262a119fb06fbe214d82dd1fe4a6f4af32d2d14de368d0349eb52a/watchfiles-1.1.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d2/29/6533c317b74f707ea28f8d633734dbda2119bbadfc61b2f3640ba835d0f7/alembic-1.18.4-py3-none-any.whl
@@ -277,6 +277,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8b/c8/cdbc975f5b634e249cfa6597e37c50f3078412474f21c015e508bfbfe3c3/pdfplumber-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/96/04b8e52da071d28f5e21a805b19cb9390aa17a47462ac87f5e2696b9566d/paginate-0.5.7-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/94/54/e7d793b573f298e1c9013b8c4dade17d481164aa517d1d7148619c2cedbf/markdown_it_py-4.0.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/94/56/2967e621598987905fb8cdfadd8f8de6b5c68c9351f0523c4df8409f28f1/pypdf-6.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/96/86/16815fddf056ca998853c6dc525397edf0b43559bb4073a80d2bc7fe8009/msal-1.35.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/99/37/e8730c3587a65eb5645d4aba2d27aae48e8003614d6aaf15dda67f702f1f/bidict-0.23.1-py3-none-any.whl
@@ -305,7 +306,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/c6/59/7d02447a55b2e55755011a647479041bc92a82e143f96a8195cb33bd0a1c/virtualenv-21.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ca/54/2e39566a131b13f6d8d193f974cb6a34e81bb7cc2fa6f7e03de067b36588/mammoth-1.11.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cb/17/378943705992f74e451a06de3401ce68e3213763c81e44d0614559c45599/pypdf-6.13.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/29/6533c317b74f707ea28f8d633734dbda2119bbadfc61b2f3640ba835d0f7/alembic-1.18.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/d4/9326838b59dc36dfae42eec9656b97520f9997eee1de47b8316aaeed169c/lxml-6.1.0-cp312-cp312-macosx_10_13_universal2.whl
@@ -442,6 +442,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8b/c8/cdbc975f5b634e249cfa6597e37c50f3078412474f21c015e508bfbfe3c3/pdfplumber-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/8c/49/cd14b789536ac6a4778c453c6a2338bc0a2fb60c5a5a41b4008328b9acc1/coverage-7.13.5-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/90/96/04b8e52da071d28f5e21a805b19cb9390aa17a47462ac87f5e2696b9566d/paginate-0.5.7-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/94/56/2967e621598987905fb8cdfadd8f8de6b5c68c9351f0523c4df8409f28f1/pypdf-6.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/96/86/16815fddf056ca998853c6dc525397edf0b43559bb4073a80d2bc7fe8009/msal-1.35.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9a/3c/c17fb3ca2d9c3acff52e30b309f538586f9f5b9c9cf454f3845fc9af4881/certifi-2026.2.25-py3-none-any.whl
@@ -463,7 +464,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/c6/59/7d02447a55b2e55755011a647479041bc92a82e143f96a8195cb33bd0a1c/virtualenv-21.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ca/54/2e39566a131b13f6d8d193f974cb6a34e81bb7cc2fa6f7e03de067b36588/mammoth-1.11.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cb/17/378943705992f74e451a06de3401ce68e3213763c81e44d0614559c45599/pypdf-6.13.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d4/24/a372aaf5c9b7208e7112038812994107bc65a84cd00e0354a88c2c77a617/pytest-9.0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/e1/3714a2f371985215c219c2a70953d38e3eed81ef165aed061d21de0e998b/cobble-0.1.4-py3-none-any.whl
@@ -573,6 +573,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/89/a0/6cf41a19a1f2f3feab0e9c0b74134aa2ce6849093d5517a0c550fe37a648/pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/8b/c8/cdbc975f5b634e249cfa6597e37c50f3078412474f21c015e508bfbfe3c3/pdfplumber-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/96/04b8e52da071d28f5e21a805b19cb9390aa17a47462ac87f5e2696b9566d/paginate-0.5.7-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/94/56/2967e621598987905fb8cdfadd8f8de6b5c68c9351f0523c4df8409f28f1/pypdf-6.13.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/96/86/16815fddf056ca998853c6dc525397edf0b43559bb4073a80d2bc7fe8009/msal-1.35.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9a/3c/c17fb3ca2d9c3acff52e30b309f538586f9f5b9c9cf454f3845fc9af4881/certifi-2026.2.25-py3-none-any.whl
@@ -594,7 +595,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/c6/59/7d02447a55b2e55755011a647479041bc92a82e143f96a8195cb33bd0a1c/virtualenv-21.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ca/54/2e39566a131b13f6d8d193f974cb6a34e81bb7cc2fa6f7e03de067b36588/mammoth-1.11.0-py2.py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/cb/17/378943705992f74e451a06de3401ce68e3213763c81e44d0614559c45599/pypdf-6.13.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/d4/9326838b59dc36dfae42eec9656b97520f9997eee1de47b8316aaeed169c/lxml-6.1.0-cp312-cp312-macosx_10_13_universal2.whl
       - pypi: https://files.pythonhosted.org/packages/d4/24/a372aaf5c9b7208e7112038812994107bc65a84cd00e0354a88c2c77a617/pytest-9.0.3-py3-none-any.whl
@@ -2599,6 +2599,31 @@ packages:
   - pytest-regressions ; extra == 'testing'
   - requests ; extra == 'testing'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/94/56/2967e621598987905fb8cdfadd8f8de6b5c68c9351f0523c4df8409f28f1/pypdf-6.13.3-py3-none-any.whl
+  name: pypdf
+  version: 6.13.3
+  sha256: c6e3f86afb625791510b02ad5480e94b63970bb957df75d44657c282ecc52224
+  requires_dist:
+  - typing-extensions>=4.0 ; python_full_version < '3.11'
+  - cryptography>3.0 ; extra == 'crypto'
+  - pycryptodome ; extra == 'cryptodome'
+  - flit ; extra == 'dev'
+  - pip-tools ; extra == 'dev'
+  - pre-commit ; extra == 'dev'
+  - pytest-cov ; extra == 'dev'
+  - pytest-socket ; extra == 'dev'
+  - pytest-timeout ; extra == 'dev'
+  - pytest-xdist ; extra == 'dev'
+  - wheel ; extra == 'dev'
+  - myst-parser ; extra == 'docs'
+  - sphinx ; extra == 'docs'
+  - sphinx-rtd-theme ; extra == 'docs'
+  - fonttools ; extra == 'fonts'
+  - cryptography>3.0 ; extra == 'full'
+  - fonttools ; extra == 'full'
+  - pillow>=8.0.0 ; extra == 'full'
+  - pillow>=8.0.0 ; extra == 'image'
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/96/86/16815fddf056ca998853c6dc525397edf0b43559bb4073a80d2bc7fe8009/msal-1.35.1-py3-none-any.whl
   name: msal
   version: 1.35.1
@@ -2943,31 +2968,6 @@ packages:
   requires_dist:
   - cobble>=0.1.3,<0.2
   requires_python: '>=3.7'
-- pypi: https://files.pythonhosted.org/packages/cb/17/378943705992f74e451a06de3401ce68e3213763c81e44d0614559c45599/pypdf-6.13.2-py3-none-any.whl
-  name: pypdf
-  version: 6.13.2
-  sha256: 6eeb9e57693f29d41bd01255d02660cbbb41fd7fc818a982677389a35e4f2083
-  requires_dist:
-  - typing-extensions>=4.0 ; python_full_version < '3.11'
-  - cryptography>3.0 ; extra == 'crypto'
-  - pycryptodome ; extra == 'cryptodome'
-  - flit ; extra == 'dev'
-  - pip-tools ; extra == 'dev'
-  - pre-commit ; extra == 'dev'
-  - pytest-cov ; extra == 'dev'
-  - pytest-socket ; extra == 'dev'
-  - pytest-timeout ; extra == 'dev'
-  - pytest-xdist ; extra == 'dev'
-  - wheel ; extra == 'dev'
-  - myst-parser ; extra == 'docs'
-  - sphinx ; extra == 'docs'
-  - sphinx-rtd-theme ; extra == 'docs'
-  - fonttools ; extra == 'fonts'
-  - cryptography>3.0 ; extra == 'full'
-  - fonttools ; extra == 'full'
-  - pillow>=8.0.0 ; extra == 'full'
-  - pillow>=8.0.0 ; extra == 'image'
-  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl
   name: iniconfig
   version: 2.3.0
