@@ -74,8 +74,9 @@ class DeviceCodeAuth:
         if self._cache.has_state_changed:
             cache_path = Path(self._config.token_cache_path)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(self._cache.serialize(), encoding="utf-8")
-            os.chmod(cache_path, 0o600)
+            fd = os.open(str(cache_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(self._cache.serialize())
 
     def _extract_token(self, result: dict) -> str:
         if "access_token" in result:
