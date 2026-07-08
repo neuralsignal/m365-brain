@@ -112,12 +112,12 @@ class TestOAuthStatePersistence:
         _store_oauth_state("token-abc")
         assert _verify_oauth_state("token-abc") is True
 
-    def test_verify_does_not_consume_token(self, state_dir):
-        """Token survives multiple verifications (Reflex fires on_load multiple times)."""
+    def test_verify_consumes_token(self, state_dir):
+        """Token is deleted after first successful verification (one-time use)."""
         _tmp, state_file = state_dir
         _store_oauth_state("token-multi")
         assert _verify_oauth_state("token-multi") is True
-        assert _verify_oauth_state("token-multi") is True
+        assert _verify_oauth_state("token-multi") is False
 
     def test_verify_unknown_token_returns_false(self, state_dir):
         _tmp, state_file = state_dir
@@ -151,6 +151,8 @@ class TestOAuthStatePersistence:
         _store_oauth_state("token-a")
         _store_oauth_state("token-b")
         assert _verify_oauth_state("token-a") is True
+        # token-a consumed, token-b still valid
+        assert _verify_oauth_state("token-a") is False
         assert _verify_oauth_state("token-b") is True
 
     @given(token=st.text(min_size=1, max_size=100, alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_"))
