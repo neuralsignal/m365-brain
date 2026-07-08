@@ -17,9 +17,11 @@ Gotchas:
 from __future__ import annotations
 
 import asyncio
-import json
+import contextlib
 import os
+import re
 import secrets
+import tempfile
 import time
 from pathlib import Path
 
@@ -32,6 +34,8 @@ from m365_extract.models import User
 
 # OAuth state tokens expire after 10 minutes
 _OAUTH_STATE_TTL_SECONDS = 600
+
+_SAFE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def extract_user_info(token_response: dict) -> dict:
@@ -49,50 +53,90 @@ def extract_user_info(token_response: dict) -> dict:
     }
 
 
-def _oauth_state_path() -> Path:
-    """Return path to the file-based OAuth state store."""
+def _oauth_state_dir() -> Path:
+    """Return path to the directory-based OAuth state store."""
     config = get_config()
-    # db_path is in the state/ directory — use its parent
-    return Path(config.web.db_path).parent / "oauth_state.json"
+    return Path(config.web.db_path).parent / "oauth_states"
+
+
+def _is_valid_token(state_token: str) -> bool:
+    """Validate that a token contains only URL-safe base64 characters."""
+    return bool(state_token) and bool(_SAFE_TOKEN_RE.match(state_token))
+
+
+def _token_path(state_dir: Path, state_token: str) -> Path:
+    """Return the per-token file path, guarding against path traversal."""
+    candidate = (state_dir / state_token).resolve()
+    if not str(candidate).startswith(str(state_dir.resolve())):
+        msg = f"Invalid token path: {state_token}"
+        raise ValueError(msg)
+    return candidate
+
+
+def _prune_expired_tokens(state_dir: Path) -> None:
+    """Remove expired token files from the state directory."""
+    now = time.time()
+    for entry in state_dir.iterdir():
+        if entry.suffix == ".tmp":
+            continue
+        try:
+            timestamp = float(entry.read_text(encoding="utf-8"))
+            if now - timestamp >= _OAUTH_STATE_TTL_SECONDS:
+                entry.unlink()
+        except (ValueError, OSError):
+            with contextlib.suppress(OSError):
+                entry.unlink()
 
 
 def _store_oauth_state(state_token: str) -> None:
-    """Persist an OAuth state token to disk so it survives Reflex state loss."""
-    path = _oauth_state_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Persist an OAuth state token as an individual file (atomic, lock-free).
 
-    data: dict[str, float] = {}
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
+    Each token is stored as a separate file — file creation via mkstemp +
+    os.replace is atomic, so concurrent logins cannot lose each other's tokens.
+    """
+    state_dir = _oauth_state_dir()
+    state_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prune expired tokens
-    now = time.time()
-    data = {k: v for k, v in data.items() if now - v < _OAUTH_STATE_TTL_SECONDS}
+    _prune_expired_tokens(state_dir)
 
-    data[state_token] = now
-    path.write_text(json.dumps(data), encoding="utf-8")
+    target = _token_path(state_dir, state_token)
+    fd, tmp_path = tempfile.mkstemp(dir=state_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+        os.replace(tmp_path, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def _verify_oauth_state(state_token: str) -> bool:
-    """Check if a state token exists and is not expired.
+    """Check if a state token file exists and is not expired.
 
     Does NOT consume the token — Reflex fires on_load multiple times per page
     load, so the token must remain valid for subsequent calls. Expired tokens
     are pruned on the next _store_oauth_state() call.
     """
-    path = _oauth_state_path()
-    if not path.exists():
+    if not _is_valid_token(state_token):
         return False
 
-    data: dict[str, float] = json.loads(path.read_text(encoding="utf-8"))
-    timestamp = data.get(state_token)
-    if timestamp is None:
+    state_dir = _oauth_state_dir()
+    if not state_dir.exists():
+        return False
+
+    target = _token_path(state_dir, state_token)
+    if not target.exists():
+        return False
+
+    try:
+        timestamp = float(target.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
         return False
 
     if time.time() - timestamp > _OAUTH_STATE_TTL_SECONDS:
-        # Expired — remove and reject
-        del data[state_token]
-        path.write_text(json.dumps(data), encoding="utf-8")
+        with contextlib.suppress(OSError):
+            target.unlink()
         return False
 
     return True
