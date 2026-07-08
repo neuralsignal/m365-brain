@@ -275,7 +275,7 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 
 ### Gotchas
 
-- **`on_load` fires multiple times per page load** — Reflex fires `on_load` handlers during both server-side render and client-side hydration. Any `on_load` handler must be idempotent. In `handle_callback()`, this means: (1) check `user_id` early-return if already authenticated, and (2) do NOT consume OAuth state tokens on verify — use TTL-based expiry instead.
+- **`on_load` fires multiple times per page load** — Reflex fires `on_load` handlers during both server-side render and client-side hydration. Any `on_load` handler must be idempotent. In `handle_callback()`, this means: check `user_id` early-return if already authenticated. OAuth state tokens ARE consumed on first successful verification (one-time use per RFC 6749 §10.12) — this is safe because Reflex serializes state events per-session, so the second `on_load` early-returns on `user_id` before reaching CSRF check.
 - **Reflex state vars must be picklable** — Reflex serializes state between requests. Never store `sqlite3.Connection`, file handles, or other unpicklable objects as state class variables. Create fresh service instances per handler call.
 - **External OAuth redirects lose Reflex state** — When the browser navigates to Entra (external redirect), the WebSocket disconnects and Reflex creates fresh state on return. Backend vars like `_oauth_state` are lost. Solution: persist OAuth state tokens to disk (`state/oauth_state.json`).
 - **`router.page.params` is deprecated** — Use `self.router.url.query_parameters` (Reflex >=0.8.1). `router.url` is a `ReflexURL` (subclass of `str`); `query_parameters` is a frozen dict from `urllib.parse.parse_qsl`.
