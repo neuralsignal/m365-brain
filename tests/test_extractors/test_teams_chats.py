@@ -756,6 +756,77 @@ class TestPerChatIsolation:
         assert state["watermarks"][CHAT_ID] == "2026-06-10T09:00:00Z"
 
 
+class TestConvertedAttachmentRendering:
+    def test_converted_attachment_renders_text_link(self, httpx_mock: HTTPXMock, storage, client):
+        """When an attachment has a converted_path, both the raw and (text) links are rendered."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=True,
+            download_inline_images=False,
+            max_attachment_size_mb=100,
+            attachment_convert_extensions=[".pdf"],
+        )
+        content_url = "https://example.sharepoint.com/sites/x/report.pdf"
+        _mock_chats(httpx_mock)
+        msg = _graph_msg("msg-conv", "2026-06-10T09:00:00Z", content="see converted")
+        msg["attachments"] = [{"contentType": "reference", "name": "report.pdf", "contentUrl": content_url}]
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/shares/.*/driveItem.*"),
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://example.sharepoint.com/dl?t=x"},
+        )
+        httpx_mock.add_response(url=re.compile(r"https://example\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+
+        with patch("m365_extract.extractors._teams_attachment_helpers.convert_and_store", return_value=True):
+            teams_chats.run(client, storage, {}, config, {})
+
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "[report.pdf](attachments/msg-conv/report.pdf)" in content
+        assert "[report.pdf (text)](attachments_converted/msg-conv/report.pdf.md)" in content
+
+
+class TestInlineImageDownload:
+    def test_inline_images_downloaded_when_enabled(self, httpx_mock: HTTPXMock, storage, client):
+        """When download_inline_images=True, hosted images are downloaded and body src is rewritten."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=False,
+            download_inline_images=True,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
+        )
+        hid = "aWQxMjM"
+        _mock_chats(httpx_mock)
+        html_body = (
+            f"<p>Look at this:</p>"
+            f'<img src="https://graph.microsoft.com/v1.0/chats/{CHAT_ID}/messages/m1'
+            f'/hostedContents/{hid}/$value" alt="screenshot" />'
+        )
+        msg = _graph_msg("m1", "2026-06-11T09:00:00Z", content=html_body)
+        msg["body"]["contentType"] = "html"
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages\?.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/hostedContents\?.*"),
+            json={"value": [{"id": hid}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/hostedContents/.*/\$value"),
+            content=b"\x89PNG fake image bytes",
+            headers={"Content-Type": "image/png"},
+        )
+
+        state, count = teams_chats.run(client, storage, {}, config, {})
+
+        assert count == 1
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "attachments/m1/inline_0.png" in content
+        assert storage.file_exists(f"{CHAT_DIR}/attachments/m1/inline_0.png")
+
+
 class TestChatTitle:
     def test_topic_used_as_title(self, httpx_mock: HTTPXMock, storage, client):
         httpx_mock.add_response(
