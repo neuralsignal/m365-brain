@@ -7,8 +7,10 @@ Gotchas:
     - External OAuth redirects (Entra) disconnect the WebSocket and reset
       Reflex state. OAuth state tokens are persisted to state/oauth_state.json
       instead of using backend vars.
-    - State tokens are NOT consumed on verify — they expire via 10-minute TTL
-      and are pruned lazily on the next _store_oauth_state() call.
+    - State tokens are consumed (deleted) on first successful verification.
+      This is safe because Reflex serializes state events per-session — the
+      second on_load won't start until the first completes, by which time
+      user_id is set and the early-return skips CSRF verification entirely.
     - handle_callback() offloads MSAL + SQLModel calls to asyncio.to_thread()
       to avoid blocking the Granian event loop. Without this, dev hot reloads
       caused 'Killing worker-0' warnings.
@@ -30,8 +32,9 @@ from m365_admin.services.token_service import TokenService
 from m365_extract.auth.auth_code import AuthCodeAuth, AuthCodeError
 from m365_extract.models import User
 
-# OAuth state tokens expire after 10 minutes
-_OAUTH_STATE_TTL_SECONDS = 600
+# OAuth state tokens expire after 2 minutes (defense-in-depth; tokens are
+# consumed on first use, so TTL only covers the login-to-callback window)
+_OAUTH_STATE_TTL_SECONDS = 120
 
 
 def extract_user_info(token_response: dict) -> dict:
@@ -74,11 +77,11 @@ def _store_oauth_state(state_token: str) -> None:
 
 
 def _verify_oauth_state(state_token: str) -> bool:
-    """Check if a state token exists and is not expired.
+    """Check if a state token exists and is not expired, then consume it.
 
-    Does NOT consume the token — Reflex fires on_load multiple times per page
-    load, so the token must remain valid for subsequent calls. Expired tokens
-    are pruned on the next _store_oauth_state() call.
+    The token is deleted on successful verification (one-time use) per
+    RFC 6749 §10.12. Reflex serializes state events per-session, so the
+    second on_load early-returns on user_id before reaching this check.
     """
     path = _oauth_state_path()
     if not path.exists():
@@ -90,11 +93,13 @@ def _verify_oauth_state(state_token: str) -> bool:
         return False
 
     if time.time() - timestamp > _OAUTH_STATE_TTL_SECONDS:
-        # Expired — remove and reject
         del data[state_token]
         path.write_text(json.dumps(data), encoding="utf-8")
         return False
 
+    # Consume: delete the token so it cannot be replayed
+    del data[state_token]
+    path.write_text(json.dumps(data), encoding="utf-8")
     return True
 
 
