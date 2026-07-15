@@ -428,6 +428,17 @@ class TestFiltering:
 
         assert count == 0
 
+    def test_transport_error_on_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("network down"), url=re.compile(r".*/me/chats/.*/messages.*"), is_reusable=True
+        )
+
+        state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert CHAT_ID not in state["watermarks"]
+
 
 class TestRendering:
     def test_new_standard_format(self, httpx_mock: HTTPXMock, storage, client):
@@ -466,13 +477,13 @@ class TestRendering:
         assert content.index("## Observations") < content.index("## Messages")
 
     def test_relations_section_rendered_for_long_participant_names(self, httpx_mock: HTTPXMock, storage, client):
-        """Participant names whose slugs exceed 5 chars emit a Relations section with wiki-links."""
+        chat_id = "19:relations-chat"
         httpx_mock.add_response(
             url=re.compile(r".*/me/chats\?.*"),
             json={
                 "value": [
                     {
-                        "id": CHAT_ID,
+                        "id": chat_id,
                         "chatType": "oneOnOne",
                         "topic": None,
                         "members": [
@@ -490,7 +501,7 @@ class TestRendering:
 
         teams_chats.run(client, storage, {}, _config(), {})
 
-        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(CHAT_ID, 6)}"
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(chat_id, 6)}"
         content = storage.read_file(f"{chat_dir}/messages.md")
         assert "## Relations" in content
         assert "[[contact-matthias-christenson]]" in content
