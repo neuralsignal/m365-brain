@@ -563,6 +563,74 @@ class TestDownloadInlineImages:
         )
         client.close()
 
+    def test_empty_hosted_content_id_skipped(self, tmp_path, graph_config) -> None:
+        from unittest.mock import MagicMock
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.max_pages = 5
+        mock_client.get_paginated.return_value = iter([{"id": ""}, {"id": "HID-VALID"}])
+        mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
+
+        hosted_map = hosted_content.download_inline_images(
+            mock_client,
+            storage,
+            "/chats/19:pqr/messages/6",
+            {"id": "6"},
+            "teams-chats/foo_abc",
+            _config(),
+        )
+
+        assert "HID-VALID" in hosted_map
+        assert len(hosted_map) == 1
+        mock_client.get_bytes_with_content_type.assert_called_once()
+
+    def test_storage_error_on_write_skips_item(self, tmp_path, graph_config) -> None:
+        from unittest.mock import MagicMock
+
+        from m365_extract.storage.exceptions import StorageError
+
+        mock_storage = MagicMock(spec=LocalBackend)
+        mock_storage.write_bytes.side_effect = StorageError("disk full")
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.max_pages = 5
+        mock_client.get_paginated.return_value = iter([{"id": "HID-ERR"}])
+        mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
+
+        hosted_map = hosted_content.download_inline_images(
+            mock_client,
+            mock_storage,
+            "/chats/19:stu/messages/7",
+            {"id": "7"},
+            "teams-chats/foo_abc",
+            _config(),
+        )
+
+        assert hosted_map == {}
+        mock_storage.write_bytes.assert_called_once()
+
+    def test_os_error_on_write_skips_item(self, tmp_path, graph_config) -> None:
+        from unittest.mock import MagicMock
+
+        mock_storage = MagicMock(spec=LocalBackend)
+        mock_storage.write_bytes.side_effect = OSError("permission denied")
+        mock_client = MagicMock(spec=GraphClient)
+        mock_client.max_pages = 5
+        mock_client.get_paginated.return_value = iter([{"id": "HID-OS"}])
+        mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
+
+        hosted_map = hosted_content.download_inline_images(
+            mock_client,
+            mock_storage,
+            "/chats/19:vwx/messages/8",
+            {"id": "8"},
+            "teams-chats/foo_abc",
+            _config(),
+        )
+
+        assert hosted_map == {}
+        mock_storage.write_bytes.assert_called_once()
+
 
 class TestSkipsEmpty:
     def test_no_attachments_returns_empty(self, tmp_path, graph_config) -> None:
