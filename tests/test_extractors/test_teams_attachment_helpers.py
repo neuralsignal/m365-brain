@@ -569,7 +569,7 @@ class TestDownloadInlineImages:
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock(spec=GraphClient)
         mock_client.max_pages = 5
-        mock_client.get_paginated.return_value = iter([{"id": ""}, {"id": "HID-VALID"}])
+        mock_client.get_paginated.return_value = iter([{"id": ""}, {}, {"id": "HID-VALID"}])
         mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
 
         hosted_map = hosted_content.download_inline_images(
