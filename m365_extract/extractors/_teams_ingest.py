@@ -76,8 +76,9 @@ def to_stored_message(
     the prior content and attachment refs are kept and no downloads run.
     """
     if _can_reuse_media(msg, prior, failed_attachments):
-        content = prior.content  # type: ignore[union-attr]  # guarded by _can_reuse_media
-        attachments = prior.attachments  # type: ignore[union-attr]
+        assert prior is not None
+        content = prior.content
+        attachments = prior.attachments
         log.debug("teams_ingest.media_reused", msg_id=msg.get("id", ""))
     else:
         if settings.download_inline_images:
