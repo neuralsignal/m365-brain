@@ -838,6 +838,39 @@ class TestInlineImageDownload:
         assert storage.file_exists(f"{CHAT_DIR}/attachments/m1/inline_0.png")
 
 
+class TestRelations:
+    def test_long_participant_names_produce_relation_links(self, httpx_mock: HTTPXMock, storage, client):
+        """Participant slugs longer than 5 chars emit a Relations section with contact links."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": CHAT_ID,
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [
+                            {"displayName": "Matthias Christenson"},
+                            {"displayName": "Samuel Scholl"},
+                        ],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:00:00Z")]},
+        )
+
+        teams_chats.run(client, storage, {}, _config(), {})
+
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(CHAT_ID, 6)}"
+        content = storage.read_file(f"{chat_dir}/messages.md")
+        assert "## Relations" in content
+        assert "[[contact-matthias-christenson]]" in content
+        assert "[[contact-samuel-scholl]]" in content
+
+
 class TestChatTitle:
     def test_topic_used_as_title(self, httpx_mock: HTTPXMock, storage, client):
         httpx_mock.add_response(
