@@ -520,6 +520,51 @@ class TestRendering:
         assert "*(deleted)*" in content
         assert "*Message deleted.*" in content
 
+    def test_relations_section_rendered_for_long_participant_names(self, httpx_mock: HTTPXMock, storage, client):
+        """Participants with slugified names > 5 chars produce a Relations section."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": CHAT_ID,
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [{"displayName": "Matthias Christenson"}, {"displayName": "Samuel Scholl"}],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:42:00Z")]},
+        )
+
+        teams_chats.run(client, storage, {}, _config(), {})
+
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(CHAT_ID, 6)}"
+        content = storage.read_file(f"{chat_dir}/messages.md")
+        assert "## Relations" in content
+        assert "[[contact-matthias-christenson]]" in content
+        assert "[[contact-samuel-scholl]]" in content
+
+
+class TestFetchTransportError:
+    def test_transport_error_during_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        """An httpx.TransportError from the message fetch must skip the chat gracefully."""
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("network down"), url=re.compile(r".*/me/chats/.*/messages.*"), is_reusable=True
+        )
+
+        errors: list[str] = []
+        with patch.object(teams_chats.log, "error", side_effect=lambda e, **kw: errors.append(e)):
+            state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert "teams_chats.fetch_transport_error" in errors
+        assert CHAT_ID not in state["watermarks"]
+
 
 class TestAttachments:
     def test_attachment_links_survive_re_render(self, httpx_mock: HTTPXMock, storage, client):
