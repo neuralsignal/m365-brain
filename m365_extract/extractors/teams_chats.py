@@ -33,6 +33,7 @@ from m365_extract.extractors._message_store import (
     save_store,
     sort_key,
 )
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChatData, build_teams_chat_frontmatter
@@ -69,7 +70,16 @@ def run(
 
     written = 0
     for chat in chats:
-        if _process_chat(client, storage, chat, state, config, converters_config):
+        _, chat_dir, _ = _chat_title_and_dir(chat)
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=config,
+            converters_config=converters_config,
+            failed_attachments=state["failed_attachments"],
+            conv_dir=chat_dir,
+        )
+        if _process_chat(ctx, chat, state, config):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -150,15 +160,10 @@ def _build_chat_fetch_params(
 
 
 def _ingest_chat_messages(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     store: dict[str, StoredMessage],
     fetched_raw: list[dict],
     chat_id: str,
-    chat_dir: str,
-    config: TeamsChatsExtractorConfig,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
 ) -> list[StoredMessage]:
     """Convert raw Graph messages to StoredMessages, skipping non-message and fresh entries."""
     fetched: list[StoredMessage] = []
@@ -168,20 +173,7 @@ def _ingest_chat_messages(
         prior = store.get(msg.get("id", ""))
         if is_etag_fresh(prior, msg):
             continue
-        fetched.append(
-            to_stored_message(
-                client,
-                storage,
-                msg,
-                None,
-                f"/chats/{chat_id}/messages/{msg.get('id', '')}",
-                chat_dir,
-                config,
-                converters_config,
-                failed_attachments,
-                prior,
-            )
-        )
+        fetched.append(to_stored_message(ctx, msg, None, f"/chats/{chat_id}/messages/{msg.get('id', '')}", prior))
     return fetched
 
 
@@ -201,12 +193,10 @@ def _advance_chat_watermark(
 
 
 def _process_chat(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     chat: dict,
     state: dict,
     config: TeamsChatsExtractorConfig,
-    converters_config: dict,
 ) -> bool:
     """Process a single chat: fetch, merge, render. Returns True if written.
 
@@ -214,18 +204,17 @@ def _process_chat(
     (without advancing its watermark) and the sync cycle continues.
     """
     chat_id = chat.get("id", "")
-    _, chat_dir, _ = _chat_title_and_dir(chat)
-    store_path = f"{chat_dir}/messages.jsonl"
+    store_path = f"{ctx.conv_dir}/messages.jsonl"
 
     watermark = state["watermarks"].get(chat_id)
-    if watermark and not storage.file_exists(store_path):
+    if watermark and not ctx.storage.file_exists(store_path):
         log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
         watermark = None
 
-    params, max_pages = _build_chat_fetch_params(watermark, config, client.max_pages)
+    params, max_pages = _build_chat_fetch_params(watermark, config, ctx.client.max_pages)
 
     try:
-        fetched_raw, truncated = client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
+        fetched_raw, truncated = ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
     except GraphApiError as exc:
         log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
         return False
@@ -249,23 +238,13 @@ def _process_chat(
         )
 
     try:
-        store = load_store(storage, store_path)
+        store = load_store(ctx.storage, store_path)
     except MessageStoreError as exc:
         log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
         return False
 
     try:
-        fetched = _ingest_chat_messages(
-            client,
-            storage,
-            store,
-            fetched_raw,
-            chat_id,
-            chat_dir,
-            config,
-            converters_config,
-            state["failed_attachments"],
-        )
+        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
     except httpx.TransportError as exc:
         log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
         return False
@@ -273,10 +252,10 @@ def _process_chat(
     merged, changed = merge_messages(store, fetched)
     _advance_chat_watermark(state, chat_id, fetched_raw, watermark, advance)
 
-    if changed or not storage.file_exists(store_path):
-        save_store(storage, store_path, merged)
+    if changed or not ctx.storage.file_exists(store_path):
+        save_store(ctx.storage, store_path, merged)
 
     if not changed:
         return False
-    _write_chat(storage, chat, merged, chat_dir, state["history_complete"].get(chat_id, False))
+    _write_chat(ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False))
     return True

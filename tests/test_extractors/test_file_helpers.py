@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from unittest.mock import MagicMock, patch
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -543,3 +545,19 @@ class TestGraphApiErrorNotSwallowed:
         assert fm["conversion_status"] == "error_no_download_url"
         content = storage.read_file("onedrive/report.md")
         assert "No download URL available" in content
+
+
+class TestFileProcessingContextImmutable:
+    def test_is_frozen(self):
+        ctx = FileProcessingContext(
+            client=MagicMock(),
+            storage=MagicMock(),
+            file_config=FileProcessingConfig(
+                eager_patterns=[],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
+        )
+        with pytest.raises(FrozenInstanceError):
+            ctx.storage = MagicMock()  # type: ignore[misc]

@@ -15,13 +15,11 @@ import structlog
 from m365_extract.extractors._message_helpers import extract_content, extract_sender
 from m365_extract.extractors._message_store import StoredMessage
 from m365_extract.extractors._teams_attachment_helpers import (
-    AttachmentSettings,
     download_message_attachments,
     downloadable_attachment_names,
 )
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_hosted_content import download_inline_images
-from m365_extract.graph_client import GraphClient
-from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
 
@@ -56,15 +54,10 @@ def _can_reuse_media(msg: dict, prior: StoredMessage | None, failed_attachments:
 
 
 def to_stored_message(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     msg: dict,
     parent_id: str | None,
     message_api_base: str,
-    conv_dir: str,
-    settings: AttachmentSettings,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
     prior: StoredMessage | None,
 ) -> StoredMessage:
     """Convert a Graph chat/channel message to a StoredMessage, downloading its media.
@@ -75,20 +68,18 @@ def to_stored_message(
     hostedContents route. When ``prior`` is reusable (see ``_can_reuse_media``)
     the prior content and attachment refs are kept and no downloads run.
     """
-    if _can_reuse_media(msg, prior, failed_attachments):
+    if _can_reuse_media(msg, prior, ctx.failed_attachments):
         assert prior is not None
         content = prior.content
         attachments = prior.attachments
         log.debug("teams_ingest.media_reused", msg_id=msg.get("id", ""))
     else:
-        if settings.download_inline_images:
-            hosted_map = download_inline_images(client, storage, message_api_base, msg, conv_dir, settings)
+        if ctx.settings.download_inline_images:
+            hosted_map = download_inline_images(ctx, message_api_base, msg)
         else:
             hosted_map = {}
-        if settings.download_attachments:
-            refs = download_message_attachments(
-                client, storage, msg, conv_dir, settings, converters_config, failed_attachments
-            )
+        if ctx.settings.download_attachments:
+            refs = download_message_attachments(ctx, msg)
         else:
             refs = []
         content = extract_content(msg, hosted_map)

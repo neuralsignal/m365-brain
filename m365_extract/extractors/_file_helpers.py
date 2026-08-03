@@ -120,9 +120,7 @@ def process_drive_item(
                 limit_mb=ctx.file_config.max_file_size_mb,
             )
             frontmatter["conversion_status"] = "error_too_large"
-            body = (
-                f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB."
-            )
+            body = f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB."
             content = dumps_markdown(frontmatter, body)
             ctx.storage.write_file(storage_path, content)
             return True

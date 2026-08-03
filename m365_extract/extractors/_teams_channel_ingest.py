@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import structlog
 
-from m365_extract.config import TeamsChannelsExtractorConfig
 from m365_extract.extractors._message_store import StoredMessage
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_extract.graph_client import GraphClient
-from m365_extract.storage.base import StorageBackend
 
 log = structlog.get_logger()
 
@@ -77,51 +76,22 @@ def fetch_chains(
 
 
 def convert_chains(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     chains: list[tuple[dict, list[dict]]],
     store: dict[str, StoredMessage],
     base: str,
-    conv_dir: str,
-    config: TeamsChannelsExtractorConfig,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
 ) -> list[StoredMessage]:
     """Convert fetched chains to StoredMessages, skipping fresh and non-message entries."""
     fetched: list[StoredMessage] = []
     for root, replies in chains:
         root_id = root.get("id", "")
         if root.get("messageType") == "message" and not is_etag_fresh(store.get(root_id), root):
-            fetched.append(
-                to_stored_message(
-                    client,
-                    storage,
-                    root,
-                    None,
-                    f"{base}/{root_id}",
-                    conv_dir,
-                    config,
-                    converters_config,
-                    failed_attachments,
-                    store.get(root_id),
-                )
-            )
+            fetched.append(to_stored_message(ctx, root, None, f"{base}/{root_id}", store.get(root_id)))
         for reply in replies:
             reply_id = reply.get("id", "")
             if reply.get("messageType") != "message" or is_etag_fresh(store.get(reply_id), reply):
                 continue
             fetched.append(
-                to_stored_message(
-                    client,
-                    storage,
-                    reply,
-                    root_id,
-                    f"{base}/{root_id}/replies/{reply_id}",
-                    conv_dir,
-                    config,
-                    converters_config,
-                    failed_attachments,
-                    store.get(reply_id),
-                )
+                to_stored_message(ctx, reply, root_id, f"{base}/{root_id}/replies/{reply_id}", store.get(reply_id))
             )
     return fetched

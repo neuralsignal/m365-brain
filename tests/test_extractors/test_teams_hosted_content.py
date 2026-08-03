@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from m365_extract.config import TeamsChatsExtractorConfig
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_hosted_content import download_inline_images
 from m365_extract.storage.exceptions import StorageError
 
@@ -29,13 +30,35 @@ def _make_client(items: list[dict]) -> MagicMock:
     return client
 
 
+def _ctx(
+    client,
+    storage,
+    conv_dir: str,
+    *,
+    settings=None,
+    converters_config: dict | None = None,
+    failed_attachments: dict[str, str] | None = None,
+) -> TeamsContext:
+    """Build a TeamsContext for direct helper calls."""
+    return TeamsContext(
+        client=client,
+        storage=storage,
+        settings=settings,
+        converters_config=converters_config if converters_config is not None else {},
+        failed_attachments=failed_attachments if failed_attachments is not None else {},
+        conv_dir=conv_dir,
+    )
+
+
 class TestEmptyHostedContentId:
     def test_empty_id_is_skipped(self):
         client = _make_client([{"id": ""}, {"id": "hc-valid"}])
         storage = MagicMock()
         msg = {"id": "m1"}
 
-        result = download_inline_images(client, storage, "/chats/c1/messages/m1", msg, "conv", _settings())
+        result = download_inline_images(
+            _ctx(client, storage, "conv", settings=_settings()), "/chats/c1/messages/m1", msg
+        )
 
         assert "hc-valid" in result
         assert len(result) == 1
@@ -46,7 +69,9 @@ class TestEmptyHostedContentId:
         storage = MagicMock()
         msg = {"id": "m1"}
 
-        result = download_inline_images(client, storage, "/chats/c1/messages/m1", msg, "conv", _settings())
+        result = download_inline_images(
+            _ctx(client, storage, "conv", settings=_settings()), "/chats/c1/messages/m1", msg
+        )
 
         assert "hc-ok" in result
         assert len(result) == 1
@@ -62,7 +87,9 @@ class TestStorageWriteFailure:
         ]
         msg = {"id": "m1"}
 
-        result = download_inline_images(client, storage, "/chats/c1/messages/m1", msg, "conv", _settings())
+        result = download_inline_images(
+            _ctx(client, storage, "conv", settings=_settings()), "/chats/c1/messages/m1", msg
+        )
 
         assert "hc1" not in result
         assert "hc2" in result
@@ -77,7 +104,9 @@ class TestStorageWriteFailure:
         ]
         msg = {"id": "m1"}
 
-        result = download_inline_images(client, storage, "/chats/c1/messages/m1", msg, "conv", _settings())
+        result = download_inline_images(
+            _ctx(client, storage, "conv", settings=_settings()), "/chats/c1/messages/m1", msg
+        )
 
         assert "hc1" not in result
         assert "hc2" in result
@@ -88,6 +117,8 @@ class TestStorageWriteFailure:
         storage.write_bytes.side_effect = StorageError("boom")
         msg = {"id": "m1"}
 
-        result = download_inline_images(client, storage, "/chats/c1/messages/m1", msg, "conv", _settings())
+        result = download_inline_images(
+            _ctx(client, storage, "conv", settings=_settings()), "/chats/c1/messages/m1", msg
+        )
 
         assert result == {}

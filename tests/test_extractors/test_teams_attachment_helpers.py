@@ -13,6 +13,7 @@ from pytest_httpx import HTTPXMock
 from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
 from m365_extract.extractors import _teams_attachment_helpers as helpers
 from m365_extract.extractors import _teams_hosted_content as hosted_content
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.graph_client import GraphApiError, GraphClient
 from m365_extract.storage.local import LocalBackend
 
@@ -38,6 +39,26 @@ def _config(*, convert: list[str] | None = None, max_mb: int = 100) -> TeamsChat
         download_inline_images=True,
         max_attachment_size_mb=max_mb,
         attachment_convert_extensions=convert if convert is not None else [],
+    )
+
+
+def _ctx(
+    client,
+    storage,
+    conv_dir: str,
+    *,
+    settings=None,
+    converters_config: dict | None = None,
+    failed_attachments: dict[str, str] | None = None,
+) -> TeamsContext:
+    """Build a TeamsContext for direct helper calls."""
+    return TeamsContext(
+        client=client,
+        storage=storage,
+        settings=settings,
+        converters_config=converters_config if converters_config is not None else {},
+        failed_attachments=failed_attachments if failed_attachments is not None else {},
+        conv_dir=conv_dir,
     )
 
 
@@ -83,7 +104,12 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert len(refs) == 1
         assert refs[0].name == "spec.pdf"
@@ -104,7 +130,12 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert refs == []
         assert httpx_mock.get_requests() == []
@@ -130,7 +161,15 @@ class TestDownloadMessageAttachments:
         }
 
         refs = helpers.download_message_attachments(
-            client, storage, msg, "teams-chats/foo_abc", _config(max_mb=100), {}, {}
+            _ctx(
+                client,
+                storage,
+                "teams-chats/foo_abc",
+                settings=_config(max_mb=100),
+                converters_config={},
+                failed_attachments={},
+            ),
+            msg,
         )
 
         assert refs == []
@@ -152,7 +191,12 @@ class TestDownloadMessageAttachments:
             "attachments": [{"contentType": "reference", "name": "nourl.pdf", "contentUrl": content_url}],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert refs == []
         client.close()
@@ -168,7 +212,12 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert refs == []
         client.close()
@@ -187,7 +236,12 @@ class TestDownloadMessageAttachments:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert refs == []
         client.close()
@@ -217,13 +271,15 @@ class TestDownloadMessageAttachments:
 
         with patch.object(helpers, "convert_and_store") as mock_conv:
             refs = helpers.download_message_attachments(
-                client,
-                storage,
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(convert=[".pdf"]),
+                    converters_config={"backends": {"pdf": "markitdown"}},
+                    failed_attachments={},
+                ),
                 msg,
-                "teams-chats/foo_abc",
-                _config(convert=[".pdf"]),
-                {"backends": {"pdf": "markitdown"}},
-                {},
             )
 
         assert mock_conv.call_count == 1
@@ -258,13 +314,15 @@ class TestDownloadMessageAttachments:
 
         with patch.object(helpers, "convert_and_store", return_value=False):
             refs = helpers.download_message_attachments(
-                client,
-                storage,
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(convert=[".pdf"]),
+                    converters_config={"backends": {"pdf": "markitdown"}},
+                    failed_attachments={},
+                ),
                 msg,
-                "teams-chats/foo_abc",
-                _config(convert=[".pdf"]),
-                {"backends": {"pdf": "markitdown"}},
-                {},
             )
 
         assert refs[0].converted_path is None
@@ -293,7 +351,12 @@ class TestDownloadMessageAttachments:
             "attachments": [{"contentType": "reference", "name": "../../escape.txt", "contentUrl": content_url}],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
 
         assert len(refs) == 1
         assert refs[0].name == "escape.txt"
@@ -331,7 +394,15 @@ class TestDownloadMessageAttachments:
         failed: dict[str, str] = {}
         with patch.object(helpers.log, "warning", side_effect=capture):
             refs = helpers.download_message_attachments(
-                client, storage, msg, "teams-chats/foo_abc", _config(), {}, failed
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments=failed,
+                ),
+                msg,
             )
 
         assert refs == []
@@ -371,7 +442,15 @@ class TestPermanentFailureSkipList:
 
         with patch.object(helpers.log, "warning", side_effect=capture):
             refs = helpers.download_message_attachments(
-                client, storage, self._msg(content_url), "teams-chats/foo_abc", _config(), {}, failed
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments=failed,
+                ),
+                self._msg(content_url),
             )
 
         assert refs == []
@@ -393,7 +472,15 @@ class TestPermanentFailureSkipList:
 
         with patch.object(helpers.log, "warning", side_effect=capture):
             refs = helpers.download_message_attachments(
-                client, storage, self._msg(content_url), "teams-chats/foo_abc", _config(), {}, failed
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments=failed,
+                ),
+                self._msg(content_url),
             )
 
         assert refs == []
@@ -418,7 +505,17 @@ class TestPermanentFailureSkipList:
             warnings.append({"event": event, **kwargs})
 
         with patch.object(helpers.log, "warning", side_effect=capture):
-            refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+            refs = helpers.download_message_attachments(
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments={},
+                ),
+                msg,
+            )
 
         assert refs == []
         assert warnings == []
@@ -446,7 +543,7 @@ class TestDownloadInlineImages:
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
-            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config()
+            _ctx(client, storage, "teams-chats/foo_abc", settings=_config()), f"/chats/{chat_id}/messages/{msg_id}", msg
         )
 
         assert hosted_map == {hid: f"attachments/{msg_id}/inline_0.png"}
@@ -473,7 +570,7 @@ class TestDownloadInlineImages:
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
-            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config()
+            _ctx(client, storage, "teams-chats/foo_abc", settings=_config()), f"/chats/{chat_id}/messages/{msg_id}", msg
         )
 
         assert hosted_map[hid].endswith("inline_0.bin")
@@ -499,7 +596,9 @@ class TestDownloadInlineImages:
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
-            client, storage, f"/chats/{chat_id}/messages/{msg_id}", msg, "teams-chats/foo_abc", _config(max_mb=1)
+            _ctx(client, storage, "teams-chats/foo_abc", settings=_config(max_mb=1)),
+            f"/chats/{chat_id}/messages/{msg_id}",
+            msg,
         )
 
         assert hosted_map == {}
@@ -524,7 +623,9 @@ class TestDownloadInlineImages:
         client = GraphClient(graph_config, lambda: "test-token")
 
         hosted_map = hosted_content.download_inline_images(
-            client, storage, f"/chats/{chat_id}/messages/{msg_id}", {"id": msg_id}, "teams-chats/foo_abc", _config()
+            _ctx(client, storage, "teams-chats/foo_abc", settings=_config()),
+            f"/chats/{chat_id}/messages/{msg_id}",
+            {"id": msg_id},
         )
 
         assert hosted_map == {}
@@ -542,12 +643,9 @@ class TestDownloadInlineImages:
         mock_client.get_bytes_with_content_type.side_effect = httpx.ConnectError("boom")
 
         hosted_map = hosted_content.download_inline_images(
-            mock_client,
-            storage,
+            _ctx(mock_client, storage, "teams-chats/foo_abc", settings=_config()),
             f"/chats/{chat_id}/messages/{msg_id}",
             {"id": msg_id},
-            "teams-chats/foo_abc",
-            _config(),
         )
 
         assert hosted_map == {}
@@ -557,7 +655,7 @@ class TestDownloadInlineImages:
         client = GraphClient(graph_config, lambda: "test-token")
         assert (
             hosted_content.download_inline_images(
-                client, storage, "/chats/19:abc/messages/x", {}, "teams-chats/foo_abc", _config()
+                _ctx(client, storage, "teams-chats/foo_abc", settings=_config()), "/chats/19:abc/messages/x", {}
             )
             == {}
         )
@@ -573,12 +671,9 @@ class TestDownloadInlineImages:
         mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
 
         hosted_map = hosted_content.download_inline_images(
-            mock_client,
-            storage,
+            _ctx(mock_client, storage, "teams-chats/foo_abc", settings=_config()),
             "/chats/19:pqr/messages/6",
             {"id": "6"},
-            "teams-chats/foo_abc",
-            _config(),
         )
 
         assert "HID-VALID" in hosted_map
@@ -598,12 +693,9 @@ class TestDownloadInlineImages:
         mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
 
         hosted_map = hosted_content.download_inline_images(
-            mock_client,
-            mock_storage,
+            _ctx(mock_client, mock_storage, "teams-chats/foo_abc", settings=_config()),
             "/chats/19:stu/messages/7",
             {"id": "7"},
-            "teams-chats/foo_abc",
-            _config(),
         )
 
         assert hosted_map == {}
@@ -620,12 +712,9 @@ class TestDownloadInlineImages:
         mock_client.get_bytes_with_content_type.return_value = (b"\x89PNG\r\n\x1a\n", "image/png")
 
         hosted_map = hosted_content.download_inline_images(
-            mock_client,
-            mock_storage,
+            _ctx(mock_client, mock_storage, "teams-chats/foo_abc", settings=_config()),
             "/chats/19:vwx/messages/8",
             {"id": "8"},
-            "teams-chats/foo_abc",
-            _config(),
         )
 
         assert hosted_map == {}
@@ -637,7 +726,17 @@ class TestSkipsEmpty:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
         assert (
-            helpers.download_message_attachments(client, storage, {"id": "x"}, "teams-chats/foo_abc", _config(), {}, {})
+            helpers.download_message_attachments(
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments={},
+                ),
+                {"id": "x"},
+            )
             == []
         )
         client.close()
@@ -647,7 +746,18 @@ class TestSkipsEmpty:
         client = GraphClient(graph_config, lambda: "test-token")
         msg = {"attachments": [{"contentType": "reference", "name": "x", "contentUrl": "https://y"}]}
         assert (
-            helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {}) == []
+            helpers.download_message_attachments(
+                _ctx(
+                    client,
+                    storage,
+                    "teams-chats/foo_abc",
+                    settings=_config(),
+                    converters_config={},
+                    failed_attachments={},
+                ),
+                msg,
+            )
+            == []
         )
         client.close()
 
@@ -673,7 +783,12 @@ class TestFraudulentDomainSSRF:
             ],
         }
 
-        refs = helpers.download_message_attachments(client, storage, msg, "teams-chats/foo_abc", _config(), {}, {})
+        refs = helpers.download_message_attachments(
+            _ctx(
+                client, storage, "teams-chats/foo_abc", settings=_config(), converters_config={}, failed_attachments={}
+            ),
+            msg,
+        )
         assert refs == []
 
 
@@ -713,7 +828,10 @@ class TestResolveAttachment:
         client = GraphClient(graph_config, lambda: "test-token")
         att = {"contentType": "messageReference", "name": "n", "contentUrl": "https://x"}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+            _ctx(client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments={}),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         client.close()
@@ -723,7 +841,10 @@ class TestResolveAttachment:
         client = GraphClient(graph_config, lambda: "test-token")
         att = {"contentType": "reference", "name": "", "contentUrl": "https://x"}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+            _ctx(client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments={}),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         client.close()
@@ -737,7 +858,10 @@ class TestResolveAttachment:
             "contentUrl": "https://x",
         }
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+            _ctx(client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments={}),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         client.close()
@@ -748,7 +872,12 @@ class TestResolveAttachment:
         att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://x"}
         failed = {"msg-1:spec.pdf": "http_403"}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+            _ctx(
+                client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments=failed
+            ),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         client.close()
@@ -766,7 +895,10 @@ class TestResolveAttachment:
         client = GraphClient(graph_config, lambda: "test-token")
         att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, {}
+            _ctx(client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments={}),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is not None
         assert result.name == "spec.pdf"
@@ -788,7 +920,12 @@ class TestResolveAttachment:
         att = {"contentType": "reference", "name": "secret.pdf", "contentUrl": content_url}
         failed: dict[str, str] = {}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+            _ctx(
+                client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments=failed
+            ),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         assert failed == {"msg-1:secret.pdf": "http_403"}
@@ -803,7 +940,12 @@ class TestResolveAttachment:
         att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://sanoptis.sharepoint.com/x"}
         failed: dict[str, str] = {}
         result = helpers._resolve_attachment(
-            client, storage, att, "msg-1", "teams-chats/foo", 100 * 1024 * 1024, _config(), {}, failed
+            _ctx(
+                client, storage, "teams-chats/foo", settings=_config(), converters_config={}, failed_attachments=failed
+            ),
+            att,
+            "msg-1",
+            100 * 1024 * 1024,
         )
         assert result is None
         assert failed == {}

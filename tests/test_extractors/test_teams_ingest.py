@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -14,6 +16,7 @@ from m365_extract.extractors._teams_attachment_helpers import (
     download_message_attachments,
     downloadable_attachment_names,
 )
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_extract.storage.local import LocalBackend
 
@@ -63,6 +66,26 @@ def _graph_msg(msg_id: str, *, etag: str, attachments: list[dict]) -> dict:
 
 def _ref_attachment(name: str) -> dict:
     return {"contentType": "reference", "name": name, "contentUrl": f"https://sanoptis.sharepoint.com/x/{name}"}
+
+
+def _ctx(
+    client,
+    storage,
+    conv_dir: str,
+    *,
+    settings=None,
+    converters_config: dict | None = None,
+    failed_attachments: dict[str, str] | None = None,
+) -> TeamsContext:
+    """Build a TeamsContext for direct helper calls."""
+    return TeamsContext(
+        client=client,
+        storage=storage,
+        settings=settings,
+        converters_config=converters_config if converters_config is not None else {},
+        failed_attachments=failed_attachments if failed_attachments is not None else {},
+        conv_dir=conv_dir,
+    )
 
 
 class TestIsEtagFresh:
@@ -128,7 +151,9 @@ class TestDownloadableAttachmentNames:
         storage = LocalBackend(str(tmp_path / "vault"))
         settings = _settings(download_attachments=True, download_inline_images=False)
 
-        refs = download_message_attachments(client, storage, msg, "conv", settings, {}, {})
+        refs = download_message_attachments(
+            _ctx(client, storage, "conv", settings=settings, converters_config={}, failed_attachments={}), msg
+        )
 
         assert {r.name for r in refs} == downloadable_attachment_names(msg, {})
 
@@ -137,7 +162,13 @@ class TestToStoredMessageReuse:
     def _convert(self, msg: dict, prior: StoredMessage | None, client) -> StoredMessage:
         settings = _settings(download_attachments=True, download_inline_images=True)
         storage = MagicMock()
-        return to_stored_message(client, storage, msg, None, "/chats/c1/messages/m1", "conv", settings, {}, {}, prior)
+        return to_stored_message(
+            _ctx(client, storage, "conv", settings=settings, converters_config={}, failed_attachments={}),
+            msg,
+            None,
+            "/chats/c1/messages/m1",
+            prior,
+        )
 
     def test_reaction_only_bump_reuses_prior_media_without_client_calls(self):
         prior_refs = [{"name": "spec.pdf", "relative_path": "attachments/m1/spec.pdf", "converted_path": None}]
@@ -193,7 +224,13 @@ class TestToStoredMessageReuse:
         settings = _settings(download_attachments=True, download_inline_images=False)
         storage = MagicMock()
 
-        result = to_stored_message(client, storage, msg, None, "/chats/c1/messages/m1", "conv", settings, {}, {}, prior)
+        result = to_stored_message(
+            _ctx(client, storage, "conv", settings=settings, converters_config={}, failed_attachments={}),
+            msg,
+            None,
+            "/chats/c1/messages/m1",
+            prior,
+        )
 
         assert sorted(a["name"] for a in result.attachments) == ["extra.pdf", "spec.pdf"]
 
@@ -201,3 +238,30 @@ class TestToStoredMessageReuse:
 class TestGraphPageSize:
     def test_is_the_documented_teams_top_maximum(self):
         assert GRAPH_PAGE_SIZE == 50
+
+
+class TestTeamsContextImmutable:
+    """Callees receive the context by reference; the refactor relies on immutability."""
+
+    def test_is_frozen(self):
+        ctx = _ctx(
+            MagicMock(),
+            MagicMock(),
+            "conv",
+            settings=_settings(download_attachments=False, download_inline_images=False),
+        )
+        with pytest.raises(FrozenInstanceError):
+            ctx.conv_dir = "elsewhere"  # type: ignore[misc]
+
+    def test_failed_attachments_is_shared_not_copied(self):
+        """The skip-list must be the caller's dict — writes by callees have to persist."""
+        skip_list: dict[str, str] = {}
+        ctx = _ctx(
+            MagicMock(),
+            MagicMock(),
+            "conv",
+            settings=_settings(download_attachments=False, download_inline_images=False),
+            failed_attachments=skip_list,
+        )
+        ctx.failed_attachments["msg-1:doc.pdf"] = "http_403"
+        assert skip_list == {"msg-1:doc.pdf": "http_403"}

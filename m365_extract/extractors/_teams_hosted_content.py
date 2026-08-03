@@ -9,13 +9,16 @@ helper serves chats, channel roots, and channel replies.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import httpx
 import structlog
 
-from m365_extract.extractors._teams_attachment_helpers import AttachmentSettings
-from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.storage.base import StorageBackend
+from m365_extract.graph_client import GraphApiError
 from m365_extract.storage.exceptions import StorageError
+
+if TYPE_CHECKING:
+    from m365_extract.extractors._teams_context import TeamsContext
 
 log = structlog.get_logger()
 
@@ -32,16 +35,13 @@ _CONTENT_TYPE_EXT: dict[str, str] = {
 
 
 def download_inline_images(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     message_api_base: str,
     msg: dict,
-    conv_dir: str,
-    settings: AttachmentSettings,
 ) -> dict[str, str]:
     """Download inline images referenced from a Teams message body.
 
-    Returns a map of ``hostedContent id -> relative storage path`` so the body
+    Returns a map of ``hostedContent id -> relative ctx.storage path`` so the body
     renderer can rewrite ``<img src>`` URLs to point at the local copy. Returns
     an empty map when no hosted contents are present or downloads fail.
     """
@@ -49,15 +49,15 @@ def download_inline_images(
     if not msg_id:
         return {}
 
-    max_bytes = settings.max_attachment_size_mb * 1024 * 1024
+    max_bytes = ctx.settings.max_attachment_size_mb * 1024 * 1024
     hosted_map: dict[str, str] = {}
 
     try:
         items = list(
-            client.get_paginated(
+            ctx.client.get_paginated(
                 f"{message_api_base}/hostedContents",
                 params={"$select": "id"},
-                max_pages=client.max_pages,
+                max_pages=ctx.client.max_pages,
             )
         )
     except GraphApiError as exc:
@@ -73,7 +73,9 @@ def download_inline_images(
         if not hid:
             continue
         try:
-            data, content_type = client.get_bytes_with_content_type(f"{message_api_base}/hostedContents/{hid}/$value")
+            data, content_type = ctx.client.get_bytes_with_content_type(
+                f"{message_api_base}/hostedContents/{hid}/$value"
+            )
         except (GraphApiError, httpx.TransportError) as exc:
             log.warning(
                 "teams_hosted_content.download_failed",
@@ -97,7 +99,7 @@ def download_inline_images(
         filename = f"inline_{idx}{ext}"
         relative_path = f"attachments/{msg_id}/{filename}"
         try:
-            storage.write_bytes(f"{conv_dir}/{relative_path}", data)
+            ctx.storage.write_bytes(f"{ctx.conv_dir}/{relative_path}", data)
         except (StorageError, OSError) as exc:
             log.warning(
                 "teams_hosted_content.write_failed",

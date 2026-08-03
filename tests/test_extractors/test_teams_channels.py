@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+from dataclasses import FrozenInstanceError
 from unittest.mock import patch
 from urllib.parse import unquote_plus
 
 import httpx
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import ExplicitChannel, GraphConfig, TeamsChannelsExtractorConfig
@@ -623,3 +626,35 @@ class TestAdvanceChannelWatermark:
         ]
         teams_channels._advance_channel_watermark(state, "team:ch", chains, None)
         assert state["watermarks"]["team:ch"] == "2026-06-11T15:00:00Z"
+
+
+class TestStorePath:
+    """The store path is derived from conv_dir in one place (DRY)."""
+
+    def test_appends_messages_jsonl(self):
+        assert teams_channels._store_path("teams-channels/eng/general-abc123") == (
+            "teams-channels/eng/general-abc123/messages.jsonl"
+        )
+
+    @given(conv_dir=st.text(min_size=1))
+    def test_always_suffixed_and_prefixed(self, conv_dir: str) -> None:
+        path = teams_channels._store_path(conv_dir)
+        assert path.startswith(conv_dir)
+        assert path.endswith("/messages.jsonl")
+
+    def test_matches_path_run_actually_writes(self, httpx_mock: HTTPXMock, storage, client) -> None:
+        """Guards the derivation against drifting from what the extractor writes."""
+        _mock_team_and_channel(httpx_mock)
+        httpx_mock.add_response(url=MESSAGES_URL, json={"value": [_graph_msg("m1", "2026-06-11T09:00:00Z")]})
+
+        teams_channels.run(client, storage, {}, _config(), {})
+
+        assert teams_channels._store_path(CONV_DIR) in storage.list_files("teams-channels")
+
+
+class TestChannelInfo:
+    def test_is_frozen(self):
+        """Callees receive ChannelInfo by reference; mutation must be impossible."""
+        info = teams_channels.ChannelInfo(team_name="Eng", channel_name="General", channel_id=CHANNEL_ID)
+        with pytest.raises(FrozenInstanceError):
+            info.channel_name = "Other"  # type: ignore[misc]

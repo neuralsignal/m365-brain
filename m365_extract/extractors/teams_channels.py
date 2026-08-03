@@ -19,6 +19,7 @@ calls at all, so the ``required_scopes`` minimum below is sufficient.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
@@ -35,6 +36,7 @@ from m365_extract.extractors._message_store import (
 )
 from m365_extract.extractors._teams_channel_ingest import chain_modified, convert_chains, fetch_chains
 from m365_extract.extractors._teams_channel_targets import discover_targets, explicit_targets
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChannelData, build_teams_channel_frontmatter
 from m365_extract.graph_client import GraphApiError, GraphClient
@@ -45,6 +47,20 @@ log = structlog.get_logger()
 
 name = "teams_channels"
 required_scopes = ["ChannelMessage.Read.All", "Files.Read.All"]
+
+
+@dataclass(frozen=True)
+class ChannelInfo:
+    """Identifies a channel for logging, frontmatter, and storage naming."""
+
+    team_name: str
+    channel_name: str
+    channel_id: str
+
+
+def _store_path(conv_dir: str) -> str:
+    """Path of the channel's JSONL message store — the single source of truth."""
+    return f"{conv_dir}/messages.jsonl"
 
 
 def run(
@@ -68,7 +84,24 @@ def run(
 
     written = 0
     for team_id, team_name, channel in targets:
-        if _process_channel(client, storage, team_id, team_name, channel, state, config, converters_config):
+        info = ChannelInfo(
+            team_name=team_name,
+            channel_name=channel.get("displayName", "General"),
+            channel_id=channel.get("id", ""),
+        )
+        conv_dir = (
+            f"teams-channels/{slugify(info.team_name, 80)}/"
+            f"{slugify(info.channel_name, 80)}-{short_hash(info.channel_id, 6)}"
+        )
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=config,
+            converters_config=converters_config,
+            failed_attachments=state["failed_attachments"],
+            conv_dir=conv_dir,
+        )
+        if _process_channel(ctx, info, team_id, state, config):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -78,12 +111,9 @@ def run(
 
 
 def _write_channel(
-    storage: StorageBackend,
-    team_name: str,
-    channel_name: str,
-    channel_id: str,
+    ctx: TeamsContext,
+    info: ChannelInfo,
     store: dict[str, StoredMessage],
-    conv_dir: str,
     history_complete: bool,
 ) -> None:
     """Render the store and write messages.md with frontmatter and skeleton."""
@@ -92,37 +122,35 @@ def _write_channel(
 
     fm = build_teams_channel_frontmatter(
         TeamsChannelData(
-            team_name=team_name,
-            channel_name=channel_name,
-            channel_id=channel_id,
+            team_name=info.team_name,
+            channel_name=info.channel_name,
+            channel_id=info.channel_id,
             last_message_time=last_message_time,
             message_count=len(store),
             history_complete=history_complete,
         )
     )
 
-    body_parts = [f"# {team_name} / {channel_name}\n"]
+    body_parts = [f"# {info.team_name} / {info.channel_name}\n"]
     body_parts.append("## Observations\n")
-    body_parts.append(f"- [team] {team_name}")
-    body_parts.append(f"- [channel] {channel_name}")
+    body_parts.append(f"- [team] {info.team_name}")
+    body_parts.append(f"- [channel] {info.channel_name}")
     body_parts.append(f"- [last_message_time] {last_message_time}")
     body_parts.append(f"- [message_count] {len(store)}")
     body_parts.append("\n---\n")
     body_parts.append("## Messages\n")
     body_parts.append(render_channel_body(store))
 
-    storage.write_file(f"{conv_dir}/messages.md", dumps_markdown(fm, "\n".join(body_parts)))
-    log.debug("teams_channels.wrote", team=team_name, channel=channel_name, messages=len(store))
+    ctx.storage.write_file(f"{ctx.conv_dir}/messages.md", dumps_markdown(fm, "\n".join(body_parts)))
+    log.debug("teams_channels.wrote", team=info.team_name, channel=info.channel_name, messages=len(store))
 
 
 def _safe_fetch_chains(
-    client: GraphClient,
+    ctx: TeamsContext,
+    info: ChannelInfo,
     team_id: str,
-    channel_id: str,
     watermark: str | None,
     max_messages: int,
-    team_name: str,
-    channel_name: str,
 ) -> tuple[list[tuple[dict, list[dict]]], bool] | None:
     """Fetch message chains with per-channel error containment.
 
@@ -130,45 +158,45 @@ def _safe_fetch_chains(
     watermark, so the next cycle retries from the same point.
     """
     try:
-        return fetch_chains(client, team_id, channel_id, watermark, max_messages)
+        return fetch_chains(ctx.client, team_id, info.channel_id, watermark, max_messages)
     except GraphApiError as exc:
-        log.warning("teams_channels.fetch_failed", team=team_name, channel=channel_name, error=str(exc))
+        log.warning("teams_channels.fetch_failed", team=info.team_name, channel=info.channel_name, error=str(exc))
         return None
     except httpx.TransportError as exc:
-        log.error("teams_channels.fetch_transport_error", team=team_name, channel=channel_name, error=str(exc))
+        log.error(
+            "teams_channels.fetch_transport_error", team=info.team_name, channel=info.channel_name, error=str(exc)
+        )
         return None
 
 
 def _load_and_convert(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
+    info: ChannelInfo,
     chains: list[tuple[dict, list[dict]]],
-    store_path: str,
     base: str,
-    conv_dir: str,
-    config: TeamsChannelsExtractorConfig,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
-    team_name: str,
-    channel_name: str,
 ) -> tuple[dict[str, StoredMessage], bool] | None:
     """Load the message store, convert fetched chains, and merge the two.
 
     Returns None when the store is unreadable or media fetching fails.
     """
+    store_path = _store_path(ctx.conv_dir)
     try:
-        store = load_store(storage, store_path)
+        store = load_store(ctx.storage, store_path)
     except MessageStoreError as exc:
         log.error(
-            "teams_channels.store_corrupt", team=team_name, channel=channel_name, store=store_path, error=str(exc)
+            "teams_channels.store_corrupt",
+            team=info.team_name,
+            channel=info.channel_name,
+            store=store_path,
+            error=str(exc),
         )
         return None
     try:
-        fetched = convert_chains(
-            client, storage, chains, store, base, conv_dir, config, converters_config, failed_attachments
-        )
+        fetched = convert_chains(ctx, chains, store, base)
     except httpx.TransportError as exc:
-        log.error("teams_channels.media_transport_error", team=team_name, channel=channel_name, error=str(exc))
+        log.error(
+            "teams_channels.media_transport_error", team=info.team_name, channel=info.channel_name, error=str(exc)
+        )
         return None
     return merge_messages(store, fetched)
 
@@ -186,62 +214,45 @@ def _advance_channel_watermark(
 
 
 def _persist_channel_data(
-    storage: StorageBackend,
-    state: dict,
-    key: str,
-    watermark: str | None,
-    chains: list[tuple[dict, list[dict]]],
+    ctx: TeamsContext,
+    info: ChannelInfo,
     merged: dict[str, StoredMessage],
     changed: bool,
-    store_path: str,
-    conv_dir: str,
-    team_name: str,
-    channel_name: str,
-    channel_id: str,
+    history_complete: bool,
 ) -> bool:
-    """Advance the watermark, persist the store, and render markdown."""
-    _advance_channel_watermark(state, key, chains, watermark)
-    if changed or not storage.file_exists(store_path):
+    """Persist the message store and render markdown. Returns True if written."""
+    store_path = _store_path(ctx.conv_dir)
+    if changed or not ctx.storage.file_exists(store_path):
         # Always persist the store once a watermark exists — even empty — so
         # file existence matches the watermark and backfill never re-triggers.
-        save_store(storage, store_path, merged)
+        save_store(ctx.storage, store_path, merged)
     if not changed:
         return False
-    _write_channel(
-        storage, team_name, channel_name, channel_id, merged, conv_dir, state["history_complete"].get(key, False)
-    )
+    _write_channel(ctx, info, merged, history_complete)
     return True
 
 
 def _process_channel(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
+    info: ChannelInfo,
     team_id: str,
-    team_name: str,
-    channel: dict,
     state: dict,
     config: TeamsChannelsExtractorConfig,
-    converters_config: dict,
 ) -> bool:
     """Process a single channel: fetch, merge, render. Returns True if written.
 
     Errors are contained per channel: a fetch/media/store failure skips this
     channel (without advancing its watermark) and the sync cycle continues.
     """
-    channel_id = channel.get("id", "")
-    channel_name = channel.get("displayName", "General")
-    key = f"{team_id}:{channel_id}"
-    conv_dir = f"teams-channels/{slugify(team_name, 80)}/{slugify(channel_name, 80)}-{short_hash(channel_id, 6)}"
-    store_path = f"{conv_dir}/messages.jsonl"
+    key = f"{team_id}:{info.channel_id}"
+    store_path = _store_path(ctx.conv_dir)
 
     watermark = state["watermarks"].get(key)
-    if watermark and not storage.file_exists(store_path):
-        log.warning("teams_channels.store_missing_backfill", team=team_name, channel=channel_name)
+    if watermark and not ctx.storage.file_exists(store_path):
+        log.warning("teams_channels.store_missing_backfill", team=info.team_name, channel=info.channel_name)
         watermark = None
 
-    result = _safe_fetch_chains(
-        client, team_id, channel_id, watermark, config.max_messages_per_channel, team_name, channel_name
-    )
+    result = _safe_fetch_chains(ctx, info, team_id, watermark, config.max_messages_per_channel)
     if result is None:
         return False
     chains, truncated = result
@@ -251,34 +262,10 @@ def _process_channel(
     if not chains:
         return False
 
-    merge_result = _load_and_convert(
-        client,
-        storage,
-        chains,
-        store_path,
-        f"/teams/{team_id}/channels/{channel_id}/messages",
-        conv_dir,
-        config,
-        converters_config,
-        state["failed_attachments"],
-        team_name,
-        channel_name,
-    )
+    merge_result = _load_and_convert(ctx, info, chains, f"/teams/{team_id}/channels/{info.channel_id}/messages")
     if merge_result is None:
         return False
     merged, changed = merge_result
 
-    return _persist_channel_data(
-        storage,
-        state,
-        key,
-        watermark,
-        chains,
-        merged,
-        changed,
-        store_path,
-        conv_dir,
-        team_name,
-        channel_name,
-        channel_id,
-    )
+    _advance_channel_watermark(state, key, chains, watermark)
+    return _persist_channel_data(ctx, info, merged, changed, state["history_complete"].get(key, False))
