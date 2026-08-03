@@ -14,6 +14,7 @@ from m365_extract.config import OneDriveExtractorConfig
 from m365_extract.extractors._file_helpers import (
     DriveItemMetadata,
     FileProcessingConfig,
+    FileProcessingContext,
     iterate_drive_items,
 )
 from m365_extract.frontmatter import OneDriveFileData, build_onedrive_frontmatter
@@ -72,13 +73,11 @@ def run(
         )
 
     written = iterate_drive_items(
-        client=client,
-        storage=storage,
+        ctx=FileProcessingContext(client=client, storage=storage, file_config=file_config),
         items=items,
         file_paths=file_paths,
         prefix="onedrive",
         build_frontmatter=_build_fm,
-        file_config=file_config,
     )
 
     state["file_paths"] = file_paths

@@ -16,6 +16,7 @@ from m365_extract.config import SharePointExtractorConfig
 from m365_extract.extractors._file_helpers import (
     DriveItemMetadata,
     FileProcessingConfig,
+    FileProcessingContext,
     iterate_drive_items,
 )
 from m365_extract.frontmatter import SharePointFileData, build_sharepoint_frontmatter
@@ -155,13 +156,11 @@ def _sync_drive(
         )
 
     written = iterate_drive_items(
-        client=client,
-        storage=storage,
+        ctx=FileProcessingContext(client=client, storage=storage, file_config=file_config),
         items=items,
         file_paths=file_paths,
         prefix=prefix,
         build_frontmatter=_build_fm,
-        file_config=file_config,
     )
 
     state[file_paths_key] = file_paths
