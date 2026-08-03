@@ -115,6 +115,94 @@ def _write_channel(
     log.debug("teams_channels.wrote", team=team_name, channel=channel_name, messages=len(store))
 
 
+def _safe_fetch_chains(
+    client: GraphClient,
+    team_id: str,
+    channel_id: str,
+    watermark: str | None,
+    max_messages: int,
+    team_name: str,
+    channel_name: str,
+) -> tuple[list[tuple[dict, list[dict]]], bool] | None:
+    """Fetch message chains with per-channel error containment.
+
+    Returns None when the channel should be skipped without advancing its
+    watermark, so the next cycle retries from the same point.
+    """
+    try:
+        return fetch_chains(client, team_id, channel_id, watermark, max_messages)
+    except GraphApiError as exc:
+        log.warning("teams_channels.fetch_failed", team=team_name, channel=channel_name, error=str(exc))
+        return None
+    except httpx.TransportError as exc:
+        log.error("teams_channels.fetch_transport_error", team=team_name, channel=channel_name, error=str(exc))
+        return None
+
+
+def _load_and_convert(
+    client: GraphClient,
+    storage: StorageBackend,
+    chains: list[tuple[dict, list[dict]]],
+    store_path: str,
+    base: str,
+    conv_dir: str,
+    config: TeamsChannelsExtractorConfig,
+    converters_config: dict,
+    failed_attachments: dict[str, str],
+    team_name: str,
+    channel_name: str,
+) -> tuple[dict[str, StoredMessage], bool] | None:
+    """Load the message store, convert fetched chains, and merge the two.
+
+    Returns None when the store is unreadable or media fetching fails.
+    """
+    try:
+        store = load_store(storage, store_path)
+    except MessageStoreError as exc:
+        log.error(
+            "teams_channels.store_corrupt", team=team_name, channel=channel_name, store=store_path, error=str(exc)
+        )
+        return None
+    try:
+        fetched = convert_chains(
+            client, storage, chains, store, base, conv_dir, config, converters_config, failed_attachments
+        )
+    except httpx.TransportError as exc:
+        log.error("teams_channels.media_transport_error", team=team_name, channel=channel_name, error=str(exc))
+        return None
+    return merge_messages(store, fetched)
+
+
+def _persist_channel_data(
+    storage: StorageBackend,
+    state: dict,
+    key: str,
+    watermark: str | None,
+    chains: list[tuple[dict, list[dict]]],
+    merged: dict[str, StoredMessage],
+    changed: bool,
+    store_path: str,
+    conv_dir: str,
+    team_name: str,
+    channel_name: str,
+    channel_id: str,
+) -> bool:
+    """Advance the watermark, persist the store, and render markdown."""
+    new_watermark = max(chain_modified(root, replies) for root, replies in chains)
+    if new_watermark:
+        state["watermarks"][key] = max(watermark or "", new_watermark)
+    if changed or not storage.file_exists(store_path):
+        # Always persist the store once a watermark exists — even empty — so
+        # file existence matches the watermark and backfill never re-triggers.
+        save_store(storage, store_path, merged)
+    if not changed:
+        return False
+    _write_channel(
+        storage, team_name, channel_name, channel_id, merged, conv_dir, state["history_complete"].get(key, False)
+    )
+    return True
+
+
 def _process_channel(
     client: GraphClient,
     storage: StorageBackend,
@@ -141,52 +229,46 @@ def _process_channel(
         log.warning("teams_channels.store_missing_backfill", team=team_name, channel=channel_name)
         watermark = None
 
-    try:
-        chains, truncated = fetch_chains(client, team_id, channel_id, watermark, config.max_messages_per_channel)
-    except GraphApiError as exc:
-        log.warning("teams_channels.fetch_failed", team=team_name, channel=channel_name, error=str(exc))
+    result = _safe_fetch_chains(
+        client, team_id, channel_id, watermark, config.max_messages_per_channel, team_name, channel_name
+    )
+    if result is None:
         return False
-    except httpx.TransportError as exc:
-        log.error("teams_channels.fetch_transport_error", team=team_name, channel=channel_name, error=str(exc))
-        return False
+    chains, truncated = result
 
     if watermark is None:
         state["history_complete"][key] = not truncated
-
     if not chains:
         return False
 
-    try:
-        store = load_store(storage, store_path)
-    except MessageStoreError as exc:
-        log.error(
-            "teams_channels.store_corrupt", team=team_name, channel=channel_name, store=store_path, error=str(exc)
-        )
-        return False
-
-    base = f"/teams/{team_id}/channels/{channel_id}/messages"
-    try:
-        fetched = convert_chains(
-            client, storage, chains, store, base, conv_dir, config, converters_config, state["failed_attachments"]
-        )
-    except httpx.TransportError as exc:
-        log.error("teams_channels.media_transport_error", team=team_name, channel=channel_name, error=str(exc))
-        return False
-
-    merged, changed = merge_messages(store, fetched)
-
-    new_watermark = max(chain_modified(root, replies) for root, replies in chains)
-    if new_watermark:
-        state["watermarks"][key] = max(watermark or "", new_watermark)
-
-    if changed or not storage.file_exists(store_path):
-        # Always persist the store once a watermark exists — even empty — so
-        # file existence matches the watermark and backfill never re-triggers.
-        save_store(storage, store_path, merged)
-
-    if not changed:
-        return False
-    _write_channel(
-        storage, team_name, channel_name, channel_id, merged, conv_dir, state["history_complete"].get(key, False)
+    merge_result = _load_and_convert(
+        client,
+        storage,
+        chains,
+        store_path,
+        f"/teams/{team_id}/channels/{channel_id}/messages",
+        conv_dir,
+        config,
+        converters_config,
+        state["failed_attachments"],
+        team_name,
+        channel_name,
     )
-    return True
+    if merge_result is None:
+        return False
+    merged, changed = merge_result
+
+    return _persist_channel_data(
+        storage,
+        state,
+        key,
+        watermark,
+        chains,
+        merged,
+        changed,
+        store_path,
+        conv_dir,
+        team_name,
+        channel_name,
+        channel_id,
+    )
