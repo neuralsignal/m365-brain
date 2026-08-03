@@ -1185,7 +1185,7 @@ class TestResolveFolderId:
         client = MagicMock(spec=GraphClient)
         client.get.return_value = {"value": [{"id": "obrien-id", "displayName": "O'Brien"}]}
 
-        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "O'Brien")
+        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "O'Brien", {})
 
         assert result == "obrien-id"
         client.get.assert_called_once_with(

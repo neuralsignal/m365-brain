@@ -304,7 +304,7 @@ class TestProcessDriveItem:
     def test_download_failure_writes_error_stub(self, tmp_path):
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_client.get_bytes.side_effect = GraphApiError("500 Server Error")
+        mock_client.get_bytes.side_effect = GraphApiError("500 Server Error", 500)
 
         item = {
             "name": "report.docx",
@@ -383,7 +383,7 @@ class TestProcessDriveItemFallbackFetch:
         """When individual item fetch raises GraphApiError, logs warning and writes no-url stub."""
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_client.get.side_effect = GraphApiError("404 Not Found")
+        mock_client.get.side_effect = GraphApiError("404 Not Found", 404)
 
         item = {
             "name": "report.docx",
@@ -458,7 +458,7 @@ class TestGraphApiErrorNotSwallowed:
         """GraphApiError from get_bytes is caught and recorded, not silently swallowed."""
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_client.get_bytes.side_effect = GraphApiError("403 Forbidden: insufficient privileges")
+        mock_client.get_bytes.side_effect = GraphApiError("403 Forbidden: insufficient privileges", 403)
 
         item = {
             "name": "secret.docx",
@@ -492,7 +492,7 @@ class TestGraphApiErrorNotSwallowed:
         """GraphApiError from client.get() during re-fetch is caught, not silently swallowed."""
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_client.get.side_effect = GraphApiError("429 Too Many Requests")
+        mock_client.get.side_effect = GraphApiError("429 Too Many Requests", 429)
 
         item = {
             "name": "report.docx",
