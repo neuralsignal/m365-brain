@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
 from unittest.mock import patch
 
 import httpx
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
 from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
@@ -949,3 +952,23 @@ class TestResolveAttachment:
         )
         assert result is None
         assert failed == {}
+
+
+class TestEncodeShareUrlProperty:
+    @given(url=st.text(min_size=1))
+    def test_always_starts_with_u_bang(self, url: str) -> None:
+        assert helpers._encode_share_url(url).startswith("u!")
+
+    @given(url=st.text(min_size=1))
+    def test_never_contains_base64_padding(self, url: str) -> None:
+        """The /shares/{id} route rejects '=' padding, so it must be stripped."""
+        assert "=" not in helpers._encode_share_url(url)
+
+
+class TestSanitizeFilenameProperty:
+    @given(name=st.text(min_size=1))
+    def test_never_contains_path_separator(self, name: str) -> None:
+        """Attachment names are attacker-influenced — they must not escape the directory."""
+        result = helpers._sanitize_filename(name)
+        assert os.sep not in result
+        assert "/" not in result
