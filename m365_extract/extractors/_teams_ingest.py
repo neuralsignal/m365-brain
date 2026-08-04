@@ -8,7 +8,7 @@ from re-downloading attachments and inline images.
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 import structlog
 
@@ -28,6 +28,18 @@ log = structlog.get_logger()
 # Documented Graph $top maximum for Teams message endpoints — an API protocol
 # limit, not a config value. Also drives backfill page math in both extractors.
 GRAPH_PAGE_SIZE = 50
+
+
+@dataclass(frozen=True)
+class TeamsContext:
+    """Cross-cutting concerns shared through the Teams extractor call chain."""
+
+    client: GraphClient
+    storage: StorageBackend
+    settings: AttachmentSettings
+    converters_config: dict
+    failed_attachments: dict[str, str]
+    conv_dir: str
 
 
 def is_etag_fresh(existing: StoredMessage | None, msg: dict) -> bool:
@@ -56,15 +68,10 @@ def _can_reuse_media(msg: dict, prior: StoredMessage | None, failed_attachments:
 
 
 def to_stored_message(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     msg: dict,
     parent_id: str | None,
     message_api_base: str,
-    conv_dir: str,
-    settings: AttachmentSettings,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
     prior: StoredMessage | None,
 ) -> StoredMessage:
     """Convert a Graph chat/channel message to a StoredMessage, downloading its media.
@@ -75,19 +82,17 @@ def to_stored_message(
     hostedContents route. When ``prior`` is reusable (see ``_can_reuse_media``)
     the prior content and attachment refs are kept and no downloads run.
     """
-    if _can_reuse_media(msg, prior, failed_attachments):
+    if _can_reuse_media(msg, prior, ctx.failed_attachments):
         content = prior.content  # type: ignore[union-attr]  # guarded by _can_reuse_media
         attachments = prior.attachments  # type: ignore[union-attr]
         log.debug("teams_ingest.media_reused", msg_id=msg.get("id", ""))
     else:
-        if settings.download_inline_images:
-            hosted_map = download_inline_images(client, storage, message_api_base, msg, conv_dir, settings)
+        if ctx.settings.download_inline_images:
+            hosted_map = download_inline_images(ctx, message_api_base, msg)
         else:
             hosted_map = {}
-        if settings.download_attachments:
-            refs = download_message_attachments(
-                client, storage, msg, conv_dir, settings, converters_config, failed_attachments
-            )
+        if ctx.settings.download_attachments:
+            refs = download_message_attachments(ctx, msg)
         else:
             refs = []
         content = extract_content(msg, hosted_map)

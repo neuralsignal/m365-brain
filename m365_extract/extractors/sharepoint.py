@@ -14,6 +14,7 @@ import structlog
 
 from m365_extract.config import SharePointExtractorConfig
 from m365_extract.extractors._file_helpers import (
+    FileExtractorContext,
     FileProcessingConfig,
     build_storage_path,
     extract_parent_path,
@@ -63,6 +64,7 @@ def run(
         max_file_size_mb=config.max_file_size_mb,
         converters_config=converters_config,
     )
+    file_ctx = FileExtractorContext(client=client, storage=storage, file_config=file_config)
 
     written = 0
     for site in sites:
@@ -91,11 +93,9 @@ def run(
             )
 
             count = _sync_drive(
-                client=client,
-                storage=storage,
+                file_ctx=file_ctx,
                 state=state,
                 drive_ref=drive_ref,
-                file_config=file_config,
             )
             written += count
 
@@ -105,11 +105,9 @@ def run(
 
 
 def _sync_drive(
-    client: GraphClient,
-    storage: StorageBackend,
+    file_ctx: FileExtractorContext,
     state: dict,
     drive_ref: SiteDriveRef,
-    file_config: FileProcessingConfig,
 ) -> int:
     """Sync a single SharePoint drive using delta queries. Returns items written."""
     delta_key = f"delta_{drive_ref.site_id}_{drive_ref.drive_id}"
@@ -123,7 +121,9 @@ def _sync_drive(
     }
 
     try:
-        items, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
+        items, new_delta_link = file_ctx.client.get_delta(
+            path, delta_link, params=params, max_pages=file_ctx.client.max_pages
+        )
     except GraphApiError as exc:
         log.warning(
             "sharepoint.delta_failed",
@@ -146,7 +146,7 @@ def _sync_drive(
 
         # Handle removed items
         if "@removed" in item:
-            handle_removed_item(storage, item_id, file_paths)
+            handle_removed_item(file_ctx.storage, item_id, file_paths)
             continue
 
         # Skip folders
@@ -191,12 +191,10 @@ def _sync_drive(
         )
 
         if process_drive_item(
-            client=client,
-            storage=storage,
+            ctx=file_ctx,
             item=item,
             storage_path=storage_path,
             frontmatter=fm,
-            file_config=file_config,
         ):
             written += 1
 

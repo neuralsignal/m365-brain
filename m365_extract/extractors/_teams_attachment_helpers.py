@@ -14,15 +14,17 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 import structlog
 
 from m365_extract.extractors._attachment_helpers import convert_and_store
 from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.storage.base import StorageBackend
 from m365_extract.storage.exceptions import StorageError
+
+if TYPE_CHECKING:
+    from m365_extract.extractors._teams_ingest import TeamsContext
 
 log = structlog.get_logger()
 
@@ -128,13 +130,8 @@ def downloadable_attachment_names(msg: dict, failed_attachments: dict[str, str])
 
 
 def download_message_attachments(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     msg: dict,
-    conv_dir: str,
-    settings: AttachmentSettings,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
 ) -> list[AttachmentRef]:
     """Download file attachments referenced by a Teams message.
 
@@ -143,7 +140,7 @@ def download_message_attachments(
     (message/meeting references, missing fields, oversized, transport errors)
     are logged and excluded.
 
-    ``failed_attachments`` is the extractor's persistent skip-list (part of
+    ``ctx.failed_attachments`` is the extractor's persistent skip-list (part of
     sync state), keyed ``"{msg_id}:{name}"``. Downloads that fail with a
     permanent status (403/404 — e.g. files in another user's OneDrive) are
     recorded there in place and never re-attempted on later sync cycles.
@@ -156,7 +153,7 @@ def download_message_attachments(
     if not attachments:
         return []
 
-    max_bytes = settings.max_attachment_size_mb * 1024 * 1024
+    max_bytes = ctx.settings.max_attachment_size_mb * 1024 * 1024
     refs: list[AttachmentRef] = []
 
     for att in attachments:
@@ -182,20 +179,20 @@ def download_message_attachments(
             continue
 
         failure_key = f"{msg_id}:{name}"
-        if failure_key in failed_attachments:
+        if failure_key in ctx.failed_attachments:
             log.debug(
                 "teams_attachments.attachment_skipped_previously_failed",
                 msg_id=msg_id,
                 name=name,
-                error=failed_attachments[failure_key],
+                error=ctx.failed_attachments[failure_key],
             )
             continue
 
         try:
-            data = _resolve_reference_bytes(client, content_url, max_bytes)
+            data = _resolve_reference_bytes(ctx.client, content_url, max_bytes)
         except GraphApiError as exc:
             if exc.status_code in _PERMANENT_FAILURE_STATUSES:
-                failed_attachments[failure_key] = f"http_{exc.status_code}"
+                ctx.failed_attachments[failure_key] = f"http_{exc.status_code}"
                 log.warning(
                     "teams_attachments.attachment_download_failed_permanently",
                     msg_id=msg_id,
@@ -224,7 +221,7 @@ def download_message_attachments(
 
         relative_path = f"attachments/{msg_id}/{name}"
         try:
-            storage.write_bytes(f"{conv_dir}/{relative_path}", data)
+            ctx.storage.write_bytes(f"{ctx.conv_dir}/{relative_path}", data)
         except (StorageError, OSError) as exc:
             log.warning(
                 "teams_attachments.attachment_write_failed",
@@ -236,14 +233,14 @@ def download_message_attachments(
 
         converted_rel: str | None = None
         ext = Path(name).suffix.lower()
-        if ext and ext in settings.attachment_convert_extensions:
+        if ext and ext in ctx.settings.attachment_convert_extensions:
             converted_rel = f"attachments_converted/{msg_id}/{name}.md"
             if not convert_and_store(
-                storage,
+                ctx.storage,
                 data,
                 name,
-                f"{conv_dir}/{converted_rel}",
-                converters_config,
+                f"{ctx.conv_dir}/{converted_rel}",
+                ctx.converters_config,
             ):
                 converted_rel = None
 

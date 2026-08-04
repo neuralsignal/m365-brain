@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from m365_extract.extractors._file_helpers import (
+    FileExtractorContext,
     FileProcessingConfig,
     build_storage_path,
     extract_parent_path,
@@ -161,17 +162,19 @@ class TestProcessDriveItem:
         fm = {"title": "doc.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=[],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/doc.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=[],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -188,17 +191,19 @@ class TestProcessDriveItem:
         fm = {"title": "image.png", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.png"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/image.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.png"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -223,17 +228,19 @@ class TestProcessDriveItem:
             return_value="# Report Content",
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileExtractorContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True
@@ -247,22 +254,23 @@ class TestProcessDriveItem:
             "name": "report.docx",
             "size": 1024,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
-            # No @microsoft.graph.downloadUrl
         }
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -281,17 +289,19 @@ class TestProcessDriveItem:
         fm = {"title": "huge.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/huge.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -321,17 +331,19 @@ class TestProcessDriveItem:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -362,17 +374,19 @@ class TestProcessDriveItemFallbackFetch:
             return_value="# Converted",
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileExtractorContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True
@@ -406,17 +420,19 @@ class TestProcessDriveItemFallbackFetch:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileExtractorContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -445,17 +461,19 @@ class TestProcessDriveItemConversionError:
             side_effect=ValueError("unsupported format"),
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileExtractorContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True

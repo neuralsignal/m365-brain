@@ -31,6 +31,15 @@ class FileProcessingConfig:
     converters_config: dict
 
 
+@dataclass(frozen=True)
+class FileExtractorContext:
+    """Cross-cutting concerns shared through the file extractor call chain."""
+
+    client: GraphClient
+    storage: StorageBackend
+    file_config: FileProcessingConfig
+
+
 def extract_parent_path(parent_reference: dict) -> str:
     """Extract the human-readable parent path from a Graph API parentReference.
 
@@ -71,12 +80,10 @@ def should_eager_convert(file_name: str, patterns: list[str]) -> bool:
 
 
 def process_drive_item(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: FileExtractorContext,
     item: dict,
     storage_path: str,
     frontmatter: dict,
-    file_config: FileProcessingConfig,
 ) -> bool:
     """Process a single drive item: download, convert if eager, or write a stub.
 
@@ -85,36 +92,34 @@ def process_drive_item(
     file_name = item.get("name", "")
     extension = ("." + file_name.rsplit(".", 1)[-1].lower()) if "." in file_name else ""
 
-    is_convertible = extension in file_config.convertible_extensions
-    is_eager = should_eager_convert(file_name, file_config.eager_patterns)
+    is_convertible = extension in ctx.file_config.convertible_extensions
+    is_eager = should_eager_convert(file_name, ctx.file_config.eager_patterns)
 
     if is_convertible and is_eager:
-        # Pre-download size check using Graph metadata
         file_size_bytes = item.get("size", 0)
         file_size_mb = file_size_bytes / (1024 * 1024)
-        if file_size_mb > file_config.max_file_size_mb:
+        if file_size_mb > ctx.file_config.max_file_size_mb:
             log.warning(
                 "file_helpers.file_too_large",
                 file=file_name,
                 size_mb=round(file_size_mb, 1),
-                limit_mb=file_config.max_file_size_mb,
+                limit_mb=ctx.file_config.max_file_size_mb,
             )
             frontmatter["conversion_status"] = "error_too_large"
             body = (
-                f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {file_config.max_file_size_mb} MB."
+                f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, "
+                f"exceeding limit of {ctx.file_config.max_file_size_mb} MB."
             )
             content = dumps_markdown(frontmatter, body)
-            storage.write_file(storage_path, content)
+            ctx.storage.write_file(storage_path, content)
             return True
 
         download_url = item.get("@microsoft.graph.downloadUrl", "")
         if not download_url:
-            # Delta responses often omit @microsoft.graph.downloadUrl.
-            # Fetch the item individually to get the download URL.
             item_id = item.get("id", "")
             if item_id:
                 try:
-                    full_item = client.get(
+                    full_item = ctx.client.get(
                         f"/me/drive/items/{item_id}",
                         params={
                             "$select": "@microsoft.graph.downloadUrl",
@@ -129,20 +134,19 @@ def process_drive_item(
             frontmatter["conversion_status"] = "error_no_download_url"
             body = f"# {file_name}\n\nNo download URL available."
             content = dumps_markdown(frontmatter, body)
-            storage.write_file(storage_path, content)
+            ctx.storage.write_file(storage_path, content)
             return True
 
         try:
-            file_bytes = client.get_bytes(download_url)
+            file_bytes = ctx.client.get_bytes(download_url)
         except httpx.HTTPStatusError as exc:
             log.error("file_helpers.download_failed", file=file_name, error=str(exc))
             frontmatter["conversion_status"] = "error_download"
             body = f"# {file_name}\n\nDownload failed: {exc}"
             content = dumps_markdown(frontmatter, body)
-            storage.write_file(storage_path, content)
+            ctx.storage.write_file(storage_path, content)
             return True
 
-        # Write to tempfile, convert, then clean up
         suffix = extension if extension else ""
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(file_bytes)
@@ -151,7 +155,7 @@ def process_drive_item(
         try:
             markdown_text = convert_document(
                 file_path=tmp_path,
-                converters_config=file_config.converters_config,
+                converters_config=ctx.file_config.converters_config,
             )
             frontmatter["conversion_status"] = "converted"
             body = f"# {file_name}\n\n{markdown_text}"
@@ -163,7 +167,7 @@ def process_drive_item(
             tmp_path.unlink(missing_ok=True)
 
         content = dumps_markdown(frontmatter, body)
-        storage.write_file(storage_path, content)
+        ctx.storage.write_file(storage_path, content)
         return True
 
     # Non-eager or non-convertible: write a metadata stub
@@ -178,7 +182,7 @@ def process_drive_item(
     body_parts.append(f"- [conversion_status] {frontmatter['conversion_status']}")
 
     content = dumps_markdown(frontmatter, "\n".join(body_parts))
-    storage.write_file(storage_path, content)
+    ctx.storage.write_file(storage_path, content)
     return True
 
 

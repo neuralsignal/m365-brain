@@ -11,10 +11,9 @@ from hypothesis import strategies as st
 from m365_extract.config import TeamsChatsExtractorConfig
 from m365_extract.extractors._message_store import StoredMessage
 from m365_extract.extractors._teams_attachment_helpers import (
-    download_message_attachments,
     downloadable_attachment_names,
 )
-from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
+from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, TeamsContext, is_etag_fresh, to_stored_message
 from m365_extract.storage.local import LocalBackend
 
 
@@ -113,6 +112,8 @@ class TestDownloadableAttachmentNames:
 
     def test_matches_download_message_attachments_result(self, tmp_path):
         """Equivalence pin: the predicate must mirror what the downloader actually attempts."""
+        from m365_extract.extractors._teams_attachment_helpers import download_message_attachments
+
         msg = _graph_msg(
             "m1",
             etag="1",
@@ -127,8 +128,16 @@ class TestDownloadableAttachmentNames:
         client.get_bytes.return_value = b"data"
         storage = LocalBackend(str(tmp_path / "vault"))
         settings = _settings(download_attachments=True, download_inline_images=False)
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=settings,
+            converters_config={},
+            failed_attachments={},
+            conv_dir="conv",
+        )
 
-        refs = download_message_attachments(client, storage, msg, "conv", settings, {}, {})
+        refs = download_message_attachments(ctx, msg)
 
         assert {r.name for r in refs} == downloadable_attachment_names(msg, {})
 
@@ -137,7 +146,15 @@ class TestToStoredMessageReuse:
     def _convert(self, msg: dict, prior: StoredMessage | None, client) -> StoredMessage:
         settings = _settings(download_attachments=True, download_inline_images=True)
         storage = MagicMock()
-        return to_stored_message(client, storage, msg, None, "/chats/c1/messages/m1", "conv", settings, {}, {}, prior)
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=settings,
+            converters_config={},
+            failed_attachments={},
+            conv_dir="conv",
+        )
+        return to_stored_message(ctx, msg, None, "/chats/c1/messages/m1", prior)
 
     def test_reaction_only_bump_reuses_prior_media_without_client_calls(self):
         prior_refs = [{"name": "spec.pdf", "relative_path": "attachments/m1/spec.pdf", "converted_path": None}]
@@ -192,8 +209,16 @@ class TestToStoredMessageReuse:
         client.get_paginated.return_value = iter([])
         settings = _settings(download_attachments=True, download_inline_images=False)
         storage = MagicMock()
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=settings,
+            converters_config={},
+            failed_attachments={},
+            conv_dir="conv",
+        )
 
-        result = to_stored_message(client, storage, msg, None, "/chats/c1/messages/m1", "conv", settings, {}, {}, prior)
+        result = to_stored_message(ctx, msg, None, "/chats/c1/messages/m1", prior)
 
         assert sorted(a["name"] for a in result.attachments) == ["extra.pdf", "spec.pdf"]
 
