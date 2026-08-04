@@ -351,7 +351,7 @@ New/changed tests, written before implementation:
 Done = full suite green, `pixi run lint` + `pixi run format-check` clean,
 coverage ≥ 80%, no file > 300 lines.
 
-## Consuming-workspace rollout (Brain repo, separate commit)
+## Consuming-workspace rollout (separate commit in the consuming repo)
 
 1. `m365-data-sync/config/m365-extract.yaml`: add `ChannelMessage.Read.All`
    scope (admin consent already granted); enable `teams_channels` with the

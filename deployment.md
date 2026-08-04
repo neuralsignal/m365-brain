@@ -291,7 +291,7 @@ Caddy routes `/_event/*`, `/ping`, `/_upload/*` to the Python backend. Everythin
 ### Build commands (local)
 
 ```bash
-cd ~/Brain/external/m365-extract
+cd <path-to>/m365-extract
 
 # Build image
 docker build -t m365-admin:local .
@@ -309,12 +309,12 @@ docker build -t m365-admin:local .
 
 ```bash
 # Terminal 1 -- Reflex admin UI
-cd ~/Brain/external/m365-extract
+cd <path-to>/m365-extract
 pixi run -e admin dev
 # -> http://localhost:3000
 
 # Terminal 2 -- Sync worker (optional, runs as thread in Reflex by default)
-cd ~/Brain/external/m365-extract
+cd <path-to>/m365-extract
 pixi run -e admin m365-extract --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml worker
 ```
 
