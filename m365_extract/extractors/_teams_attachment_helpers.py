@@ -14,15 +14,17 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 import structlog
 
 from m365_extract.extractors._attachment_helpers import convert_and_store
 from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.storage.base import StorageBackend
 from m365_extract.storage.exceptions import StorageError
+
+if TYPE_CHECKING:
+    from m365_extract.extractors._teams_context import TeamsContext
 
 log = structlog.get_logger()
 
@@ -103,6 +105,20 @@ def _resolve_reference_bytes(
     return client.get_bytes(download_url)
 
 
+def _is_downloadable(att: dict, msg_id: str, failed_attachments: dict[str, str]) -> bool:
+    """True when the attachment is a file reference eligible for download.
+
+    Shared predicate between ``downloadable_attachment_names`` (pure filter)
+    and the download loop in ``download_message_attachments``.
+    """
+    if (att.get("contentType") or "") != "reference":
+        return False
+    name = _sanitize_filename(att.get("name") or "")
+    if not name or not (att.get("contentUrl") or ""):
+        return False
+    return f"{msg_id}:{name}" not in failed_attachments
+
+
 def downloadable_attachment_names(msg: dict, failed_attachments: dict[str, str]) -> set[str]:
     """Names that ``download_message_attachments`` would attempt to download.
 
@@ -114,27 +130,117 @@ def downloadable_attachment_names(msg: dict, failed_attachments: dict[str, str])
     msg_id = msg.get("id", "")
     if not msg_id:
         return set()
-    names: set[str] = set()
-    for att in msg.get("attachments") or []:
-        if (att.get("contentType") or "") != "reference":
-            continue
-        name = _sanitize_filename(att.get("name") or "")
-        if not name or not (att.get("contentUrl") or ""):
-            continue
-        if f"{msg_id}:{name}" in failed_attachments:
-            continue
-        names.add(name)
-    return names
+    return {
+        _sanitize_filename(att.get("name") or "")
+        for att in msg.get("attachments") or []
+        if _is_downloadable(att, msg_id, failed_attachments)
+    }
+
+
+def _resolve_attachment(
+    ctx: TeamsContext,
+    att: dict,
+    msg_id: str,
+    max_bytes: int,
+) -> AttachmentRef | None:
+    """Resolve a single attachment to an ``AttachmentRef``, or ``None`` on skip/failure.
+
+    Mutates ``ctx.failed_attachments`` when a download fails with a permanent
+    HTTP status (403/404).
+    """
+    ctype = att.get("contentType") or ""
+    if ctype in _SKIPPED_CONTENT_TYPES:
+        return None
+    name = _sanitize_filename(att.get("name") or "")
+    content_url = att.get("contentUrl") or ""
+    if not name or not content_url:
+        log.warning(
+            "teams_attachments.attachment_skipped_missing_fields",
+            msg_id=msg_id,
+            content_type=ctype,
+        )
+        return None
+    if ctype != "reference":
+        log.debug(
+            "teams_attachments.attachment_unsupported_type",
+            msg_id=msg_id,
+            content_type=ctype,
+            name=name,
+        )
+        return None
+
+    failure_key = f"{msg_id}:{name}"
+    if failure_key in ctx.failed_attachments:
+        log.debug(
+            "teams_attachments.attachment_skipped_previously_failed",
+            msg_id=msg_id,
+            name=name,
+            error=ctx.failed_attachments[failure_key],
+        )
+        return None
+
+    try:
+        data = _resolve_reference_bytes(ctx.client, content_url, max_bytes)
+    except GraphApiError as exc:
+        if exc.status_code in _PERMANENT_FAILURE_STATUSES:
+            ctx.failed_attachments[failure_key] = f"http_{exc.status_code}"
+            log.warning(
+                "teams_attachments.attachment_download_failed_permanently",
+                msg_id=msg_id,
+                name=name,
+                status=exc.status_code,
+                error=str(exc),
+            )
+        else:
+            log.warning(
+                "teams_attachments.attachment_download_failed",
+                msg_id=msg_id,
+                name=name,
+                error=str(exc),
+            )
+        return None
+    except httpx.TransportError as exc:
+        log.warning(
+            "teams_attachments.attachment_download_failed",
+            msg_id=msg_id,
+            name=name,
+            error=str(exc),
+        )
+        return None
+    if data is None:
+        return None
+
+    relative_path = f"attachments/{msg_id}/{name}"
+    try:
+        ctx.storage.write_bytes(f"{ctx.conv_dir}/{relative_path}", data)
+    except (StorageError, OSError) as exc:
+        log.warning(
+            "teams_attachments.attachment_write_failed",
+            msg_id=msg_id,
+            name=name,
+            error=str(exc),
+        )
+        return None
+
+    converted_rel: str | None = None
+    ext = Path(name).suffix.lower()
+    if ext and ext in ctx.settings.attachment_convert_extensions:
+        converted_rel = f"attachments_converted/{msg_id}/{name}.md"
+        if not convert_and_store(
+            ctx.storage,
+            data,
+            name,
+            f"{ctx.conv_dir}/{converted_rel}",
+            ctx.converters_config,
+        ):
+            converted_rel = None
+
+    return AttachmentRef(name=name, relative_path=relative_path, converted_path=converted_rel)
 
 
 def download_message_attachments(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     msg: dict,
-    conv_dir: str,
-    settings: AttachmentSettings,
-    converters_config: dict,
-    failed_attachments: dict[str, str],
 ) -> list[AttachmentRef]:
     """Download file attachments referenced by a Teams message.
 
@@ -143,7 +249,7 @@ def download_message_attachments(
     (message/meeting references, missing fields, oversized, transport errors)
     are logged and excluded.
 
-    ``failed_attachments`` is the extractor's persistent skip-list (part of
+    ``ctx.failed_attachments`` is the extractor's persistent skip-list (part of
     sync state), keyed ``"{msg_id}:{name}"``. Downloads that fail with a
     permanent status (403/404 — e.g. files in another user's OneDrive) are
     recorded there in place and never re-attempted on later sync cycles.
@@ -156,97 +262,5 @@ def download_message_attachments(
     if not attachments:
         return []
 
-    max_bytes = settings.max_attachment_size_mb * 1024 * 1024
-    refs: list[AttachmentRef] = []
-
-    for att in attachments:
-        ctype = att.get("contentType") or ""
-        if ctype in _SKIPPED_CONTENT_TYPES:
-            continue
-        name = _sanitize_filename(att.get("name") or "")
-        content_url = att.get("contentUrl") or ""
-        if not name or not content_url:
-            log.warning(
-                "teams_attachments.attachment_skipped_missing_fields",
-                msg_id=msg_id,
-                content_type=ctype,
-            )
-            continue
-        if ctype != "reference":
-            log.debug(
-                "teams_attachments.attachment_unsupported_type",
-                msg_id=msg_id,
-                content_type=ctype,
-                name=name,
-            )
-            continue
-
-        failure_key = f"{msg_id}:{name}"
-        if failure_key in failed_attachments:
-            log.debug(
-                "teams_attachments.attachment_skipped_previously_failed",
-                msg_id=msg_id,
-                name=name,
-                error=failed_attachments[failure_key],
-            )
-            continue
-
-        try:
-            data = _resolve_reference_bytes(client, content_url, max_bytes)
-        except GraphApiError as exc:
-            if exc.status_code in _PERMANENT_FAILURE_STATUSES:
-                failed_attachments[failure_key] = f"http_{exc.status_code}"
-                log.warning(
-                    "teams_attachments.attachment_download_failed_permanently",
-                    msg_id=msg_id,
-                    name=name,
-                    status=exc.status_code,
-                    error=str(exc),
-                )
-            else:
-                log.warning(
-                    "teams_attachments.attachment_download_failed",
-                    msg_id=msg_id,
-                    name=name,
-                    error=str(exc),
-                )
-            continue
-        except httpx.TransportError as exc:
-            log.warning(
-                "teams_attachments.attachment_download_failed",
-                msg_id=msg_id,
-                name=name,
-                error=str(exc),
-            )
-            continue
-        if data is None:
-            continue
-
-        relative_path = f"attachments/{msg_id}/{name}"
-        try:
-            storage.write_bytes(f"{conv_dir}/{relative_path}", data)
-        except (StorageError, OSError) as exc:
-            log.warning(
-                "teams_attachments.attachment_write_failed",
-                msg_id=msg_id,
-                name=name,
-                error=str(exc),
-            )
-            continue
-
-        converted_rel: str | None = None
-        ext = Path(name).suffix.lower()
-        if ext and ext in settings.attachment_convert_extensions:
-            converted_rel = f"attachments_converted/{msg_id}/{name}.md"
-            if not convert_and_store(
-                storage,
-                data,
-                name,
-                f"{conv_dir}/{converted_rel}",
-                converters_config,
-            ):
-                converted_rel = None
-
-        refs.append(AttachmentRef(name=name, relative_path=relative_path, converted_path=converted_rel))
-
-    return refs
+    max_bytes = ctx.settings.max_attachment_size_mb * 1024 * 1024
+    return [ref for att in attachments if (ref := _resolve_attachment(ctx, att, msg_id, max_bytes)) is not None]

@@ -33,6 +33,7 @@ from m365_extract.extractors._message_store import (
     save_store,
     sort_key,
 )
+from m365_extract.extractors._teams_context import TeamsContext
 from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_extract.extractors.errors import MessageStoreError
 from m365_extract.frontmatter import TeamsChatData, build_teams_chat_frontmatter
@@ -69,7 +70,16 @@ def run(
 
     written = 0
     for chat in chats:
-        if _process_chat(client, storage, chat, state, config, converters_config):
+        _, chat_dir, _ = _chat_title_and_dir(chat)
+        ctx = TeamsContext(
+            client=client,
+            storage=storage,
+            settings=config,
+            converters_config=converters_config,
+            failed_attachments=state["failed_attachments"],
+            conv_dir=chat_dir,
+        )
+        if _process_chat(ctx, chat, state, config):
             written += 1
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -135,13 +145,58 @@ def _write_chat(
     log.debug("teams_chats.wrote", title=title, messages=len(store))
 
 
+def _build_chat_fetch_params(
+    watermark: str | None,
+    config: TeamsChatsExtractorConfig,
+    client_max_pages: int,
+) -> tuple[dict, int]:
+    """Build Graph API query params and page budget for a chat message fetch."""
+    params: dict = {"$top": str(GRAPH_PAGE_SIZE)}
+    if watermark:
+        params["$orderby"] = "lastModifiedDateTime desc"
+        params["$filter"] = f"lastModifiedDateTime gt {watermark}"
+        return params, client_max_pages
+    return params, max(1, math.ceil(config.max_messages_per_chat / GRAPH_PAGE_SIZE))
+
+
+def _ingest_chat_messages(
+    ctx: TeamsContext,
+    store: dict[str, StoredMessage],
+    fetched_raw: list[dict],
+    chat_id: str,
+) -> list[StoredMessage]:
+    """Convert raw Graph messages to StoredMessages, skipping non-message and fresh entries."""
+    fetched: list[StoredMessage] = []
+    for msg in fetched_raw:
+        if msg.get("messageType") != "message":
+            continue
+        prior = store.get(msg.get("id", ""))
+        if is_etag_fresh(prior, msg):
+            continue
+        fetched.append(to_stored_message(ctx, msg, None, f"/chats/{chat_id}/messages/{msg.get('id', '')}", prior))
+    return fetched
+
+
+def _advance_chat_watermark(
+    state: dict,
+    chat_id: str,
+    fetched_raw: list[dict],
+    watermark: str | None,
+    advance: bool,
+) -> None:
+    """Advance the per-chat watermark to the max lastModifiedDateTime in the fetch."""
+    if not advance:
+        return
+    new_watermark = max(m.get("lastModifiedDateTime") or m.get("createdDateTime", "") for m in fetched_raw)
+    if new_watermark:
+        state["watermarks"][chat_id] = max(watermark or "", new_watermark)
+
+
 def _process_chat(
-    client: GraphClient,
-    storage: StorageBackend,
+    ctx: TeamsContext,
     chat: dict,
     state: dict,
     config: TeamsChatsExtractorConfig,
-    converters_config: dict,
 ) -> bool:
     """Process a single chat: fetch, merge, render. Returns True if written.
 
@@ -149,25 +204,17 @@ def _process_chat(
     (without advancing its watermark) and the sync cycle continues.
     """
     chat_id = chat.get("id", "")
-    _, chat_dir, _ = _chat_title_and_dir(chat)
-    store_path = f"{chat_dir}/messages.jsonl"
+    store_path = f"{ctx.conv_dir}/messages.jsonl"
 
     watermark = state["watermarks"].get(chat_id)
-    if watermark and not storage.file_exists(store_path):
+    if watermark and not ctx.storage.file_exists(store_path):
         log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
         watermark = None
 
-    params: dict = {"$top": str(GRAPH_PAGE_SIZE)}
-    if watermark:
-        params["$orderby"] = "lastModifiedDateTime desc"
-        params["$filter"] = f"lastModifiedDateTime gt {watermark}"
-        # The $filter bounds the window; the global page cap is a safety bound.
-        max_pages = client.max_pages
-    else:
-        max_pages = max(1, math.ceil(config.max_messages_per_chat / GRAPH_PAGE_SIZE))
+    params, max_pages = _build_chat_fetch_params(watermark, config, ctx.client.max_pages)
 
     try:
-        fetched_raw, truncated = client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
+        fetched_raw, truncated = ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
     except GraphApiError as exc:
         log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
         return False
@@ -181,7 +228,7 @@ def _process_chat(
     if not fetched_raw:
         return False
 
-    advance_watermark = True
+    advance = watermark is None or not truncated
     if watermark is not None and truncated:
         log.error(
             "teams_chats.incremental_truncated",
@@ -189,53 +236,26 @@ def _process_chat(
             max_pages=max_pages,
             detail="watermark not advanced; the next cycle retries the window",
         )
-        advance_watermark = False
 
     try:
-        store = load_store(storage, store_path)
+        store = load_store(ctx.storage, store_path)
     except MessageStoreError as exc:
         log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
         return False
 
-    fetched: list[StoredMessage] = []
     try:
-        for msg in fetched_raw:
-            if msg.get("messageType") != "message":
-                continue
-            prior = store.get(msg.get("id", ""))
-            if is_etag_fresh(prior, msg):
-                continue
-            fetched.append(
-                to_stored_message(
-                    client,
-                    storage,
-                    msg,
-                    None,
-                    f"/chats/{chat_id}/messages/{msg.get('id', '')}",
-                    chat_dir,
-                    config,
-                    converters_config,
-                    state["failed_attachments"],
-                    prior,
-                )
-            )
+        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
     except httpx.TransportError as exc:
         log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
         return False
 
     merged, changed = merge_messages(store, fetched)
+    _advance_chat_watermark(state, chat_id, fetched_raw, watermark, advance)
 
-    if advance_watermark:
-        new_watermark = max(m.get("lastModifiedDateTime") or m.get("createdDateTime", "") for m in fetched_raw)
-        if new_watermark:
-            state["watermarks"][chat_id] = max(watermark or "", new_watermark)
-
-    if changed or not storage.file_exists(store_path):
-        # Always persist the store once a watermark exists — even empty — so
-        # file existence matches the watermark and backfill never re-triggers.
-        save_store(storage, store_path, merged)
+    if changed or not ctx.storage.file_exists(store_path):
+        save_store(ctx.storage, store_path, merged)
 
     if not changed:
         return False
-    _write_chat(storage, chat, merged, chat_dir, state["history_complete"].get(chat_id, False))
+    _write_chat(ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False))
     return True

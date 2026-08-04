@@ -428,6 +428,17 @@ class TestFiltering:
 
         assert count == 0
 
+    def test_transport_error_on_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("network down"), url=re.compile(r".*/me/chats/.*/messages.*"), is_reusable=True
+        )
+
+        state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert CHAT_ID not in state["watermarks"]
+
 
 class TestRendering:
     def test_new_standard_format(self, httpx_mock: HTTPXMock, storage, client):
@@ -465,6 +476,37 @@ class TestRendering:
         assert "- [message_count] 1" in content
         assert content.index("## Observations") < content.index("## Messages")
 
+    def test_relations_section_rendered_for_long_participant_names(self, httpx_mock: HTTPXMock, storage, client):
+        chat_id = "19:relations-chat"
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": chat_id,
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [
+                            {"displayName": "Matthias Christenson"},
+                            {"displayName": "Samuel Scholl"},
+                        ],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:42:00Z")]},
+        )
+
+        teams_chats.run(client, storage, {}, _config(), {})
+
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(chat_id, 6)}"
+        content = storage.read_file(f"{chat_dir}/messages.md")
+        assert "## Relations" in content
+        assert "[[contact-matthias-christenson]]" in content
+        assert "[[contact-samuel-scholl]]" in content
+
     def test_deleted_message_renders_tombstone(self, httpx_mock: HTTPXMock, storage, client):
         _mock_chats(httpx_mock)
         httpx_mock.add_response(
@@ -477,6 +519,23 @@ class TestRendering:
         content = storage.read_file(f"{CHAT_DIR}/messages.md")
         assert "*(deleted)*" in content
         assert "*Message deleted.*" in content
+
+
+class TestFetchTransportError:
+    def test_transport_error_during_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        """An httpx.TransportError from the message fetch must skip the chat gracefully."""
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("network down"), url=re.compile(r".*/me/chats/.*/messages.*"), is_reusable=True
+        )
+
+        errors: list[str] = []
+        with patch.object(teams_chats.log, "error", side_effect=lambda e, **kw: errors.append(e)):
+            state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert "teams_chats.fetch_transport_error" in errors
+        assert CHAT_ID not in state["watermarks"]
 
 
 class TestAttachments:
@@ -691,6 +750,22 @@ class TestPerChatIsolation:
         assert CHAT_ID not in state["watermarks"]
         assert not storage.file_exists(f"{CHAT_DIR}/messages.jsonl")
 
+    def test_transport_error_in_message_fetch_skips_chat(self, httpx_mock: HTTPXMock, storage, client):
+        """A TransportError during get_pages (message listing) skips the chat."""
+        _mock_chats(httpx_mock)
+        httpx_mock.add_exception(
+            httpx.ConnectError("network down"), url=re.compile(r".*/me/chats/.*/messages.*"), is_reusable=True
+        )
+
+        errors: list[str] = []
+        with patch.object(teams_chats.log, "error", side_effect=lambda e, **kw: errors.append(e)):
+            state, count = teams_chats.run(client, storage, {}, _config(), {})
+
+        assert count == 0
+        assert "teams_chats.fetch_transport_error" in errors
+        assert CHAT_ID not in state["watermarks"]
+        assert not storage.file_exists(f"{CHAT_DIR}/messages.jsonl")
+
     def test_corrupt_store_skips_chat_without_advancing_watermark(self, httpx_mock: HTTPXMock, storage, client):
         storage.write_file(f"{CHAT_DIR}/messages.jsonl", "{not valid json\n")
         state = {"watermarks": {CHAT_ID: "2026-06-10T09:00:00Z"}}
@@ -707,6 +782,110 @@ class TestPerChatIsolation:
         assert count == 0
         assert "teams_chats.store_corrupt" in errors
         assert state["watermarks"][CHAT_ID] == "2026-06-10T09:00:00Z"
+
+
+class TestConvertedAttachmentRendering:
+    def test_converted_attachment_renders_text_link(self, httpx_mock: HTTPXMock, storage, client):
+        """When an attachment has a converted_path, both the raw and (text) links are rendered."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=True,
+            download_inline_images=False,
+            max_attachment_size_mb=100,
+            attachment_convert_extensions=[".pdf"],
+        )
+        content_url = "https://example.sharepoint.com/sites/x/report.pdf"
+        _mock_chats(httpx_mock)
+        msg = _graph_msg("msg-conv", "2026-06-10T09:00:00Z", content="see converted")
+        msg["attachments"] = [{"contentType": "reference", "name": "report.pdf", "contentUrl": content_url}]
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/shares/.*/driveItem.*"),
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://example.sharepoint.com/dl?t=x"},
+        )
+        httpx_mock.add_response(url=re.compile(r"https://example\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+
+        with patch("m365_extract.extractors._teams_attachment_helpers.convert_and_store", return_value=True):
+            teams_chats.run(client, storage, {}, config, {})
+
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "[report.pdf](attachments/msg-conv/report.pdf)" in content
+        assert "[report.pdf (text)](attachments_converted/msg-conv/report.pdf.md)" in content
+
+
+class TestInlineImageDownload:
+    def test_inline_images_downloaded_when_enabled(self, httpx_mock: HTTPXMock, storage, client):
+        """When download_inline_images=True, hosted images are downloaded and body src is rewritten."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=False,
+            download_inline_images=True,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
+        )
+        hid = "aWQxMjM"
+        _mock_chats(httpx_mock)
+        html_body = (
+            f"<p>Look at this:</p>"
+            f'<img src="https://graph.microsoft.com/v1.0/chats/{CHAT_ID}/messages/m1'
+            f'/hostedContents/{hid}/$value" alt="screenshot" />'
+        )
+        msg = _graph_msg("m1", "2026-06-11T09:00:00Z", content=html_body)
+        msg["body"]["contentType"] = "html"
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages\?.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/hostedContents\?.*"),
+            json={"value": [{"id": hid}]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/hostedContents/.*/\$value"),
+            content=b"\x89PNG fake image bytes",
+            headers={"Content-Type": "image/png"},
+        )
+
+        state, count = teams_chats.run(client, storage, {}, config, {})
+
+        assert count == 1
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "attachments/m1/inline_0.png" in content
+        assert storage.file_exists(f"{CHAT_DIR}/attachments/m1/inline_0.png")
+
+
+class TestRelations:
+    def test_long_participant_names_produce_relation_links(self, httpx_mock: HTTPXMock, storage, client):
+        """Participant slugs longer than 5 chars emit a Relations section with contact links."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={
+                "value": [
+                    {
+                        "id": CHAT_ID,
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [
+                            {"displayName": "Matthias Christenson"},
+                            {"displayName": "Samuel Scholl"},
+                        ],
+                    }
+                ]
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:00:00Z")]},
+        )
+
+        teams_chats.run(client, storage, {}, _config(), {})
+
+        chat_dir = f"teams-chats/{slugify('Matthias Christenson, Samuel Scholl', 80)}_{short_hash(CHAT_ID, 6)}"
+        content = storage.read_file(f"{chat_dir}/messages.md")
+        assert "## Relations" in content
+        assert "[[contact-matthias-christenson]]" in content
+        assert "[[contact-samuel-scholl]]" in content
 
 
 class TestChatTitle:
@@ -735,3 +914,93 @@ class TestChatTitle:
         content = storage.read_file(f"{chat_dir}/messages.md")
         assert "# Project Alpha Planning" in content
         assert "teams-group" in content
+
+
+class TestBuildChatFetchParams:
+    def test_backfill_uses_cap_from_config(self):
+        config = _config(max_messages=200)
+        params, max_pages = teams_chats._build_chat_fetch_params(None, config, 10)
+        assert "$filter" not in params
+        assert "$orderby" not in params
+        assert params["$top"] == "50"
+        assert max_pages == 4
+
+    def test_incremental_uses_filter_and_client_max_pages(self):
+        config = _config(max_messages=200)
+        params, max_pages = teams_chats._build_chat_fetch_params("2026-06-10T09:00:00Z", config, 10)
+        assert params["$filter"] == "lastModifiedDateTime gt 2026-06-10T09:00:00Z"
+        assert params["$orderby"] == "lastModifiedDateTime desc"
+        assert max_pages == 10
+
+    def test_small_backfill_cap_rounds_up(self):
+        config = _config(max_messages=1)
+        _, max_pages = teams_chats._build_chat_fetch_params(None, config, 10)
+        assert max_pages == 1
+
+
+class TestAdvanceChatWatermark:
+    def test_advance_sets_max_last_modified(self):
+        state: dict = {"watermarks": {}}
+        fetched_raw = [
+            {"lastModifiedDateTime": "2026-06-11T10:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"},
+            {"lastModifiedDateTime": "2026-06-11T12:00:00Z", "createdDateTime": "2026-06-11T08:00:00Z"},
+        ]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, None, True)
+        assert state["watermarks"]["chat-1"] == "2026-06-11T12:00:00Z"
+
+    def test_no_advance_when_flag_is_false(self):
+        state: dict = {"watermarks": {"chat-1": "2026-06-10T09:00:00Z"}}
+        fetched_raw = [{"lastModifiedDateTime": "2026-06-11T12:00:00Z", "createdDateTime": "2026-06-11T08:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, "2026-06-10T09:00:00Z", False)
+        assert state["watermarks"]["chat-1"] == "2026-06-10T09:00:00Z"
+
+    def test_advance_keeps_max_of_old_and_new(self):
+        state: dict = {"watermarks": {"chat-1": "2026-06-12T00:00:00Z"}}
+        fetched_raw = [{"lastModifiedDateTime": "2026-06-11T10:00:00Z", "createdDateTime": "2026-06-11T09:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, "2026-06-12T00:00:00Z", True)
+        assert state["watermarks"]["chat-1"] == "2026-06-12T00:00:00Z"
+
+    def test_falls_back_to_created_when_last_modified_missing(self):
+        state: dict = {"watermarks": {}}
+        fetched_raw = [{"createdDateTime": "2026-06-11T09:00:00Z"}]
+        teams_chats._advance_chat_watermark(state, "chat-1", fetched_raw, None, True)
+        assert state["watermarks"]["chat-1"] == "2026-06-11T09:00:00Z"
+
+
+class TestConvertedAttachmentLink:
+    def test_converted_path_renders_text_link(self, httpx_mock: HTTPXMock, storage, client):
+        """An attachment with a non-None converted_path renders both raw and (text) links."""
+        config = TeamsChatsExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=5,
+            max_messages_per_chat=200,
+            download_attachments=True,
+            download_inline_images=False,
+            max_attachment_size_mb=100,
+            attachment_convert_extensions=[".docx"],
+        )
+        content_url = "https://sanoptis.sharepoint.com/sites/x/report.docx"
+
+        _mock_chats(httpx_mock)
+        msg = _graph_msg("msg-conv", "2026-06-10T09:00:00Z", content="see report")
+        msg["attachments"] = [{"contentType": "reference", "name": "report.docx", "contentUrl": content_url}]
+        httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
+        httpx_mock.add_response(
+            url=re.compile(r".*/shares/.*/driveItem.*"),
+            json={
+                "id": "di",
+                "size": 64,
+                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            content=b"PK\x03\x04fake docx",
+        )
+
+        with patch("m365_extract.extractors._attachment_helpers.convert_document", return_value="# Converted"):
+            teams_chats.run(client, storage, {}, config, {})
+
+        content = storage.read_file(f"{CHAT_DIR}/messages.md")
+        assert "[report.docx](attachments/msg-conv/report.docx)" in content
+        assert "[report.docx (text)](attachments_converted/msg-conv/report.docx.md)" in content

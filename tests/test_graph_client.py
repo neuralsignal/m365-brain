@@ -186,6 +186,22 @@ class TestGetBytes:
             client.get_bytes("/me/drive/content")
 
 
+class TestGetBytesWithContentType:
+    def test_absolute_url_blocked_domain(self, client):
+        with pytest.raises(GraphApiError, match="Download URL blocked"):
+            client.get_bytes_with_content_type("https://evil.example.com/file")
+
+    def test_returns_bytes_and_content_type(self, httpx_mock: HTTPXMock, client):
+        httpx_mock.add_response(
+            url=f"{GRAPH_BASE_URL}/me/photo/$value",
+            content=b"imgdata",
+            headers={"Content-Type": "image/png"},
+        )
+        data, ct = client.get_bytes_with_content_type("/me/photo/$value")
+        assert data == b"imgdata"
+        assert ct == "image/png"
+
+
 class TestGetPaginated:
     def test_single_page(self, httpx_mock: HTTPXMock, client):
         httpx_mock.add_response(
@@ -622,6 +638,7 @@ class TestIsAllowedDownloadDomain:
             "https://storage.office365.com/blobs/123",
             "https://files.cdn.office.net/assets/doc.docx",
             "https://svc.ms/v1/download/abc",
+            "https://blob.svc.ms/v1/download/abc",
         ],
     )
     def test_allowed_domains(self, url: str) -> None:
@@ -635,6 +652,9 @@ class TestIsAllowedDownloadDomain:
             "https://notmicrosoft.com/file",
             "https://sharepoint.com.evil.org/file",
             "https://attacker.blob.core.windows.net/container/blob",
+            "https://evilsvc.ms/malicious",
+            "https://fakesvc.ms/payload",
+            "https://attack.evilsvc.ms/file",
         ],
     )
     def test_blocked_domains(self, url: str) -> None:

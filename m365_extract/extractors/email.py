@@ -65,9 +65,10 @@ def run(
     """
     total_written = 0
     seen_keys: set[tuple[str, str]] = set()
+    folder_cache: dict[tuple[str, str], str] = {}
 
     for mailbox in config.mailboxes:
-        folders = _folders_for_mailbox(client, mailbox)
+        folders = _folders_for_mailbox(client, mailbox, folder_cache)
 
         for folder in folders:
             state_key = f"delta_link_{mailbox.address}_{folder}"
@@ -83,6 +84,7 @@ def run(
                 config,
                 converters_config,
                 seen_keys,
+                folder_cache,
             )
 
             if new_delta_link:
@@ -95,7 +97,11 @@ def run(
     return state, total_written
 
 
-def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> list[str]:
+def _folders_for_mailbox(
+    client: GraphClient,
+    mailbox: MailboxConfig,
+    folder_cache: dict[tuple[str, str], str],
+) -> list[str]:
     """Resolve the folder display-name list for a mailbox.
 
     If `mailbox.folders` is None, auto-discover via Graph API (and prime the
@@ -106,7 +112,7 @@ def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> list[st
     discovered = list_all_folders(client, _endpoint_base(mailbox.address), mailbox.address)
     for display, folder_id in discovered:
         if display not in FOLDER_IDS:
-            cache_folder_id(mailbox.address, display, folder_id)
+            cache_folder_id(folder_cache, mailbox.address, display, folder_id)
     return [display for display, _ in discovered]
 
 
@@ -120,10 +126,11 @@ def _sync_folder(
     config: EmailExtractorConfig,
     converters_config: dict,
     seen_keys: set[tuple[str, str]],
+    folder_cache: dict[tuple[str, str], str],
 ) -> tuple[int, str | None]:
     """Sync a single (mailbox, folder). Returns (items_written, new_delta_link)."""
     endpoint_base = _endpoint_base(address)
-    folder_id = resolve_folder_id(client, endpoint_base, address, folder)
+    folder_id = resolve_folder_id(client, endpoint_base, address, folder, folder_cache)
     path = f"{endpoint_base}/mailFolders/{folder_id}/messages/delta"
 
     sync_type = "incremental" if delta_link else "initial"

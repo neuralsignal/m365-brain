@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from unittest.mock import MagicMock, patch
 
-import httpx
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from m365_extract.extractors._file_helpers import (
     FileProcessingConfig,
+    FileProcessingContext,
     build_storage_path,
     extract_parent_path,
     handle_removed_item,
     process_drive_item,
     should_eager_convert,
 )
+from m365_extract.graph_client import GraphApiError
 from m365_extract.storage.local import LocalBackend
 
 SAMPLE_CONVERTERS_CONFIG = {
@@ -161,17 +164,19 @@ class TestProcessDriveItem:
         fm = {"title": "doc.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=[],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/doc.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=[],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -188,17 +193,19 @@ class TestProcessDriveItem:
         fm = {"title": "image.png", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.png"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/image.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.png"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -223,17 +230,19 @@ class TestProcessDriveItem:
             return_value="# Report Content",
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileProcessingContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True
@@ -252,17 +261,19 @@ class TestProcessDriveItem:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=MagicMock(),
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -281,17 +292,19 @@ class TestProcessDriveItem:
         fm = {"title": "huge.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/huge.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -304,13 +317,7 @@ class TestProcessDriveItem:
     def test_download_failure_writes_error_stub(self, tmp_path):
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_client.get_bytes.side_effect = httpx.HTTPStatusError(
-            "Server Error",
-            request=MagicMock(),
-            response=mock_response,
-        )
+        mock_client.get_bytes.side_effect = GraphApiError("500 Server Error", 500)
 
         item = {
             "name": "report.docx",
@@ -321,17 +328,19 @@ class TestProcessDriveItem:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -362,17 +371,19 @@ class TestProcessDriveItemFallbackFetch:
             return_value="# Converted",
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileProcessingContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True
@@ -385,17 +396,11 @@ class TestProcessDriveItemFallbackFetch:
         content = storage.read_file("onedrive/report.md")
         assert "Converted" in content
 
-    def test_handles_http_status_error_during_individual_fetch(self, tmp_path):
-        """When individual item fetch raises HTTPStatusError, logs warning and writes no-url stub."""
+    def test_handles_graph_api_error_during_individual_fetch(self, tmp_path):
+        """When individual item fetch raises GraphApiError, logs warning and writes no-url stub."""
         storage = LocalBackend(str(tmp_path / "vault"))
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-        mock_client.get.side_effect = httpx.HTTPStatusError(
-            "Not Found",
-            request=MagicMock(),
-            response=mock_response,
-        )
+        mock_client.get.side_effect = GraphApiError("404 Not Found", 404)
 
         item = {
             "name": "report.docx",
@@ -406,17 +411,19 @@ class TestProcessDriveItemFallbackFetch:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         result = process_drive_item(
-            client=mock_client,
-            storage=storage,
+            ctx=FileProcessingContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
             item=item,
             storage_path="onedrive/report.md",
             frontmatter=fm,
-            file_config=FileProcessingConfig(
-                eager_patterns=["*.docx"],
-                convertible_extensions=[".docx"],
-                max_file_size_mb=100,
-                converters_config=SAMPLE_CONVERTERS_CONFIG,
-            ),
         )
 
         assert result is True
@@ -445,17 +452,19 @@ class TestProcessDriveItemConversionError:
             side_effect=ValueError("unsupported format"),
         ):
             result = process_drive_item(
-                client=mock_client,
-                storage=storage,
+                ctx=FileProcessingContext(
+                    client=mock_client,
+                    storage=storage,
+                    file_config=FileProcessingConfig(
+                        eager_patterns=["*.docx"],
+                        convertible_extensions=[".docx"],
+                        max_file_size_mb=100,
+                        converters_config=SAMPLE_CONVERTERS_CONFIG,
+                    ),
+                ),
                 item=item,
                 storage_path="onedrive/report.md",
                 frontmatter=fm,
-                file_config=FileProcessingConfig(
-                    eager_patterns=["*.docx"],
-                    convertible_extensions=[".docx"],
-                    max_file_size_mb=100,
-                    converters_config=SAMPLE_CONVERTERS_CONFIG,
-                ),
             )
 
         assert result is True
@@ -463,3 +472,92 @@ class TestProcessDriveItemConversionError:
         content = storage.read_file("onedrive/report.md")
         assert "Conversion failed" in content
         assert "unsupported format" in content
+
+
+class TestGraphApiErrorNotSwallowed:
+    def test_download_graph_api_error_produces_error_stub(self, tmp_path):
+        """GraphApiError from get_bytes is caught and recorded, not silently swallowed."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock()
+        mock_client.get_bytes.side_effect = GraphApiError("403 Forbidden: insufficient privileges", 403)
+
+        item = {
+            "name": "secret.docx",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "@microsoft.graph.downloadUrl": "https://download.example.com/secret",
+        }
+        fm = {"title": "secret.docx", "conversion_status": "pending"}
+
+        result = process_drive_item(
+            ctx=FileProcessingContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
+            item=item,
+            storage_path="onedrive/secret.md",
+            frontmatter=fm,
+        )
+
+        assert result is True
+        assert fm["conversion_status"] == "error_download"
+        content = storage.read_file("onedrive/secret.md")
+        assert "Download failed" in content
+        assert "403 Forbidden" in content
+
+    def test_refetch_graph_api_error_produces_no_url_stub(self, tmp_path):
+        """GraphApiError from client.get() during re-fetch is caught, not silently swallowed."""
+        storage = LocalBackend(str(tmp_path / "vault"))
+        mock_client = MagicMock()
+        mock_client.get.side_effect = GraphApiError("429 Too Many Requests", 429)
+
+        item = {
+            "name": "report.docx",
+            "id": "item-xyz",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        result = process_drive_item(
+            ctx=FileProcessingContext(
+                client=mock_client,
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=["*.docx"],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+            ),
+            item=item,
+            storage_path="onedrive/report.md",
+            frontmatter=fm,
+        )
+
+        assert result is True
+        assert fm["conversion_status"] == "error_no_download_url"
+        content = storage.read_file("onedrive/report.md")
+        assert "No download URL available" in content
+
+
+class TestFileProcessingContextImmutable:
+    def test_is_frozen(self):
+        ctx = FileProcessingContext(
+            client=MagicMock(),
+            storage=MagicMock(),
+            file_config=FileProcessingConfig(
+                eager_patterns=[],
+                convertible_extensions=[".docx"],
+                max_file_size_mb=100,
+                converters_config=SAMPLE_CONVERTERS_CONFIG,
+            ),
+        )
+        with pytest.raises(FrozenInstanceError):
+            ctx.storage = MagicMock()  # type: ignore[misc]
