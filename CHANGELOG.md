@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.1](https://github.com/neuralsignal/m365-extract/compare/v1.1.0...v1.1.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* add leading dot to svc.ms in SSRF domain allowlist ([#182](https://github.com/neuralsignal/m365-extract/issues/182)) ([d0c5cb7](https://github.com/neuralsignal/m365-extract/commit/d0c5cb7612fc3075928aceb95a1fa2db9bbfa450))
+* catch GraphApiError instead of dead httpx.HTTPStatusError in _file_helpers.py ([#184](https://github.com/neuralsignal/m365-extract/issues/184)) ([a65f640](https://github.com/neuralsignal/m365-extract/commit/a65f6407f177cca47a353bc390c985719a88f8d6))
+* consume OAuth CSRF state token after verification to prevent replay ([#245](https://github.com/neuralsignal/m365-extract/issues/245)) ([219b89d](https://github.com/neuralsignal/m365-extract/commit/219b89d9d0c9ba87a734740ba14e9fa74eee6942))
+* eliminate TOCTOU race in token cache file permissions ([#239](https://github.com/neuralsignal/m365-extract/issues/239)) ([d10aa75](https://github.com/neuralsignal/m365-extract/commit/d10aa752abcfd62af26ff9427dc13ab6c2a1b88d))
+* remove type: ignore suppressions in _teams_ingest.py with assert narrowing ([#256](https://github.com/neuralsignal/m365-extract/issues/256)) ([897d39c](https://github.com/neuralsignal/m365-extract/commit/897d39cee865527f7b903a176b9c0b66bcdf9157))
+* replace type: ignore with sqlalchemy.desc() in admin_state.py ([#189](https://github.com/neuralsignal/m365-extract/issues/189)) ([05ca1b4](https://github.com/neuralsignal/m365-extract/commit/05ca1b4e52da3895b056dc78c39b465ea1f69f30))
+* store OAuth CSRF state as per-token files ([#244](https://github.com/neuralsignal/m365-extract/issues/244)) ([951bfea](https://github.com/neuralsignal/m365-extract/commit/951bfea8f017c34b7746e2881f5920581d852afa))
+* update stale test call sites for consolidated refactors ([a75a0e5](https://github.com/neuralsignal/m365-extract/commit/a75a0e58dbd3d55a8ee16828c78e16d0467d7a2e))
+
 ## [1.1.0](https://github.com/neuralsignal/m365-extract/compare/v1.0.0...v1.1.0) (2026-06-16)
 
 
