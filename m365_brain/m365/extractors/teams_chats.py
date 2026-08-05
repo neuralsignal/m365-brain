@@ -38,7 +38,7 @@ from m365_brain.m365.extractors._teams_context import TeamsContext
 from m365_brain.m365.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.extractors.errors import MessageStoreError
-from m365_brain.m365.frontmatter import TeamsChatData, build_teams_chat_frontmatter
+from m365_brain.m365.frontmatter import TeamsChatData, build_teams_chat_frontmatter, participant_relations
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.paths import VaultPaths
@@ -132,15 +132,13 @@ def _write_chat(
     body_parts = [f"# {title}\n"]
     body_parts.append("## Observations\n")
     body_parts.append(f"- [conversation_type] {data.conversation_type}")
-    body_parts.append(f"- [participants] {', '.join(participants)}")
     body_parts.append(f"- [last_message_time] {last_message_time}")
     body_parts.append(f"- [message_count] {len(store)}")
 
-    relations = []
-    for p_name in participants:
-        contact_slug = slugify(p_name, 80)
-        if contact_slug and contact_slug != "untitled" and len(contact_slug) > 5:
-            relations.append(f"- participant [[contact-{contact_slug}]]")
+    # Relation lines, not a joined observation: a participant is a counterparty
+    # `ops tiers` counts, and one string holding all of them is one counterparty.
+    # The 5-character slug filter that stood here dropped a short name silently.
+    relations = participant_relations(data)
     if relations:
         body_parts.append("\n## Relations\n")
         body_parts.extend(relations)

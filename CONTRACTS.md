@@ -195,6 +195,18 @@ attendee through `attendee_relations`, which is what `ops tiers` counts. Joining
 — the repair that was right for an email's `to` line — would have produced a single counterparty
 called "Ana Ruiz, Bo Frey", because `ops tiers` groups on the whole observation.
 
+A Teams chat's participants are the same fact and take the same shape: `participants` stays a list
+for a reader, and `participant_relations` writes one `- participant [[Name]]` line per person. The
+link names the participant as Graph spelled them rather than a `contact-<slug>` placeholder —
+`ops.link_resolution.unresolved_prefix` is the spelling for a link that *cannot* resolve, and it
+also becomes the counterparty `ops tiers` reports, so a slug would keep one person seen in a chat
+and on an event from being one counterparty.
+
+A **channel** carries no such fact. `TeamsChannelData` states a team and a channel, never people;
+its senders exist only as rendered prose in the message timeline, which is neither an observation
+nor a relation. There is therefore no `teams_channel` interaction source in the shipped template,
+and adding one would report zero counterparties — indistinguishable from a quiet quarter.
+
 ### Sync state
 
 **Present.** JSON at `state.state_file_path` (per-`(user, extractor)` files under the multi-user

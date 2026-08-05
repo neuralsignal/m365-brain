@@ -378,6 +378,15 @@ ops:
         party_from: { observation: null, relation: "attended_by" }
         timestamp: { observation: "start" }
         exclude_future: true
+      - entity_type: "teams_chat"
+        party_from: { observation: null, relation: "participant" }
+        timestamp: { observation: "last_message_time" }
+        exclude_future: true
+      # No `teams_channel` source, and not by oversight: a channel names a team
+      # and a channel, never people, so there is no counterparty to read. Its
+      # senders exist only as rendered prose in the message timeline, which is
+      # neither an observation nor a relation. A source naming it would report
+      # zero and read as a quiet quarter -- the defect this list already had.
     write_back:
       enabled: false
       fields: # computed value -> the frontmatter key it is written to
