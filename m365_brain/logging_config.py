@@ -1,10 +1,29 @@
-"""Central structlog configuration. Call configure_logging() once at startup."""
+"""Central structlog configuration. Call configure_logging() once at startup.
+
+**Logs go to stderr.** Results go to stdout, and the two must not mix: every
+read verb offers `--json`, and a caller piping that into a parser cannot be
+made to separate log lines from data first.
+
+`sys.stderr` is looked up when a logger is *created*, not when this function
+runs. `structlog.PrintLoggerFactory(file=sys.stderr)` captures the stream
+object at configuration time, which makes the destination whatever stderr
+happened to be during the first `configure_logging` call in the process -- a
+global that outlives its caller, and the reason logs escaped capture under
+test. Resolving it per logger costs one attribute lookup and removes the
+global.
+"""
 
 from __future__ import annotations
 
 import logging
+import sys
 
 import structlog
+
+
+def _stderr_logger(*args: object) -> structlog.PrintLogger:
+    """A logger bound to whatever `sys.stderr` is right now."""
+    return structlog.PrintLogger(file=sys.stderr)
 
 
 def configure_logging(log_level: str, json_output: bool) -> None:
@@ -34,6 +53,6 @@ def configure_logging(log_level: str, json_output: bool) -> None:
             logging.getLevelName(log_level),
         ),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
+        logger_factory=_stderr_logger,
+        cache_logger_on_first_use=False,
     )

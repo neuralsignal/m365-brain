@@ -100,7 +100,7 @@ class TestTeamsFrontmatterShapes:
 
         assert fm["tags"] == ["teams", "teams-oneonone"]
         assert fm["permalink"].startswith("teams-chat-alice-smith-")
-        assert "url" not in fm["source"]
+        assert fm["source"]["url"] is None, "the key is present-and-None, never absent"
         assert fm["source"]["id"] == "chat-1"
 
     def test_empty_conversation_type_yields_bare_prefix_tag(self):

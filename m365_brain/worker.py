@@ -26,7 +26,7 @@ from m365_brain.m365.auth.token_provider import TokenRefreshError, TokenStorePro
 from m365_brain.m365.client import GraphApiError
 from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
-from m365_brain.state import SyncState
+from m365_brain.state import JsonStateStore
 from m365_brain.storage import create_user_storage
 from m365_brain.sync import EXTRACTORS, run_extractors
 from m365_brain.validation import validate_user_id
@@ -172,10 +172,9 @@ def run_single_extractor(
         token_provider = make_web_token_provider(token_adapter, user.user_id, config.auth)
         storage = create_user_storage(config.storage, user.user_id)
 
-        state_path = str(Path(state_dir) / user.user_id / f"{extractor_name}.json")
-        sync_state = SyncState(state_path)
+        state = JsonStateStore(Path(state_dir) / user.user_id)
 
-        total_items = run_extractors(config, token_provider, storage, sync_state, [extractor_name])
+        total_items = run_extractors(config, token_provider, storage, state, [extractor_name])
 
         upsert_extractor_status(engine, user.user_id, extractor_name, "success", total_items, None)
         log.info("worker.job_completed", user_id=user.user_id, extractor=extractor_name, items=total_items)

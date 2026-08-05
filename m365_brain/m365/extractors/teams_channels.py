@@ -101,8 +101,10 @@ def run(
             conv_dir=conv_dir,
             paths=ctx.paths,
         )
-        if _process_channel(teams_ctx, info, team_id, state, config, path_map):
+        result = _process_channel(teams_ctx, info, team_id, state, config, path_map)
+        if result is not None:
             written += 1
+            ctx.recorder.note_records(*result)
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     state["channels_written"] = written
@@ -219,16 +221,16 @@ def _persist_channel_data(
     ctx: TeamsContext,
     info: ChannelInfo,
     merged: dict[str, StoredMessage],
-    changed: bool,
+    merged_ids: list[str],
     history_complete: bool,
 ) -> str | None:
     """Persist the store and render markdown. Returns the written path, or None."""
     store_path = ctx.paths.conversation_store(ctx.conv_dir)
-    if changed or not ctx.storage.file_exists(store_path):
+    if merged_ids or not ctx.storage.file_exists(store_path):
         # Always persist the store once a watermark exists — even empty — so
         # file existence matches the watermark and backfill never re-triggers.
         save_store(ctx.storage, store_path, merged)
-    if not changed:
+    if not merged_ids:
         return None
     return _write_channel(ctx, info, merged, history_complete)
 
@@ -240,8 +242,8 @@ def _process_channel(
     state: dict,
     config: TeamsChannelsExtractorConfig,
     path_map: dict[str, str],
-) -> bool:
-    """Process a single channel: fetch, merge, render. Returns True if written.
+) -> tuple[str, list[str]] | None:
+    """Process a single channel. Returns `(written path, merged ids)`, or None.
 
     Errors are contained per channel: a fetch/media/store failure skips this
     channel (without advancing its watermark) and the sync cycle continues.
@@ -256,25 +258,25 @@ def _process_channel(
 
     result = _safe_fetch_chains(ctx, info, team_id, watermark, config.max_messages_per_channel)
     if result is None:
-        return False
+        return None
     chains, truncated = result
 
     if watermark is None:
         state["history_complete"][key] = not truncated
     if not chains:
-        return False
+        return None
 
     merge_result = _load_and_convert(ctx, info, chains, f"/teams/{team_id}/channels/{info.channel_id}/messages")
     if merge_result is None:
-        return False
-    merged, changed = merge_result
+        return None
+    merged, merged_ids = merge_result
 
     _advance_channel_watermark(state, key, chains, watermark)
-    file_path = _persist_channel_data(ctx, info, merged, changed, state["history_complete"].get(key, False))
+    file_path = _persist_channel_data(ctx, info, merged, merged_ids, state["history_complete"].get(key, False))
     if file_path is None:
-        return False
+        return None
     # No upstream removal signal exists for channels under delegated
     # permissions -- see CONTRACTS.md. The map still has to be kept: it is
     # what `vault purge` and any future signal use to find the file.
     path_map[key] = file_path
-    return True
+    return file_path, merged_ids

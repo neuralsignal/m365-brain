@@ -91,8 +91,6 @@ graph:
   max_retry_after_seconds: 300.0 # clamp on a server-supplied Retry-After
   error_message_max_length: 200
 
-state:
-  state_file_path: "../state/sync-state.json"
 
 # ---------------------------------------------------------------------------
 # extractors — one block each, all eight required
@@ -301,7 +299,7 @@ outboxes:
     "email.draft": { tier: "draft_only", auth_profile: "mail" }
     "email.reply": { tier: "draft_only", auth_profile: "mail" }
     "email.forward": { tier: "draft_only", auth_profile: "mail" }
-    "chat.post_message": { tier: "auto_send", auth_profile: "chat" }
+    "teams.post_message": { tier: "auto_send", auth_profile: "chat" }
     "file.update": { tier: "auto_send", auth_profile: "files" }
   email:
     signature:

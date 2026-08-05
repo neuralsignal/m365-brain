@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from m365_brain.m365.frontmatter._tags import tag_slug
 from m365_brain.m365.markdown_writer import now_iso, short_hash, slugify
 
 
@@ -27,11 +28,15 @@ def build_email_frontmatter(data: EmailData) -> dict:
     date_str = data.received_time[:10]
     slug = slugify(data.subject, 80)
     permalink = f"email-{date_str}-{slug}-{short_hash(data.message_id, 6)}"
+    tags = ["email"]
+    folder_tag = tag_slug(data.folder, 80)
+    if folder_tag:
+        tags.append(folder_tag)
     return {
         "title": data.subject,
         "permalink": permalink,
         "type": "email",
-        "tags": ["email", data.folder.lower().replace(" ", "-")],
+        "tags": tags,
         "sender": data.sender_address,
         "sender_name": data.sender_name,
         "to": data.to_recipients,

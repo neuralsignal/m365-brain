@@ -47,7 +47,6 @@ def _write_config_yaml(tmp_path, full_web_config):
             "max_retry_after_seconds": 300.0,
             "error_message_max_length": 200,
         },
-        "state": {"state_file_path": str(tmp_path / "state.json")},
         "extractors": {
             "email": {
                 "enabled": False,
@@ -233,7 +232,6 @@ class TestGetConfig:
                 "max_retry_after_seconds": 300.0,
                 "error_message_max_length": 200,
             },
-            "state": {"state_file_path": str(tmp_path / "state.json")},
             "extractors": {
                 "email": {
                     "enabled": False,

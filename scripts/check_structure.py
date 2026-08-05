@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -52,17 +53,23 @@ LAYERS: dict[str, int] = {
     "parsers": 1,
     "validation": 1,
     "logging_config": 1,
+    "atomic_json": 1,
     # 2 -- persistence primitives
     "storage": 2,
     "state": 2,
-    "manifest": 2,
-    # 3 -- where a file goes, and how it stops being there. Below everything
-    # that addresses the vault, because none of them owns it.
+    # 3 -- addressing and recording. `manifest` sits here rather than beside
+    # `state` because `RecordingStorage` wraps a `StorageBackend`, and a
+    # same-layer import between two top-level modules is exactly what this map
+    # rejects. `schedule` is here because it reads cursors out of `state`.
     "vault": 3,
+    "manifest": 3,
+    "schedule": 3,
     # 4 -- the vendor-agnostic write-back machinery: intents, tiers, stores,
     # the runner. It must NOT know that Microsoft 365 exists; the executors
     # that do live in `m365/outboxes/` and import downward into here.
+    # `hooks` is here because it hands a `ChangeManifest` to user code.
     "outbox": 4,
+    "hooks": 4,
     # 5 -- the two subsystems, peers by construction. Same layer means neither
     # may import the other, which is the point: `index` must stay usable with
     # the Microsoft half absent entirely, and stacking them would block only
@@ -71,16 +78,19 @@ LAYERS: dict[str, int] = {
     "m365": 5,
     # 6 -- one pass over layer 5
     "sync": 6,
+    "ops": 6,
+    "index_step": 6,
     # 7 -- orchestration over passes
-    "schedule": 7,
-    "hooks": 7,
     "cycle": 7,
     "worker": 7,
     "dry_run": 7,
     # 8 -- the facade
     "workspace": 8,
-    # 9 -- the entry point
-    "cli": 9,
+    # 9 -- one verb group per module: option parsing, one library call,
+    # formatting. Above the facade because it uses it.
+    "commands": 9,
+    # 10 -- the entry point
+    "cli": 10,
 }
 
 # Modules that exist today and move under `m365/` during the platform stage.
@@ -128,6 +138,7 @@ IGNORED_TOP_LEVEL_DIRS = {
     "__pycache__",
     ".web",
     "assets",
+    "site",  # mkdocs build output; gitignored
 }
 
 REQUIRED_ARTIFACTS = ("INTENT.md", "CONTRACTS.md")
@@ -298,6 +309,89 @@ def check_tests_exist(root: Path) -> list[str]:
     return findings
 
 
+SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+"""Lowercase alphanumerics and single hyphens: the spec's `name` rule.
+
+The regex rejects a leading or trailing hyphen and consecutive hyphens by
+construction, which is exactly what the specification requires.
+"""
+
+SKILL_NAME_MAX = 64
+SKILL_DESCRIPTION_MAX = 1024
+SKILL_COMPATIBILITY_MAX = 500
+
+
+def check_skills(root: Path) -> list[str]:
+    """The bundled skills conform to the agentskills.io manifest schema.
+
+    Two of these rules are cheap to get wrong and invisible until install:
+    `metadata` values must be *strings*, so an unquoted `version: 1.0` is a
+    float and invalid; and `allowed-tools` is a space-separated **string**, not
+    a list. Both are checked here rather than trusted to review.
+    """
+    findings: list[str] = []
+    skills = root / "skills"
+    if not skills.is_dir():
+        return findings
+
+    for directory in sorted(p for p in skills.iterdir() if p.is_dir()):
+        manifest = directory / "SKILL.md"
+        if not manifest.is_file():
+            findings.append(f"skills/{directory.name}/: no SKILL.md")
+            continue
+        front = _frontmatter(manifest)
+        if front is None:
+            findings.append(f"skills/{directory.name}/SKILL.md: no YAML frontmatter")
+            continue
+
+        name = front.get("name")
+        if name != directory.name:
+            findings.append(f"skills/{directory.name}/SKILL.md: name is {name!r}, must equal the directory name")
+        if not isinstance(name, str) or not SKILL_NAME_RE.match(name) or len(name) > SKILL_NAME_MAX:
+            findings.append(f"skills/{directory.name}/SKILL.md: name must be lowercase a-z0-9 with single hyphens")
+
+        description = front.get("description")
+        if not isinstance(description, str) or not description or len(description) > SKILL_DESCRIPTION_MAX:
+            findings.append(f"skills/{directory.name}/SKILL.md: description must be 1-{SKILL_DESCRIPTION_MAX} chars")
+
+        compatibility = front.get("compatibility")
+        if compatibility is not None and len(str(compatibility)) > SKILL_COMPATIBILITY_MAX:
+            findings.append(f"skills/{directory.name}/SKILL.md: compatibility exceeds {SKILL_COMPATIBILITY_MAX} chars")
+
+        metadata = front.get("metadata")
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                findings.append(f"skills/{directory.name}/SKILL.md: metadata must be a map")
+            else:
+                findings.extend(
+                    f"skills/{directory.name}/SKILL.md: metadata.{key} is {type(value).__name__}, must be a string "
+                    f"-- quote it"
+                    for key, value in metadata.items()
+                    if not isinstance(value, str)
+                )
+
+        tools = front.get("allowed-tools")
+        if tools is not None and not isinstance(tools, str):
+            findings.append(
+                f"skills/{directory.name}/SKILL.md: allowed-tools must be a space-separated string, not a list"
+            )
+    return findings
+
+
+def _frontmatter(path: Path) -> dict | None:
+    import yaml
+
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return None
+    _, _, rest = text.partition("---\n")
+    block, marker, _ = rest.partition("\n---\n")
+    if not marker:
+        return None
+    loaded = yaml.safe_load(block)
+    return loaded if isinstance(loaded, dict) else None
+
+
 CHECKS = (
     ("top-level layout", check_top_level),
     ("declared subpackages", check_subpackages),
@@ -307,6 +401,7 @@ CHECKS = (
     ("import direction", check_import_direction),
     ("required artifacts", check_required_artifacts),
     ("test presence", check_tests_exist),
+    ("bundled skills", check_skills),
 )
 
 

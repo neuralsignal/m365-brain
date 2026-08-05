@@ -84,8 +84,10 @@ def run(
             conv_dir=chat_dir,
             paths=ctx.paths,
         )
-        if _process_chat(teams_ctx, chat, state, config, path_map):
+        result = _process_chat(teams_ctx, chat, state, config, path_map)
+        if result is not None:
             written += 1
+            ctx.recorder.note_records(*result)
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     state["chats_synced"] = len(chats)
@@ -206,8 +208,8 @@ def _process_chat(
     state: dict,
     config: TeamsChatsExtractorConfig,
     path_map: dict[str, str],
-) -> bool:
-    """Process a single chat: fetch, merge, render. Returns True if written.
+) -> tuple[str, list[str]] | None:
+    """Process a single chat. Returns `(written path, merged ids)`, or None.
 
     Errors are contained per chat: a fetch/media/store failure skips this chat
     (without advancing its watermark) and the sync cycle continues.
@@ -226,16 +228,16 @@ def _process_chat(
         fetched_raw, truncated = ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
     except GraphApiError as exc:
         log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
-        return False
+        return None
     except httpx.TransportError as exc:
         log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
-        return False
+        return None
 
     if watermark is None:
         state["history_complete"][chat_id] = not truncated
 
     if not fetched_raw:
-        return False
+        return None
 
     advance = watermark is None or not truncated
     if watermark is not None and truncated:
@@ -250,26 +252,27 @@ def _process_chat(
         store = load_store(ctx.storage, store_path)
     except MessageStoreError as exc:
         log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
-        return False
+        return None
 
     try:
         fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
     except httpx.TransportError as exc:
         log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
-        return False
+        return None
 
-    merged, changed = merge_messages(store, fetched)
+    merged, merged_ids = merge_messages(store, fetched)
     _advance_chat_watermark(state, chat_id, fetched_raw, watermark, advance)
 
-    if changed or not ctx.storage.file_exists(store_path):
+    if merged_ids or not ctx.storage.file_exists(store_path):
         save_store(ctx.storage, store_path, merged)
 
-    if not changed:
-        return False
-    path_map[chat_id] = _write_chat(
+    if not merged_ids:
+        return None
+    file_path = _write_chat(
         ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths
     )
+    path_map[chat_id] = file_path
     # Recorded even though Graph offers chats no removal signal under delegated
     # permissions -- see CONTRACTS.md. The map is what a future signal, and
     # `vault purge` today, need in order to find the file again.
-    return True
+    return file_path, merged_ids

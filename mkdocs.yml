@@ -74,6 +74,9 @@ nav:
     - Storage Backends: user-guide/storage.md
     - Azure Setup: user-guide/azure.md
     - Docker: user-guide/docker.md
+  - Development:
+    - Quickstart: dev/quickstart.md
+    - Trellis: dev/trellis.md
   - API Reference:
     - Config: reference/config.md
     - Graph Client: reference/graph_client.md

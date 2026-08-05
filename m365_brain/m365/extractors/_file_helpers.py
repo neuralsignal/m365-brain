@@ -135,12 +135,16 @@ def process_drive_item(
         download_url = item.get("@microsoft.graph.downloadUrl", "")
         if not download_url:
             # Delta responses often omit @microsoft.graph.downloadUrl.
-            # Fetch the item individually to get the download URL.
+            # Fetch the item individually to get the download URL. The drive
+            # comes from the item itself: this helper serves SharePoint as well
+            # as OneDrive, and `/me/drive` would look a SharePoint item up in
+            # the signed-in user's own drive.
             item_id = item.get("id", "")
-            if item_id:
+            drive_id = item.get("parentReference", {}).get("driveId", "")
+            if item_id and drive_id:
                 try:
                     full_item = ctx.client.get(
-                        f"/me/drive/items/{item_id}",
+                        f"/drives/{drive_id}/items/{item_id}",
                         params={
                             "$select": "@microsoft.graph.downloadUrl",
                         },
@@ -148,6 +152,9 @@ def process_drive_item(
                     download_url = full_item.get("@microsoft.graph.downloadUrl", "")
                 except GraphApiError as exc:
                     log.warning("file_helpers.item_fetch_failed", file=file_name, error=str(exc))
+            elif item_id:
+                # No drive to address: guessing one writes the wrong file.
+                log.warning("file_helpers.no_drive_id", file=file_name, item_id=item_id)
 
         if not download_url:
             log.warning("file_helpers.no_download_url", file=file_name)

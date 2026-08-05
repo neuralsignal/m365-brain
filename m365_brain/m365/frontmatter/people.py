@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from m365_brain.m365.frontmatter._tags import tag_slug
 from m365_brain.m365.markdown_writer import now_iso, short_hash, slugify
 
 
@@ -38,7 +39,7 @@ def build_contact_frontmatter(data: ContactData) -> dict:
     slug = slugify(data.display_name, 80)
     permalink = f"contact-{slug}-{short_hash(data.contact_id, 6)}"
     tags = ["contact"]
-    tags.extend(c.lower().replace(" ", "-") for c in data.categories)
+    tags.extend(tag for tag in (tag_slug(c, 80) for c in data.categories) if tag)
     fm: dict = {
         "title": data.display_name,
         "permalink": permalink,
@@ -48,6 +49,9 @@ def build_contact_frontmatter(data: ContactData) -> dict:
             "system": "microsoft365",
             "service": "people",
             "id": data.contact_id,
+            # A contact has no web link upstream. The key is still here because
+            # `source` has to have one shape across every entity type.
+            "url": None,
             "extracted_at": now_iso(),
             "extractor": "m365-brain/contacts/1.0",
         },
@@ -71,8 +75,9 @@ def build_directory_user_frontmatter(data: DirectoryUserData) -> dict:
     slug = slugify(data.display_name, 80)
     permalink = f"directory-{slug}-{short_hash(data.user_id, 6)}"
     tags = ["directory"]
-    if data.department:
-        tags.append(data.department.lower().replace(" ", "-"))
+    department_tag = tag_slug(data.department, 80)
+    if department_tag:
+        tags.append(department_tag)
     fm: dict = {
         "title": data.display_name,
         "permalink": permalink,
@@ -84,6 +89,7 @@ def build_directory_user_frontmatter(data: DirectoryUserData) -> dict:
             "system": "microsoft365",
             "service": "directory",
             "id": data.user_id,
+            "url": None,
             "extracted_at": now_iso(),
             "extractor": "m365-brain/directory/1.0",
         },

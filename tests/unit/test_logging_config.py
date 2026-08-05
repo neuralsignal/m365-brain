@@ -7,7 +7,7 @@ import logging
 import pytest
 import structlog
 
-from m365_brain.logging_config import configure_logging
+from m365_brain.logging_config import _stderr_logger, configure_logging
 
 
 @pytest.fixture(autouse=True)
@@ -97,7 +97,8 @@ class TestConfigureLoggingCommonProcessors:
         assert structlog.processors.TimeStamper in processor_types
 
     @pytest.mark.parametrize("json_output", [True, False])
-    def test_logger_factory_is_print(self, json_output: bool) -> None:
+    def test_logger_factory_writes_to_the_current_stderr(self, json_output: bool) -> None:
         configure_logging("INFO", json_output=json_output)
         cfg = structlog.get_config()
-        assert isinstance(cfg["logger_factory"], structlog.PrintLoggerFactory)
+        assert cfg["logger_factory"] is _stderr_logger
+        assert isinstance(cfg["logger_factory"](), structlog.PrintLogger)

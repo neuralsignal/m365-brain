@@ -154,9 +154,9 @@ class TestMerge:
     def test_merge_is_idempotent(self, existing: list[StoredMessage], fetched: list[StoredMessage]) -> None:
         store = _store_from(existing)
         once, _ = merge_messages(store, fetched)
-        twice, changed_again = merge_messages(once, fetched)
+        twice, merged_again = merge_messages(once, fetched)
         assert twice == once
-        assert changed_again is False
+        assert merged_again == []
 
     @given(
         existing=st.lists(_messages, max_size=8, unique_by=lambda m: m.id),
@@ -171,24 +171,39 @@ class TestMerge:
 
     def test_new_message_inserted_and_changed(self) -> None:
         msg = _message("m1", "2026-06-11T09:00:00Z", "1", "hello")
-        merged, changed = merge_messages({}, [msg])
+        merged, merged_ids = merge_messages({}, [msg])
         assert merged == {"m1": msg}
-        assert changed is True
+        assert merged_ids == ["m1"]
 
     def test_same_etag_keeps_existing_and_unchanged(self) -> None:
         old = _message("m1", "2026-06-11T09:00:00Z", "1", "original")
         refetched = replace(old, content="should not replace")
-        merged, changed = merge_messages({"m1": old}, [refetched])
+        merged, merged_ids = merge_messages({"m1": old}, [refetched])
         assert merged["m1"].content == "original"
-        assert changed is False
+        assert merged_ids == []
 
     def test_etag_change_replaces_content(self) -> None:
         old = _message("m1", "2026-06-11T09:00:00Z", "1", "original")
         edited = replace(old, etag="2", content="edited", edited=True)
-        merged, changed = merge_messages({"m1": old}, [edited])
+        merged, merged_ids = merge_messages({"m1": old}, [edited])
         assert merged["m1"].content == "edited"
         assert merged["m1"].edited is True
-        assert changed is True
+        assert merged_ids == ["m1"]
+
+    @given(
+        existing=st.lists(_messages, max_size=8, unique_by=lambda m: m.id),
+        fetched=st.lists(_messages, max_size=8, unique_by=lambda m: m.id),
+    )
+    @settings(max_examples=50)
+    def test_merged_ids_are_exactly_the_records_that_changed(
+        self, existing: list[StoredMessage], fetched: list[StoredMessage]
+    ) -> None:
+        """The manifest's `record_ids` is only as honest as this list."""
+        store = _store_from(existing)
+        merged, merged_ids = merge_messages(store, fetched)
+        expected = {m.id for m in fetched if store.get(m.id) is None or store[m.id].etag != m.etag}
+        assert set(merged_ids) == expected
+        assert all(merged[i] is not store.get(i) for i in merged_ids)
 
     def test_merge_does_not_mutate_input_store(self) -> None:
         old = _message("m1", "2026-06-11T09:00:00Z", "1", "original")

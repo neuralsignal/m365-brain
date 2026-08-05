@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from m365_brain.m365.client import GraphClient
+from m365_brain.manifest import ChangeRecorder
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.paths import VaultPaths
 from m365_brain.vault.removal import RemovalHandler
@@ -13,7 +14,7 @@ from m365_brain.vault.removal import RemovalHandler
 
 @dataclass(frozen=True)
 class ExtractorContext:
-    """The three cross-cutting dependencies every extractor now takes.
+    """The cross-cutting dependencies every extractor takes.
 
     It exists so one signature serves all eight. `sync.py` used to carry a
     per-extractor `needs_converters` flag purely to choose between a 4-arg and
@@ -28,6 +29,10 @@ class ExtractorContext:
     paths: VaultPaths
     converters: dict
     removal: RemovalHandler
+    recorder: ChangeRecorder
+    """Where an extractor declares which upstream records it merged into a file
+    it wrote. Only the two Teams extractors have anything to say -- every other
+    write is captured by `RecordingStorage` without the extractor knowing."""
 
 
 class Extractor(Protocol):

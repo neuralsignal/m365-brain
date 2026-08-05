@@ -88,8 +88,13 @@ class TestPeopleFrontmatterProperties:
 
 
 class TestPeopleFrontmatterShapes:
-    def test_category_tag_keeps_non_alphanumerics(self):
-        """Category tags are lower/space-replaced only — they are not run through `slugify`."""
+    def test_category_tags_go_through_the_permalink_slug_policy(self):
+        """Categories are slugified, not merely lowercased and space-replaced.
+
+        The hand-rolled version left `&` and accents in the tag, so the same
+        category produced two spellings depending on where it was rendered. An
+        unsluggable category is dropped rather than tagged `untitled`.
+        """
         fm = build_contact_frontmatter(
             ContactData(
                 display_name="Jane Smith",
@@ -99,11 +104,11 @@ class TestPeopleFrontmatterShapes:
                 company="Contoso",
                 job_title="",
                 department="",
-                categories=["R&D Team", "VIP"],
+                categories=["R&D Team", "Zürich", "!!!", "VIP"],
             )
         )
 
-        assert fm["tags"] == ["contact", "r&d-team", "vip"]
+        assert fm["tags"] == ["contact", "r-d-team", "zurich", "vip"]
         assert fm["email"] == ["jane@contoso.com"]
         assert "phone" not in fm
         assert fm["company"] == "Contoso"
@@ -125,7 +130,7 @@ class TestPeopleFrontmatterShapes:
 
         assert set(fm) == CONTACT_BASE_KEYS
         assert fm["tags"] == ["contact"]
-        assert "url" not in fm["source"]
+        assert fm["source"]["url"] is None, "the key is present-and-None, never absent"
 
     def test_directory_user_with_empty_email_still_emits_the_key(self):
         fm = build_directory_user_frontmatter(

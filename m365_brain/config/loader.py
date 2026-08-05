@@ -57,7 +57,6 @@ _PATH_KEYS = frozenset(
     {
         "base_path",
         "db_path",
-        "state_file_path",
         "token_cache_path",
         "path",
         "root",

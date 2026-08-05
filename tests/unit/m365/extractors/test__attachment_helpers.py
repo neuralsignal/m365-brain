@@ -102,6 +102,43 @@ class TestDownloadAttachments:
         assert files == [ctx.paths.attachment(_item(ctx), "passwd")]
         assert not any(".." in f for f in files)
 
+    @pytest.mark.parametrize(
+        "name",
+        [r"C:\Users\x\report.pdf", "/tmp/x/report.pdf", r"..\..\report.pdf"],
+        ids=["windows-absolute", "posix-absolute", "windows-traversal"],
+    )
+    def test_a_path_shaped_name_is_stored_under_its_basename(
+        self, local_storage: LocalBackend, ctx: ExtractorContext, name: str
+    ) -> None:
+        """The basename strip is what makes the name safe, so it has to run first.
+
+        Rejecting on the colon before stripping discarded every Windows-shaped
+        name outright -- a dropped attachment reported as a clean sync.
+        """
+        client = _client([{"name": name, "size": 4, "contentBytes": base64.b64encode(b"data").decode()}])
+        _download(client, local_storage, _config(convert=[], max_mb=25), ctx)
+
+        assert local_storage.list_files(ctx.paths.inbox_root("email")) == [
+            ctx.paths.attachment(_item(ctx), "report.pdf")
+        ]
+
+    @pytest.mark.parametrize(
+        "name",
+        ["", "/", ".", r"C:evil.txt"],
+        ids=["empty", "root", "current-dir", "drive-relative"],
+    )
+    def test_a_name_with_no_usable_basename_is_skipped_loudly(
+        self, local_storage: LocalBackend, ctx: ExtractorContext, name: str
+    ) -> None:
+        client = _client([{"name": name, "size": 4, "contentBytes": base64.b64encode(b"data").decode()}])
+
+        with patch.object(helpers.log, "warning") as mock_warning:
+            _download(client, local_storage, _config(convert=[], max_mb=25), ctx)
+
+        assert local_storage.list_files(ctx.paths.inbox_root("email")) == []
+        assert mock_warning.call_args.args == ("email.attachment_unusable_name",)
+        assert mock_warning.call_args.kwargs["name"] == name
+
     def test_matching_extension_is_queued_for_conversion(
         self, local_storage: LocalBackend, ctx: ExtractorContext
     ) -> None:

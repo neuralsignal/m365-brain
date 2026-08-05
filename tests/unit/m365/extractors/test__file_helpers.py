@@ -374,6 +374,7 @@ class TestProcessDriveItemFallbackFetch:
             "id": "item-abc",
             "size": 1024,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
             # No @microsoft.graph.downloadUrl — triggers fallback fetch
         }
         fm = {"title": "report.docx", "conversion_status": "pending"}
@@ -403,7 +404,7 @@ class TestProcessDriveItemFallbackFetch:
         assert result is True
         assert fm["conversion_status"] == "converted"
         mock_client.get.assert_called_once_with(
-            "/me/drive/items/item-abc",
+            "/drives/drive-me/items/item-abc",
             params={"$select": "@microsoft.graph.downloadUrl"},
         )
         mock_client.get_bytes.assert_called_once_with("https://download.example.com/fetched")
@@ -421,6 +422,7 @@ class TestProcessDriveItemFallbackFetch:
             "id": "item-abc",
             "size": 1024,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
         }
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
@@ -446,6 +448,116 @@ class TestProcessDriveItemFallbackFetch:
         assert fm["conversion_status"] == "error_no_download_url"
         content = storage.read_file("onedrive/report.md")
         assert "No download URL available" in content
+
+
+class _RecordingClient:
+    """Records the path it is asked for, and refuses any other one.
+
+    A `MagicMock` answers every path with a Mock, so `/me/drive/items/{id}` and
+    `/drives/{drive}/items/{id}` were indistinguishable to this suite — which is
+    how a SharePoint item came to be looked up in the signed-in user's OneDrive
+    without a single test noticing.
+    """
+
+    def __init__(self, expected_path: str, download_url: str) -> None:
+        self.expected_path = expected_path
+        self.download_url = download_url
+        self.paths: list[str] = []
+        self.downloaded: list[str] = []
+
+    def get(self, path: str, params: dict) -> dict:
+        self.paths.append(path)
+        if path != self.expected_path:
+            raise AssertionError(f"item fetched from {path!r}, expected {self.expected_path!r}")
+        return {"@microsoft.graph.downloadUrl": self.download_url}
+
+    def get_bytes(self, url: str) -> bytes:
+        self.downloaded.append(url)
+        return b"fake docx content"
+
+
+def _eager_docx_ctx(client, storage, removal) -> FileProcessingContext:
+    return FileProcessingContext(
+        client=client,
+        storage=storage,
+        file_config=FileProcessingConfig(
+            eager_patterns=["*.docx"],
+            convertible_extensions=[".docx"],
+            max_file_size_mb=100,
+            converters_config=SAMPLE_CONVERTERS_CONFIG,
+        ),
+        removal=removal,
+        extractor="onedrive",
+    )
+
+
+class TestRefetchUsesTheItemsOwnDrive:
+    """The re-fetch must address the drive the item actually lives in."""
+
+    @pytest.mark.parametrize(
+        ("drive_id", "parent_path"),
+        [
+            ("me-drive-id", "/drive/root:/Documents"),
+            ("b!site-drive-id", "/drives/b!site-drive-id/root:/Shared/Plans"),
+        ],
+        ids=["onedrive-shaped", "sharepoint-shaped"],
+    )
+    def test_path_is_drives_driveid_items_id(self, tmp_path, ctx, drive_id, parent_path):
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = _RecordingClient(f"/drives/{drive_id}/items/item-abc", "https://download.example.com/fetched")
+
+        item = {
+            "name": "report.docx",
+            "id": "item-abc",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "parentReference": {"driveId": drive_id, "path": parent_path},
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        with patch(
+            "m365_brain.m365.extractors._file_helpers.convert_document",
+            return_value="# Converted",
+        ):
+            assert process_drive_item(
+                ctx=_eager_docx_ctx(client, storage, ctx.removal),
+                item=item,
+                storage_path="files/report.md",
+                frontmatter=fm,
+            )
+
+        assert client.paths == [f"/drives/{drive_id}/items/item-abc"]
+        assert client.downloaded == ["https://download.example.com/fetched"]
+        assert fm["conversion_status"] == "converted"
+
+    def test_missing_drive_id_skips_the_refetch_instead_of_guessing(self, tmp_path, ctx):
+        """No drive to address is not a licence to substitute `/me/drive`.
+
+        Guessing there returns a 404 at best and a different tenant's file at
+        worst; the no-download-url stub is the honest outcome.
+        """
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = _RecordingClient("never-called", "https://download.example.com/fetched")
+
+        item = {
+            "name": "report.docx",
+            "id": "item-abc",
+            "size": 1024,
+            "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "parentReference": {"path": "/drive/root:"},
+        }
+        fm = {"title": "report.docx", "conversion_status": "pending"}
+
+        assert process_drive_item(
+            ctx=_eager_docx_ctx(client, storage, ctx.removal),
+            item=item,
+            storage_path="files/report.md",
+            frontmatter=fm,
+        )
+
+        assert client.paths == []
+        assert fm["conversion_status"] == "error_no_download_url"
+        assert "No download URL available" in storage.read_file("files/report.md")
 
 
 class TestProcessDriveItemConversionError:
@@ -542,6 +654,7 @@ class TestGraphApiErrorNotSwallowed:
             "id": "item-xyz",
             "size": 1024,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
+            "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
         }
         fm = {"title": "report.docx", "conversion_status": "pending"}
 

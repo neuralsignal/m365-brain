@@ -86,17 +86,22 @@ def save_store(storage: StorageBackend, path: str, store: dict[str, StoredMessag
 
 def merge_messages(
     store: dict[str, StoredMessage], fetched: list[StoredMessage]
-) -> tuple[dict[str, StoredMessage], bool]:
+) -> tuple[dict[str, StoredMessage], list[str]]:
     """Upsert fetched messages into the store by id. Pure function.
 
     Replaces an existing message only when its ``etag`` differs. Returns
-    ``(new_store, changed)``; the input store is never mutated.
+    ``(new_store, merged_ids)``; the input store is never mutated.
+
+    The ids rather than a bare "changed" flag: a conversation is one file
+    holding many records, so "this file changed" is not enough for a consumer
+    to know *what* changed without re-reading and re-matching the whole store.
+    The flag is still available as the list's truthiness.
     """
     new_store = dict(store)
-    changed = False
+    merged_ids: list[str] = []
     for msg in fetched:
         existing = new_store.get(msg.id)
         if existing is None or existing.etag != msg.etag:
             new_store[msg.id] = msg
-            changed = True
-    return new_store, changed
+            merged_ids.append(msg.id)
+    return new_store, merged_ids

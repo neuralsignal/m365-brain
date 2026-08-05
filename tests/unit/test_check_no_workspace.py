@@ -109,3 +109,26 @@ def test_task_documents_are_exempt(tree: Path):
     tasks.mkdir(parents=True)
     (tasks / "prd.md").write_text("migrate the Brain workspace consumers\n")
     assert cnw.scan(tree) == []
+
+
+class TestPackagePrefixedNames:
+    """This repo's own skills are `m365-brain-*` and must not be findings."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "name: m365-brain-knowledge",
+            "name: m365-brain-files",
+            "name: m365-brain-ops",
+            "skills/m365-brain-ops/references/config-keys.md",
+            "from m365_brain.ops import tiers",
+        ],
+    )
+    def test_the_packages_own_names_pass(self, tmp_path: Path, line: str) -> None:
+        (tmp_path / "SKILL.md").write_text(line + "\n", encoding="utf-8")
+        assert cnw.scan(tmp_path) == []
+
+    @pytest.mark.parametrize("line", ["name: brain-knowledge", "brain_files.search", "brain-ops/scripts/x.py"])
+    def test_the_unprefixed_originals_are_still_rejected(self, tmp_path: Path, line: str) -> None:
+        (tmp_path / "SKILL.md").write_text(line + "\n", encoding="utf-8")
+        assert cnw.scan(tmp_path) != []

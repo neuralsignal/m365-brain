@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 import httpx
@@ -23,6 +23,18 @@ if TYPE_CHECKING:
 log = structlog.get_logger()
 
 
+def _basename(name: str) -> str:
+    """The filename part of an attachment name, whichever separator it uses.
+
+    Graph hands back whatever the sending client put in the MIME headers, which
+    includes full Windows paths. `PurePosixPath` rather than `Path` so the
+    result does not depend on the host the sync runs on -- `Path("C:x").name` is
+    `x` on Windows and `C:x` on POSIX, and one of those silently drops a drive
+    letter into a storage key.
+    """
+    return PurePosixPath(name.replace("\\", "/")).name
+
+
 def download_attachments(
     client: GraphClient,
     storage: StorageBackend,
@@ -37,11 +49,15 @@ def download_attachments(
     params = {"$top": "20"}
     try:
         for att in client.get_paginated(path, params, max_pages=5):
-            att_name = att.get("name", "")
+            raw_name = att.get("name", "")
+            att_name = _basename(raw_name)
             if not att_name or ":" in att_name:
-                continue
-            att_name = Path(att_name).name
-            if not att_name:
+                # Strip first, reject second: a Windows-shaped
+                # `C:\Users\x\report.pdf` is a perfectly good `report.pdf`, and
+                # rejecting on the colon threw the attachment away. What is left
+                # after the strip and still carries a colon is a drive-relative
+                # name with no basename to recover.
+                log.warning("email.attachment_unusable_name", message_id=message_id, name=raw_name)
                 continue
             if att.get("isInline", False):
                 continue

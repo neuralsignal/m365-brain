@@ -46,6 +46,9 @@ def build_teams_chat_frontmatter(data: TeamsChatData) -> dict:
             "system": "microsoft365",
             "service": "teams",
             "id": data.conversation_id,
+            # No web link on a synced conversation. The key stays so `source`
+            # has one shape across every entity type.
+            "url": None,
             "extracted_at": now_iso(),
             "extractor": "m365-brain/teams_chats/2.0",
         },
@@ -71,6 +74,7 @@ def build_teams_channel_frontmatter(data: TeamsChannelData) -> dict:
             "system": "microsoft365",
             "service": "teams",
             "id": data.channel_id,
+            "url": None,
             "extracted_at": now_iso(),
             "extractor": "m365-brain/teams_channels/2.0",
         },

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -118,8 +119,8 @@ class TestEmailFrontmatterShapes:
         assert fm["sender_name"] == ""
         assert fm["permalink"].startswith("email-2026-03-12-draft-note-to-self-")
 
-    def test_empty_folder_yields_empty_second_tag(self):
-        """A blank folder produces a literal empty tag — the folder value is not guarded."""
+    def test_empty_folder_yields_no_second_tag(self):
+        """A blank folder is dropped, not emitted as `""` or as slugify's `untitled`."""
         fm = build_email_frontmatter(
             EmailData(
                 subject="Orphan",
@@ -136,16 +137,30 @@ class TestEmailFrontmatterShapes:
             )
         )
 
-        assert fm["tags"] == ["email", ""]
+        assert fm["tags"] == ["email"]
 
-    def test_nested_folder_path_keeps_separator_in_tag(self):
-        """Only spaces are replaced — a nested folder path keeps its slash in the tag."""
+    @pytest.mark.parametrize(
+        ("folder", "tag"),
+        [
+            ("Archive/Old Projects", "archive-old-projects"),
+            ("Zürich Büro", "zurich-buro"),
+            ("R&D", "r-d"),
+            ("!!!", None),
+        ],
+        ids=["separator", "accents", "punctuation", "unsluggable"],
+    )
+    def test_folder_tag_uses_the_same_slug_policy_as_the_permalink(self, folder: str, tag: str | None):
+        """One slug policy: the tag and the permalink must agree on the folder.
+
+        The hand-rolled `.lower().replace(" ", "-")` left slashes and accents in
+        the tag, so `Archive/Old Projects` tagged as `archive/old-projects`.
+        """
         fm = build_email_frontmatter(
             EmailData(
                 subject="Archived thread",
                 message_id="msg-4",
                 received_time="2026-03-12T10:00:00Z",
-                folder="Archive/Old Projects",
+                folder=folder,
                 mailbox="me@example.com",
                 sender_address="alice@example.com",
                 sender_name="Alice",
@@ -156,4 +171,6 @@ class TestEmailFrontmatterShapes:
             )
         )
 
-        assert fm["tags"] == ["email", "archive/old-projects"]
+        expected = ["email"] if tag is None else ["email", tag]
+        assert fm["tags"] == expected
+        assert all(re.fullmatch(r"[a-z0-9-]+", t) for t in fm["tags"])

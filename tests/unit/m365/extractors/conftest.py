@@ -19,6 +19,7 @@ import pytest
 
 from m365_brain.config import VaultConfig, VaultFilenames, VaultLayout
 from m365_brain.m365.extractors.base import ExtractorContext
+from m365_brain.manifest import ChangeRecorder
 from m365_brain.vault.paths import VaultPaths
 from m365_brain.vault.removal import RemovalHandler
 
@@ -63,7 +64,7 @@ def _layout(prefix: str) -> VaultLayout:
 
 @pytest.fixture()
 def vault_config() -> VaultConfig:
-    """The conventional layout, matching config/m365-brain.example.yaml."""
+    """The conventional layout, matching the packaged config template."""
     return VaultConfig(
         root="./vault",
         layout=_layout(""),
@@ -111,6 +112,7 @@ def make_ctx(paths: VaultPaths, storage, converters: dict) -> ExtractorContext:
         paths=paths,
         converters=converters,
         removal=RemovalHandler(storage=storage, paths=paths),
+        recorder=ChangeRecorder(),
     )
 
 

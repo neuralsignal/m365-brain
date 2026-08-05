@@ -125,6 +125,27 @@ class TestRejections:
         with pytest.raises(VaultPathError, match="traversal"):
             paths.inbox_item("email", segment)
 
+    @pytest.mark.parametrize(
+        "segment",
+        [".", "a/./b", "b/.", "./a", "docs/./", "a\\.\\b"],
+    )
+    def test_a_current_directory_part_is_refused(self, paths, segment):
+        """`a/./b` is `a/b` on local storage and a distinct key on blob.
+
+        That divergence is the whole reason this validator exists, so the
+        segment fails here rather than at whichever backend is configured.
+        """
+        with pytest.raises(VaultPathError, match="current-directory"):
+            paths.inbox_item("email", segment)
+
+    @pytest.mark.parametrize(
+        "segment",
+        ["index.md", "messages.jsonl", ".hidden", "2026-08-05", "a.b/c.d"],
+    )
+    def test_a_dot_inside_a_name_is_untouched(self, paths, segment):
+        """Only a part that is *exactly* `.` is a directory reference."""
+        assert paths.inbox_item("email", segment) == f"incoming/mail/{segment}"
+
     def test_a_leading_separator_is_refused(self, paths):
         with pytest.raises(VaultPathError, match="separator"):
             paths.inbox_item("email", "/absolute")

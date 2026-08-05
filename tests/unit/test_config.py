@@ -48,8 +48,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -171,8 +169,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -280,8 +276,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -384,8 +378,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -492,8 +484,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -569,7 +559,6 @@ class TestLoadConfig:
         config = load_config(str(config_file))
         # Paths must be resolved relative to the config file's directory (subdir), not CWD
         assert str(subdir.resolve()) in config.storage.local.base_path
-        assert str(subdir.resolve()) in config.state.state_file_path
         assert str(subdir.resolve()) in config.auth.token_cache_path
 
     def test_bool_not_accepted_as_int(self, tmp_path):
@@ -599,8 +588,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -705,8 +692,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -813,8 +798,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -919,8 +902,6 @@ class TestLoadConfig:
               max_pages: 100
               max_retry_after_seconds: 300.0
               error_message_max_length: 200
-            state:
-              state_file_path: "./state/sync_state.json"
             extractors:
               email:
                 enabled: true
@@ -1021,8 +1002,6 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       max_pages: 100
       max_retry_after_seconds: 300.0
       error_message_max_length: 200
-    state:
-      state_file_path: "./state/sync_state.json"
     extractors:
       email:
         enabled: true

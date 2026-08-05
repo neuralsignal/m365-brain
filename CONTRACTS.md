@@ -264,27 +264,149 @@ carries nothing that cannot be recomputed from the markdown, and is safe to dele
 
 ### CLI
 
-**Present today:**
+The console script is **`m365-brain`, and only `m365-brain`** (ADR 0023). The promise the CLI
+makes is that operating the package requires a config file and these verbs — never code written by
+the operator.
 
-| Verb | Behaviour |
-|---|---|
-| `--config <paths>` | global, required; comma-separated, deep-merged |
-| `auth login` | device-code flow, caches the token |
-| `auth status` | cached account, tenant, token validity, scopes |
-| `sync --once` | run all enabled extractors once |
-| `sync --dry-run` | validate auth and probe each extractor, writing nothing |
-| `sync --extractors a,b` | restrict to named extractors |
-| `worker` | multi-user per-`(user, extractor)` job loop (requires the `web` config section) |
+`--config` is optional at the root group and required by every verb except `init`, which creates
+the file and so cannot demand it exists. It accepts comma-separated paths, deep-merged left to
+right.
 
-**Pending → runtime stage** — the target verb set, which supersedes `sync`:
+**Output contract.** Results go to **stdout**; logs go to **stderr** through structlog. Every read
+verb takes `--json`. A caller therefore never parses human text and never has to separate log noise
+from data.
 
-`init` · `auth login|status --profile` · `run [--once|--only|--resync|--delay-start]` ·
-`index sync|search|context|recent` · `outbox push|reconcile` · `files pull|push` · `teams post` ·
-`catalog` · `validate` · `status`.
+| Verb | Options | Prints | Exit |
+|---|---|---|---|
+| `init PATH` | `--vault DIR` (required) | every path created | 0 / 3 if PATH exists |
+| `run` | `--once` · `--only a,b` · `--resync` · `--delay-start MIN` · `--json` | cycle summary; `--json` emits the manifest | 0 / 1 / 3 / 4 |
+| `extract` | `--only a,b` · `--resync` · `--dry-run` · `--json` | per-extractor item counts | 0 / 1 / 3 / 4 |
+| `status` | `--json` | per-unit last run / last success / failure streak; last cycle and its hooks | 0, 1 if anything is failing |
+| `auth login` | `--profile NAME` (required) | device-code prompt, then account and scopes | 0 / 3 / 4 |
+| `auth status` | `--profile NAME` · `--json` | state, accounts, scopes per profile | 0, 4 if any profile has no usable token |
+| `config validate` | — | `ok`, the sections present, hooks resolved | 0 / 3 |
+| `config show` | `--json` | the effective merged config, secrets redacted | 0 / 3 |
+| `index sync` | `--root NAME` (repeatable) | indexed / skipped / pruned / errors / elapsed | 0 / 1 / 3 |
+| `index rebuild` | `--root NAME` · `--yes` (required) | same counters | 0 / 1 / 3 |
+| `index search` | `QUERY` · `--search-type text\|vector\|hybrid` · `--type` · `--tag` · `--field` · `--limit` · `--page` · `--json` | ranked results | 0 / 3 |
+| `index context` | `ENTITY` \| `--permalink` · `--depth` · `--format text\|json` | entity, observations, edges | 0 / 3 |
+| `index recent` | `--timeframe` · `--type` · `--limit` · `--json` | recently changed entities | 0 / 3 |
+| `index paths` | `--json` | configured roots, database, and each extractor's inbox | 0 / 3 |
+| `index catalog list` | `--ext` · `--source` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows or per-state counts | 0 / 3 |
+| `index catalog search` | `QUERY` · `--status` · `--limit` · `--json` | matching rows | 0 / 3 |
+| `index catalog resolve` | `QUERY` · `--json` | one source path; ambiguity is an error | 0 / 3 |
+| `index catalog read` | `PATH` | the converted markdown on stdout; writes nothing | 0 / 3 |
+| `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, tier, status | 0 / 3 |
+| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / rejected / replayed / contended / inflight | 0 / 1 / 3 / 4 |
+| `outbox reconcile` | `--outbox NAME` · `--json` | per-intent verdict | 0 / 1 / 3 / 4 |
+| `files pull` | `--profile` · `--site-hostname` · `--site-path` · `--library` · `--item-path` · `--out` · `--json` | bytes written and the eTag | 0 / 1 / 3 / 4 |
+| `files push` | the same, plus `--in` · `--content-type` · `--if-match` (required) | the new eTag; **raises on 412, never overwrites** | 0 / 1 / 3 / 4 |
+| `teams post` | `--channel-url` · `--body-file` · `--created-by` · `--json` | the intent file written; sends nothing | 0 / 3 |
+| `vault path AREA` | `--extractor` · `--outbox` · `--json` | one path | 0 / 3 |
+| `ops resolve-links` | `--json` | unresolved links and their candidates | 0 / 3 |
+| `ops tiers` | `--json` | per-counterparty tier and staleness; reports only, `write_back.enabled: true` raises | 0 / 3 |
+| `ops triage` | `--timeframe` · six required `--*-category` options naming the observation categories the messages use · `--json` | messages awaiting a reply | 0 / 3 |
+| `worker` | — | multi-user per-`(user, extractor)` job loop (requires the `web` section) | 0 / 1 / 3 |
 
-The console script is `m365-brain`, with `mb` as a short alias. The promise the CLI makes is that
-operating the package requires a config file and these verbs — never code written by the
-operator.
+**Not present, and deliberately.** There is no `outbox new` — an intent *is* a markdown file in the
+outbox directory, and a verb writing the same bytes would be a second way to do one thing.
+`teams post` is the single exception, because a channel intent needs a `(team_id, channel_id)` pair
+no human types from memory. There is no bare `validate`: `config validate` says what it validates.
+There is no `index validate`, `index delete` or `index move` — the index has no schema-validation or
+file-mutation operation to expose, and a CLI verb is not the place to invent one.
+
+### Exit codes
+
+| Code | Meaning | What the caller should do |
+|---|---|---|
+| 0 | success | — |
+| 1 | operational failure: an extractor, the index step, a hook, a push or a reconcile failed | retry, or read the log |
+| 2 | usage error (Click's own) | fix the command line |
+| 3 | configuration invalid or unresolvable — bad YAML, a missing key, an unknown extractor / outbox / root / profile / area name, or a hook that cannot be imported | fix the config |
+| 4 | authentication required or expired beyond refresh | `auth login --profile …` |
+
+3 and 4 exist so a supervisor can tell "you typed it wrong" and "go re-login" apart from "Graph is
+down" without scraping a message. They are mapped in one place — the root group's `invoke` — rather
+than in fifteen `try` blocks.
+
+### The change manifest
+
+`ChangeManifest`, written to `<vault.root>/<layout.meta>/<layout.manifests>/<cycle_id>.json` and
+copied to `manifest.latest_filename`. It is the value every post-cycle hook receives and the
+document `run --once --json` prints.
+
+```
+ChangeManifest
+  cycle_id     str          "20260805T101503Z-a3f1c2" -- sortable, collision-safe
+  started_at   datetime     tz-aware UTC
+  finished_at  datetime
+  extractors   [ExtractorChanges]
+  index        IndexOutcome | None      None when the index step did not run
+  hooks        [HookOutcome]
+  ok           bool         computed: no extractor error, no index errors, no hook error
+
+ExtractorChanges  name, started_at, finished_at, item_count, changes: [FileChange], error: str|None
+FileChange        path (vault-relative, POSIX), kind: added|updated|removed, record_ids: [str]
+IndexOutcome      roots, indexed, skipped, pruned, errors, elapsed_seconds
+HookOutcome       spec, error: str|None
+```
+
+Helpers: `paths(*, kind, extractor)` and `failures()`.
+
+`record_ids` is empty except on files that hold many records — the two Teams extractors declare the
+ids they merged in that pass (ADR 0020). Everything else is captured by `RecordingStorage`, so an
+extractor cannot write into the vault without appearing here.
+
+The manifest is written **twice** per cycle: once after the index step and before hooks fire, and
+once after, with the hook outcomes filled in. A hook that takes the process down must not take the
+record of what was extracted with it. Older manifests are pruned to `manifest.retain_cycles`,
+oldest first.
+
+### Hooks
+
+```yaml
+hooks:
+  post_cycle:
+    - "my_package.hooks:on_cycle"
+```
+
+- **Spec format** is `module.path:callable`. The colon is required: `a.b.c` cannot say whether `c`
+  is a submodule or an attribute.
+- **Signature** is `def hook(manifest: ChangeManifest) -> None`. One positional argument, no
+  keywords, return value ignored.
+- **Validated for shape at config parse; imported at workspace open.** Parsing never imports, so
+  `config show` is not arbitrary code execution. `config validate` does resolve, which is what makes
+  it a preflight.
+- **Error policy.** A raising hook is caught, logged with its full traceback, recorded as
+  `HookOutcome(spec, error)`, and persisted. The remaining hooks still run; the cycle still
+  completes; `manifest.ok` is false, `run --once` exits 1, and `status` reports it. There is no
+  timeout — a thread-based one cannot stop a blocked callable.
+
+### The state store
+
+```
+StateStore (Protocol)
+  get(namespace, key) -> dict     {} when absent; absence is not an error
+  put(namespace, key, value)      replaces
+  delete(namespace, key)          idempotent
+  keys(namespace) -> [str]        sorted; [] for an unknown namespace
+```
+
+`JsonStateStore(root)` writes one file per namespace under
+`<vault.root>/<layout.meta>/<layout.state>/`, rewritten atomically.
+`InMemoryStateStore` is the shipped fake; both run the same conformance suite.
+
+Three namespaces, and only three:
+
+| Namespace | Key | Value |
+|---|---|---|
+| `extractor_state` | extractor name | delta tokens and watermarks |
+| `cursors` | unit name | `last_run_at`, `last_success_at`, `consecutive_failures`, `last_error` |
+| `cycles` | cycle id | one-line summary of a finished cycle |
+
+`last_run_at` and `last_success_at` are separate: advancing the first on failure stops a broken
+extractor hot-looping against a dead endpoint, and holding the second back keeps the staleness
+visible.
 
 ### Protocols
 
@@ -349,9 +471,11 @@ target, and it is the intended entry point once it exists.
 
 ### Bundled skills
 
-**Pending → runtime stage.** `skills/{knowledge,files,ops}` in agentskills.io format, as thin
-wrappers over the CLI and the facade. Their contract to an adopter: every threshold and rule they
-apply is traceable to a config key (ADR 0008).
+`skills/m365-brain-{knowledge,files,ops}` in agentskills.io format — package-prefixed names, and no
+environment of their own (ADR 0022). They shell out to the installed console script and read their
+config path from `M365_BRAIN_CONFIG`. Their contract to an adopter: every threshold and rule they
+apply is traceable to a named config key, tabulated in
+`skills/m365-brain-ops/references/config-keys.md` (ADR 0008).
 
 ## Invariants
 
@@ -400,8 +524,15 @@ apply is traceable to a config key (ADR 0008).
 11. **A local storage path may not escape its root.** Path traversal is rejected in the local
     backend; the MSAL token cache is written `0600`. *(Present.)*
 12. **A hook that raises is logged and the cycle completes.** The single deliberate exception to
-    fail-loud, scoped to consumer-supplied code so one consumer's bug cannot wedge extraction.
-    *(Pending → runtime stage.)*
+    fail-loud, scoped to consumer-supplied code so one consumer's bug cannot wedge extraction —
+    and it still degrades the cycle's verdict, so nothing about the outcome claims success.
+    *(Present.)*
+14. **The manifest equals what the cycle wrote.** Every write reaches the vault through
+    `RecordingStorage`, so a path on disk that is absent from the manifest is impossible rather
+    than unlikely. Asserted for all eight extractors against a real backend. *(Present — ADR
+    0020.)*
+15. **Results go to stdout, logs go to stderr.** Every read verb offers `--json`, and its output
+    parses without first being separated from log noise. *(Present.)*
 13. **No consumer vocabulary appears anywhere in the repo.** Enforced by
     `scripts/check_no_workspace.py` over all tracked text, in pre-commit and CI. *(Present.)*
 
@@ -414,8 +545,13 @@ Authoritative for field-level detail; this document summarises.
 | Config root and every section | `m365_brain/config/schema.py` — `Config` and its frozen, strict sub-models |
 | Config loading, merge, env expansion, path resolution | `m365_brain/config/loader.py`; errors in `m365_brain/config/errors.py` |
 | Storage seam | `m365_brain/storage/base.py` |
-| Sync state on disk | `m365_brain/state.py` |
-| Markdown frontmatter per entity type | `m365_brain/frontmatter/` |
+| Sync state, cursors, cycle history | `m365_brain/state.py` — `StateStore`, `JsonStateStore`, `InMemoryStateStore` |
+| Change manifest and the recording seam | `m365_brain/manifest.py` — `ChangeManifest`, `RecordingStorage`, `ManifestStore` |
+| Due computation and cursor bookkeeping | `m365_brain/schedule.py` |
+| Hook resolution and dispatch | `m365_brain/hooks.py` |
+| One cycle, and the loop around it | `m365_brain/cycle.py`; the index half in `m365_brain/index_step.py` |
+| CLI verbs and exit codes | `m365_brain/cli.py` and `m365_brain/commands/` |
+| Markdown frontmatter per entity type | `m365_brain/m365/frontmatter/` |
 | Admin/worker database tables | `m365_brain/models.py` (SQLModel), migrated by `alembic/` |
 | Knowledge model — `Entity`, `Observation`, `Relation` | `m365_brain/model.py` — *pending → knowledge-layer stage* |
 | Index, vector, and embedding seams | `m365_brain/index/backends/base.py`, `m365_brain/index/vector/base.py` — *pending → knowledge-layer stage* |

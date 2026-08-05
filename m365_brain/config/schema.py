@@ -104,11 +104,6 @@ class GraphConfig(BaseModel):
     error_message_max_length: int
 
 
-class StateConfig(BaseModel):
-    model_config = SECTION_MODEL_CONFIG
-    state_file_path: str
-
-
 class MediaConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     extract_images: bool
@@ -157,7 +152,6 @@ class Config(BaseModel):
     service: ServiceConfig
     storage: StorageConfig
     graph: GraphConfig
-    state: StateConfig
     extractors: ExtractorsConfig
     converters: ConvertersConfig
     web: WebConfig | None = None

@@ -19,6 +19,7 @@ storage and a doubled prefix on blob.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from m365_brain.config import VaultConfig
 
@@ -42,6 +43,10 @@ def _validate_segment(segment: str, context: str) -> str:
     Ported from the folder-contract validator. `..` and a leading separator are
     the traversal cases; an empty segment is the one that silently produces a
     doubled slash and a key no backend can address.
+
+    A bare `.` is rejected for the same reason this module exists: local storage
+    lets the OS collapse `a/./b` to `a/b`, blob storage keeps it as a distinct
+    key, and the same call then addresses two different objects.
     """
     if not segment:
         raise VaultPathError(f"empty path segment in {context}")
@@ -53,6 +58,8 @@ def _validate_segment(segment: str, context: str) -> str:
             raise VaultPathError(f"empty path segment in {segment!r} ({context})")
         if part == "..":
             raise VaultPathError(f"parent traversal disallowed: {segment!r} in {context}")
+        if part == ".":
+            raise VaultPathError(f"current-directory segment disallowed: {segment!r} in {context}")
     return normalised
 
 
@@ -184,3 +191,23 @@ class VaultPaths:
     def manifests(self, *segments: str) -> str:
         """Per-cycle manifests, under meta."""
         return self.meta(self.vault.layout.manifests, *segments)
+
+
+# --- the two filesystem paths, where `vault.root` does belong ---------------
+#
+# Sync state and cycle manifests are facts *about* a vault rather than content
+# in it: they are read before the process has a storage backend, and a
+# blob-backed vault still keeps them on local disk. So they are real filesystem
+# paths and they do need the root -- which is why they are free functions with
+# explicit names rather than `VaultPaths` methods, which would quietly break
+# the storage-relative promise the class above makes.
+
+
+def state_directory(vault: VaultConfig) -> Path:
+    """`<root>/<meta>/<state>` on the filesystem."""
+    return Path(vault.root) / VaultPaths(vault).state()
+
+
+def manifest_directory(vault: VaultConfig) -> Path:
+    """`<root>/<meta>/<manifests>` on the filesystem."""
+    return Path(vault.root) / VaultPaths(vault).manifests()

@@ -145,10 +145,32 @@ surface as present or pending with the stage that delivers it:
 | Stage | Delivers | State |
 |---|---|---|
 | Self-containment | rename, structure check, no-consumer-vocabulary check, own backlog, these artifacts | in progress |
-| Knowledge layer | config root, model, parsers, index backends, vector/hybrid search, incremental sync, graph query, file catalog | pending |
-| M365 platform | vault contract, deletion lifecycle, outbox, reconciliation, Graph file ops, auth profiles, one transport | pending |
-| Runtime & CLI | scheduler, change manifest, hooks, full CLI verb set, indexing in the cycle, bundled skills | pending |
+| Knowledge layer | config root, model, parsers, index backends, vector/hybrid search, incremental sync, graph query, file catalog | delivered |
+| M365 platform | vault contract, deletion lifecycle, outbox, reconciliation, Graph file ops, auth profiles, one transport | delivered |
+| Runtime & CLI | scheduler, change manifest, hooks, full CLI verb set, indexing in the cycle, bundled skills | delivered |
 
-Extraction, storage backends, document conversion, config loading, sync state, the admin UI, and
-the Azure Bicep are present today. Everything else in the Scope section is pending on the stage
-named above, and is described in `CONTRACTS.md` as pending rather than as fact.
+Extraction, storage backends, document conversion, config loading, the admin UI, and the Azure
+Bicep were present before staging began.
+
+### Runtime & CLI — what landed
+
+- **Scheduling** is persisted cursors and two pure functions (`schedule.py`), not a library that
+  counts from process start. The index is a unit in the same schedule as the eight extractors
+  (ADR 0021).
+- **The change manifest** (`manifest.py`) is assembled by wrapping the storage backend, so it
+  equals what the cycle wrote rather than what an extractor remembered to declare. Merge-store
+  extractors additionally declare the record ids they merged (ADR 0020).
+- **Hooks** (`hooks.py`) resolve at startup and fail soft at dispatch — logged, recorded,
+  non-aborting, and still a failed cycle.
+- **One cycle** (`cycle.py`, `index_step.py`) with a stated partial-failure policy: a failing unit
+  never stops the others, and every failure reaches the manifest.
+- **The CLI** (`cli.py`, `commands/`) is the whole operating surface. `scripts/independence_check.sh`
+  and `tests/integration/test_independence.py` drive config → auth → run → search → push →
+  reconcile → status from a scratch directory, which is the stage's acceptance gate.
+- **Three bundled skills** (`skills/m365-brain-*`), package-prefixed and environmentless (ADR
+  0022), validated against the agentskills.io specification's own tool.
+
+Deferred, deliberately, and named here rather than left as a gap: no deployed service, no
+multi-writer locking, no hook timeouts or subprocess isolation, no `index validate|delete|move`
+(the index has no such operation to expose), and no catalog `extract` verb (nothing populates the
+catalog yet). Static type checking is filed in the backlog and runs after the port settles.

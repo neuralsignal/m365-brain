@@ -27,7 +27,7 @@ from m365_brain.config import (
     require_section,
 )
 
-EXAMPLE_CONFIG = Path(__file__).resolve().parents[2] / "config" / "m365-brain.example.yaml"
+EXAMPLE_CONFIG = Path(__file__).resolve().parents[2] / "m365_brain" / "templates" / "m365-brain.yaml"
 
 EXAMPLE_ENV = {
     "MSAL_CLIENT_ID": "example-client",
@@ -70,7 +70,6 @@ def _legacy_sections() -> dict:
             "max_retry_after_seconds": 300.0,
             "error_message_max_length": 200,
         },
-        "state": {"state_file_path": "./state/sync.json"},
         "extractors": {
             "email": {
                 "enabled": False,
