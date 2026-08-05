@@ -15,6 +15,7 @@ from m365_brain.m365.frontmatter.files import (
 from m365_brain.m365.frontmatter.people import (
     ContactData,
     DirectoryUserData,
+    address_observations,
     build_contact_frontmatter,
     build_directory_user_frontmatter,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "SharePointFileData",
     "TeamsChannelData",
     "TeamsChatData",
+    "address_observations",
     "attendee_relations",
     "build_calendar_frontmatter",
     "build_contact_frontmatter",

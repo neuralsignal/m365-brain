@@ -254,7 +254,7 @@ def _outboxes_section() -> dict:
 
 def _ops_section() -> dict:
     return {
-        "link_resolution": {"unresolved_prefix": "contact-", "target_type": "person"},
+        "link_resolution": {"unresolved_prefix": "contact-", "target_types": ["person"]},
         "tiers": {
             "lookback_days": 90,
             "ladder": [

@@ -352,7 +352,12 @@ m365:
 ops:
   link_resolution:
     unresolved_prefix: "contact-" # slug prefix marking a link that never resolved
-    target_type: "person" # entity type such links should resolve to
+    # Every entity type a person is written as. A list, because one corpus holds
+    # more than one spelling: the contacts extractor writes `contact` and the
+    # directory extractor writes `directory_user`. Naming a type no producer
+    # writes leaves every link unresolved, which reads as a corpus with nobody
+    # in it rather than as a bug -- the defect this list already had.
+    target_types: ["contact", "directory_user"]
   tiers:
     lookback_days: 90
     # An ordered ladder, not three numbered tiers with a special case. The last

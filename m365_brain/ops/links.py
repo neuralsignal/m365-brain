@@ -10,8 +10,17 @@ prose, and a `medium` match is exactly the case where a human should look.
 **The lookup is built from the index, not from a directory.** The script this
 replaces walked a folder, took each filename to be the person's name, and
 special-cased its generated `_index.md`. All three assumptions are gone: a
-candidate is an entity of `ops.link_resolution.target_type`, wherever it lives,
-and its title is a parsed field rather than a file stem.
+candidate is an entity of any `ops.link_resolution.target_types`, wherever it
+lives, and its title is a parsed field rather than a file stem. That key is a
+list because a person has more than one spelling in one corpus -- see
+`LinkResolutionConfig`.
+
+An address is read by *shape* out of every observation a candidate carries,
+never from a named category: which key holds an address is a property of
+whoever wrote the corpus, and naming one here would hardcode one author's
+vocabulary. What that requires of a producer is that the address reach an
+observation at all -- a list-valued frontmatter key stays in metadata, and prose
+in the body parses as prose.
 
 Confidence is derived from *which* lookup matched, never from a tunable score.
 There is no threshold to set, so there is no threshold in config.
@@ -83,7 +92,8 @@ def resolve_links(backend: IndexBackend, config: LinkResolutionConfig, page_size
     """Every unresolved link carrying the configured prefix, with its verdict."""
     entities = indexed_entities(backend, None, page_size)
     sources = {entity.entity_id: entity for entity in entities}
-    lookups = _build_lookups(backend, [e for e in entities if e.entity_type == config.target_type])
+    targets = set(config.target_types)
+    lookups = _build_lookups(backend, [e for e in entities if e.entity_type in targets])
 
     resolutions: list[LinkResolution] = []
     for edge in backend.outgoing_relations(sorted(sources)):

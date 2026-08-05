@@ -12,7 +12,7 @@ See the `ops:` block of the packaged config template for a worked example.
 | Key | What it decides |
 |---|---|
 | `ops.link_resolution.unresolved_prefix` | the slug prefix that marks a link as one of these, e.g. `contact-` |
-| `ops.link_resolution.target_type` | the entity type such links should resolve to, e.g. `person` |
+| `ops.link_resolution.target_types` | every entity type such links may resolve to, e.g. `["contact", "directory_user"]`. A list, because one corpus spells a person more than one way; empty is refused |
 
 Not configurable, and deliberately: the confidence ladder. It is derived from
 the *kind* of match — identifier, exact title, normalised title, none — so

@@ -1,4 +1,33 @@
-"""People frontmatter builders (contacts and directory users)."""
+"""People frontmatter builders, and where a person's address has to live.
+
+An address is what `ops links` resolves a dangling `[[contact-...]]` link by, and
+`ops/links.py` reads one out of a candidate's **observations** -- the only
+per-entity read the index offers. `m365_brain/parsers/document.py` promotes a
+scalar frontmatter key to an observation and leaves a list in metadata, which no
+per-entity read can reach.
+
+A contact has N addresses, so `email` is a list, so it is metadata. The
+extractor also wrote each one into the body as `- **Email:** a@example.com`,
+which carries neither a `[category]` nor a `#tag` and so is ordinary prose to
+`parse_observations`. The address was written twice and readable from neither
+place, and the `high`-confidence address match could never be returned against a
+corpus this library wrote.
+
+The repair is the calendar and Teams one in the other shape: keep the list for a
+reader, and write one body line per value -- `address_observations` below. An
+**observation** rather than a relation because an address is an attribute of the
+person, not an edge to another entity: `- email [[a@example.com]]` would claim a
+mailbox is a note, and the link would then be reported as one more thing that
+never resolves. Joining the addresses into one string would happen to read back,
+since `ops.names.email_addresses` finds every address in a string -- but it is
+the repair the calendar builder rejected, and one written value standing for N
+is the shape that made these facts unreadable to begin with.
+
+A **directory user** has one address, so `email` is a scalar and is promoted
+already, under this same category name; so is `upn`. Nothing to repair there,
+and no line is added: a second spelling of a fact the index already holds is
+duplication, not a fix.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +35,17 @@ from dataclasses import dataclass
 
 from m365_brain.m365.frontmatter._tags import tag_slug
 from m365_brain.m365.markdown_writer import now_iso, short_hash, slugify
+
+EMAIL = "email"
+"""The observation category each contact address is written under.
+
+This extractor's vocabulary, like every frontmatter key in this module -- and
+the same word the directory builder's scalar `email` key is promoted under, so
+one corpus states one person's address one way. No config names it: `ops links`
+reads an address by *shape* out of every observation a candidate carries,
+deliberately, so that finding one never requires knowing an author's category
+name.
+"""
 
 
 @dataclass(frozen=True)
@@ -53,7 +93,7 @@ def build_contact_frontmatter(data: ContactData) -> dict:
             # `source` has to have one shape across every entity type.
             "url": None,
             "extracted_at": now_iso(),
-            "extractor": "m365-brain/contacts/1.0",
+            "extractor": "m365-brain/contacts/1.1",
         },
         "status": "raw",
     }
@@ -68,6 +108,17 @@ def build_contact_frontmatter(data: ContactData) -> dict:
     if data.department:
         fm["department"] = data.department
     return fm
+
+
+def address_observations(data: ContactData) -> list[str]:
+    """One `- [email] a@example.com` line per address.
+
+    Written into the markdown body, because `email` is a list up there and a
+    list is metadata -- see the module docstring. A blank address is dropped
+    rather than emitted as an empty category, which would index a statement
+    saying nothing.
+    """
+    return [f"- [{EMAIL}] {address}" for address in data.email_addresses if address]
 
 
 def build_directory_user_frontmatter(data: DirectoryUserData) -> dict:

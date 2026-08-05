@@ -7,12 +7,16 @@ import re
 from hypothesis import given
 from hypothesis import strategies as st
 
+from m365_brain.config.index import ObservationConfig
 from m365_brain.m365.frontmatter.people import (
+    EMAIL,
     ContactData,
     DirectoryUserData,
+    address_observations,
     build_contact_frontmatter,
     build_directory_user_frontmatter,
 )
+from m365_brain.parsers.observations import parse_observations
 
 CONTACT_BASE_KEYS = {"title", "permalink", "type", "tags", "source", "status"}
 DIRECTORY_BASE_KEYS = CONTACT_BASE_KEYS | {"email", "upn"}
@@ -54,7 +58,7 @@ class TestPeopleFrontmatterProperties:
         assert fm["type"] == "contact"
         assert fm["status"] == "raw"
         assert fm["source"]["service"] == "people"
-        assert fm["source"]["extractor"] == "m365-brain/contacts/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/contacts/1.1"
         assert re.fullmatch(r"contact-[a-z0-9-]+-[0-9a-f]{6}", fm["permalink"])
         assert ("email" in fm) is bool(data.email_addresses)
         assert ("phone" in fm) is bool(data.phones)
@@ -175,3 +179,72 @@ class TestPeopleFrontmatterShapes:
         assert fm["city"] == "Zürich"
         assert fm["manager"] == "[[directory-john-doe-abc123]]"
         assert fm["direct_reports"] == ["[[directory-alice-wong-def456]]"]
+
+
+def _contact(addresses: list[str]) -> ContactData:
+    return ContactData(
+        display_name="Kai Lund",
+        contact_id="c-9",
+        email_addresses=addresses,
+        phones=[],
+        company="",
+        job_title="",
+        department="",
+        categories=[],
+    )
+
+
+OBSERVATIONS = ObservationConfig(default_category="Note")
+
+ADDRESSES = st.lists(
+    st.builds(
+        "{}@{}.example".format,
+        st.text(alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")), min_size=1, max_size=12),
+        st.text(alphabet=st.characters(whitelist_categories=("Ll", "Nd")), min_size=1, max_size=8),
+    ),
+    max_size=4,
+)
+"""Local parts without a `#`, which `st.emails()` does generate.
+
+`parse_observations` lifts a `#tag` out of *any* observation's content, so an
+address carrying one comes back shortened. That is a property of the grammar
+rather than of this builder -- `- [company] R&D #1` behaves the same way -- and
+escaping it here would patch one producer against a rule that applies to every
+line in the corpus. Graph does not return such an address; if one ever arrives,
+the fix belongs in the parser.
+"""
+
+
+class TestAddressObservations:
+    """The address a contact states, in the one shape `ops links` reads back.
+
+    `email` is a list, so it is metadata and no per-entity read can see it.
+    Parsed with the real observation parser rather than a regex, so this is the
+    same reading `ops links` does.
+    """
+
+    def test_one_observation_per_address_in_the_configured_category(self):
+        parsed = parse_observations("\n".join(address_observations(_contact(["kai@example.com"]))), OBSERVATIONS)
+
+        assert [(o.category, o.content) for o in parsed] == [(EMAIL, "kai@example.com")]
+
+    def test_the_prose_line_it_replaces_parses_as_nothing(self):
+        """`- **Email:** ...` carries no [category] and no #tag, so it is a bullet.
+
+        Stated here rather than assumed: it is the half of the defect that a
+        reader of the old body would have called perfectly readable.
+        """
+        assert parse_observations("- **Email:** kai@example.com", OBSERVATIONS) == []
+
+    def test_a_contact_with_no_address_states_nothing(self):
+        assert address_observations(_contact([])) == []
+
+    def test_a_blank_address_is_not_an_empty_statement(self):
+        assert address_observations(_contact(["", "kai@example.com"])) == [f"- [{EMAIL}] kai@example.com"]
+
+    @given(ADDRESSES)
+    def test_every_address_survives_into_a_parsed_observation(self, addresses: list[str]):
+        parsed = parse_observations("\n".join(address_observations(_contact(addresses))), OBSERVATIONS)
+
+        assert [o.content for o in parsed] == addresses
+        assert {o.category for o in parsed} <= {EMAIL}
