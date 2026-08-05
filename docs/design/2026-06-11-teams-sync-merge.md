@@ -351,13 +351,15 @@ New/changed tests, written before implementation:
 Done = full suite green, `pixi run lint` + `pixi run format-check` clean,
 coverage ≥ 80%, no file > 300 lines.
 
-## Consuming-workspace rollout (separate commit in the consuming repo)
+## Downstream rollout (a separate commit wherever this package is consumed)
 
-1. `m365-data-sync/config/m365-extract.yaml`: add `ChannelMessage.Read.All`
-   scope (admin consent already granted); enable `teams_channels` with the
-   new fields; raise `max_messages_per_chat` to 10000 (backfill headroom).
-2. `.gitignore`: add `knowledge/teams-channels/`.
-3. `rules/knowledge-folder-structure.md`: add the teams-channels row.
+1. Config: add the `ChannelMessage.Read.All` scope — it needs tenant admin
+   consent; enable the `teams_channels` extractor with the new fields; raise
+   `max_messages_per_chat` to 10000 for backfill headroom.
+2. Ignore the new output directory in version control — the extracted tree is
+   machine-synced and regenerable.
+3. Update whatever documents the consumer's folder layout so it lists the new
+   `teams-channels` output.
 4. First run after deploy: every chat backfills (no watermarks yet) and all
    `messages.md` files are rewritten in the new format → one-time full FTS
    + vector re-embed. Subsequent cycles touch only changed conversations,
