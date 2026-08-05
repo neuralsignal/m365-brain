@@ -61,6 +61,8 @@ def index_payload_for(database_path: Path, roots: list[dict[str, object]]) -> di
         "catalog": {
             "conversion_states": ["pending", "eager", "converted", "failed", "skipped"],
             "initial_state": "pending",
+            "converted_state": "converted",
+            "failed_state": "failed",
         },
         "vector": {
             "enabled": True,

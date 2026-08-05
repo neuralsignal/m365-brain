@@ -126,7 +126,7 @@ the deferred service (ADR 0010) will grow into.
    A hook that raises is logged and does not abort the cycle — the one deliberate exception, and
    it is scoped to code the consumer supplied.
 8. **The library never learns its consumers exist.** Everything consumer-specific attaches
-   through config-declared hooks receiving a typed manifest. `scripts/check_no_workspace.py`
+   through config-declared hooks receiving a typed manifest. `scripts/check_publishable.py`
    rejects consumer vocabulary in CI.
 9. **Structure is mechanical.** Allowed top-level directories, allowed subpackages, a 300-line
    module cap, import direction, and a test-presence map are all checked by a script that has

@@ -96,17 +96,34 @@ class SearchConfig(BaseModel):
 
 
 class CatalogConfig(BaseModel):
+    """The conversion vocabulary, plus the three states the pipeline moves through.
+
+    `conversion_states` is the whole set a row may be in; the other three name
+    the members `index catalog extract` reads and writes. They are separate
+    keys rather than positions in the list because a list is ordered by
+    accident, and `conversion_states[1]` is not a contract anybody can see.
+    """
+
     model_config = SECTION_MODEL_CONFIG
     conversion_states: list[str]
     initial_state: str
+    converted_state: str
+    failed_state: str
 
     @model_validator(mode="after")
-    def _initial_state_is_known(self) -> CatalogConfig:
-        if self.initial_state not in self.conversion_states:
-            raise ValueError(
-                f"index.catalog.initial_state {self.initial_state!r} is not one of "
-                f"index.catalog.conversion_states {self.conversion_states!r}"
+    def _named_states_are_known(self) -> CatalogConfig:
+        unknown = {
+            key: value
+            for key, value in (
+                ("initial_state", self.initial_state),
+                ("converted_state", self.converted_state),
+                ("failed_state", self.failed_state),
             )
+            if value not in self.conversion_states
+        }
+        if unknown:
+            named = ", ".join(f"index.catalog.{key} {value!r}" for key, value in sorted(unknown.items()))
+            raise ValueError(f"{named} is not one of index.catalog.conversion_states {self.conversion_states!r}")
         return self
 
 

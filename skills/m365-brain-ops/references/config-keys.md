@@ -31,7 +31,7 @@ deterministic transforms, not policy.
 | `ops.tiers.ladder[].name` | the rung's name, as it appears in the output |
 | `ops.tiers.ladder[].min_per_month` | the interactions-per-month floor for that rung |
 | `ops.tiers.ladder[].stale_after_days` | days without contact before stale; `null` means never |
-| `ops.tiers.interaction_sources[].entity_type` | which indexed entities count as interactions |
+| `ops.tiers.interaction_sources[].entity_type` | which indexed entities count as interactions — a type no producer writes counts nothing |
 | `ops.tiers.interaction_sources[].party_from` | where the counterparty is read from: one observation category, or one relation type |
 | `ops.tiers.interaction_sources[].timestamp` | the observation category carrying the timestamp |
 | `ops.tiers.interaction_sources[].exclude_future` | whether to drop timestamps in the future |
@@ -71,19 +71,30 @@ the boundary.
 | `ops.triage.inbox_folder` | the folder a message must be in to be considered |
 | `ops.triage.sent_folders` | the folders searched for a reply in the same conversation |
 | `ops.triage.forward_prefixes` | subject prefixes that mark a forward, e.g. `["fw:", "fwd:", "wg:"]` |
+| `ops.triage.fields.entity_type` | the entity type your messages carry |
+| `ops.triage.fields.folder` | the observation category holding the folder |
+| `ops.triage.fields.conversation_id` | the category holding the thread id — how a reply is paired |
+| `ops.triage.fields.message_id` | the category holding the message id — what a rejected draft points at |
+| `ops.triage.fields.sender` | the category holding the sender |
+| `ops.triage.fields.recipients` | the category holding the `to` line |
+| `ops.triage.fields.timestamp` | the category holding when it arrived |
 
 The timeframe is a command-line argument, not config: it is a property of the
 question being asked, and the same collection is legitimately triaged over a
 day and over a month.
 
-**Six more arguments are required**, and this is a gap rather than a design:
-`--entity-type`, `--folder-category`, `--conversation-category`,
-`--sender-category`, `--recipients-category`, `--timestamp-category`. They name
-the observation categories your messages use. `ops.triage` has no fields for
-them, and hardcoding names like `folder` and `date` would bake one collection's
-vocabulary into the library — so they are asked for explicitly. An
-`ops.triage.fields:` block would move all six into config and shorten the verb
-to `--timeframe` alone.
+**The seven `fields` names are required and none is defaulted.** They state what
+your notes contain rather than what the library prefers, and hardcoding `folder`
+or `date` would bake one collection's vocabulary in: a wrong threshold produces a
+visibly wrong report, a guessed category produces an empty one, and an empty
+report reads exactly like an inbox with nothing owing. `--entity-type`,
+`--folder-category`, `--conversation-category`, `--message-id-category`,
+`--sender-category`, `--recipients-category` and `--timestamp-category`
+**override** one of them for a single run; the ordinary invocation passes none.
+
+`conversation_id` and `message_id` are different identifier spaces and both are
+read: pairing a reply with the message it answers is a *thread* comparison,
+while a draft the human deleted names a single *message*.
 
 Rejected messages come from the outbox's own rejection record, written by the
 reconciliation pass. There is no separate state file, and adding one would put

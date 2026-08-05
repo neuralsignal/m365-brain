@@ -18,9 +18,9 @@ repos:
         entry: python3 scripts/check_structure.py
         language: system
         pass_filenames: false
-      - id: check-no-workspace
-        name: no consuming-workspace references
-        entry: python3 scripts/check_no_workspace.py
+      - id: check-publishable
+        name: no real-world identifiers
+        entry: python3 scripts/check_publishable.py
         language: system
         pass_filenames: false
       - id: check-trellis-cjk

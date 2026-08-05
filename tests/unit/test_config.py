@@ -767,7 +767,10 @@ class TestLoadConfig:
         config = load_config(str(config_file))
         assert config.storage.backend == "azure_blob"
         assert config.storage.local is None
-        assert config.storage.azure_blob.connection_string == "DefaultEndpointsProtocol=http;AccountName=dev;"
+        assert (
+            config.storage.azure_blob.connection_string.get_secret_value()
+            == "DefaultEndpointsProtocol=http;AccountName=dev;"
+        )
         assert config.storage.azure_blob.container_name == "test-container"
         assert config.storage.azure_blob.prefix == "user1/"
 
@@ -1368,3 +1371,75 @@ class TestMultiPathLoadConfig:
 
         config = load_config(f"{base_file},{override_file}")
         assert config.extractors.email.mailboxes[0].folders == ["SentItems"]
+
+
+class TestValidationErrorsDoNotEchoInput:
+    """A config error must not print the value that failed.
+
+    `str(ValidationError)` embeds `input_value`, and for a model-level error
+    that input is the whole surrounding mapping. So one missing or misspelt key
+    *next to* a secret used to print the secret.
+
+    The leak is sneakier than it looks: pydantic truncates a long value to its
+    **first two and last seven characters** -- `AccountKey=REAL...' renders as
+    `'Ac...4567890'`. An assertion looking for the whole secret, or for its
+    head, passes while the tail leaks. So these tests assert on a distinctive
+    tail, and on the structural property that no input is echoed at all.
+
+    `SecretStr` cannot close this: when validation fails the value is still a
+    raw `str`, because the model it would have become never existed.
+    """
+
+    SECRET = "AccountKey=REALKEYMATERIAL/ZZDISTINCTIVETAILZZ"
+
+    def _write(self, tmp_path, body: str):
+        path = tmp_path / "c.yaml"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def _load_expecting_failure(self, tmp_path, body: str) -> str:
+        with pytest.raises(ConfigError) as caught:
+            load_config(str(self._write(tmp_path, body)))
+        return str(caught.value)
+
+    def test_a_secret_beside_a_missing_key_is_not_printed(self, tmp_path):
+        message = self._load_expecting_failure(
+            tmp_path,
+            "storage:\n"
+            "  backend: azure_blob\n"
+            "  azure_blob:\n"
+            f'    connection_string: "{self.SECRET}"\n'
+            '    prefix: "p"\n',
+        )
+        assert self.SECRET not in message
+        assert "REALKEYMATERIAL" not in message
+        # The half that a naive assertion misses: pydantic keeps the last
+        # seven characters even when it truncates the middle.
+        assert self.SECRET[-7:] not in message
+        assert "DISTINCTIVETAIL" not in message
+
+    def test_no_input_is_echoed_at_all(self, tmp_path):
+        """The structural property, not a denylist of things we thought of."""
+        message = self._load_expecting_failure(
+            tmp_path,
+            f'storage:\n  backend: azure_blob\n  azure_blob:\n    connection_string: "{self.SECRET}"\n',
+        )
+        assert "input_value" not in message
+        assert "input_type" not in message
+
+    def test_the_offending_key_is_still_named(self, tmp_path):
+        """Dropping the input must not cost diagnostic value.
+
+        Pydantic puts the offending key in `loc`, so "which key" and "what is
+        wrong with it" both survive without echoing the value.
+        """
+        message = self._load_expecting_failure(tmp_path, "storage:\n  backend: local\n  definitely_not_a_key: 1\n")
+        assert "definitely_not_a_key" in message
+        assert "not permitted" in message
+
+    def test_the_config_path_is_still_named(self, tmp_path):
+        """With multi-file merge, which file owns the bad key is half the answer."""
+        path = self._write(tmp_path, "storage:\n  backend: local\n  nope: 1\n")
+        with pytest.raises(ConfigError) as caught:
+            load_config(str(path))
+        assert str(path) in str(caught.value)

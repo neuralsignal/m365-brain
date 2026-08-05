@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from azure.core.exceptions import ResourceNotFoundError
+from pydantic import SecretStr
 
 # Patch target: the import location inside azure_blob.py's __init__
 _CONTAINER_CLIENT = "azure.storage.blob.ContainerClient"
@@ -17,7 +18,7 @@ def _make_backend(prefix: str) -> tuple:
         mock_cls.from_connection_string.return_value = mock_client
         from m365_brain.storage.azure_blob import AzureBlobBackend
 
-        backend = AzureBlobBackend("conn-string", "container", prefix)
+        backend = AzureBlobBackend(SecretStr("conn-string"), "container", prefix)
     return backend, mock_client
 
 

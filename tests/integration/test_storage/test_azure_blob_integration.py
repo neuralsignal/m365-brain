@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from pydantic import SecretStr
 
 # Well-known Azurite connection string (not a secret)
 AZURITE_CONNECTION_STRING = (
@@ -47,7 +48,7 @@ def azurite_backend():
 
     container_name = f"test-{uuid.uuid4().hex[:8]}"
     backend = AzureBlobBackend(
-        connection_string=AZURITE_CONNECTION_STRING,
+        connection_string=SecretStr(AZURITE_CONNECTION_STRING),
         container_name=container_name,
         prefix="test/",
     )

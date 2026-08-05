@@ -67,7 +67,12 @@ Example: `calendar/2026/2026-03/2026-03-15-standup-d4e5f6.md`
 
 ### Frontmatter Fields
 
-`subject`, `event_id`, `start_time`, `end_time`, `location`, `organizer_name`, `organizer_email`, `attendees`, `is_recurring`, `web_link`
+`title`, `permalink`, `type` (`calendar_event`), `tags`, `start`, `end`, `organizer`, `organizer_email`, `attendees`, `is_recurring`, `location`, `attendee_details`, `source`, `status`
+
+Attendees are written **twice**: as the `attendees` list for a reader, and as one
+`- attended_by [[Name]]` relation per attendee in the body. Only the second is
+readable back out of the index — a list-valued frontmatter key is metadata, not an
+observation — and it is what `ops.tiers.interaction_sources` counts.
 
 ---
 

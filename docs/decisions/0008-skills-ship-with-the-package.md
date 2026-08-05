@@ -38,7 +38,7 @@ that test stays with the consumer, and the skill exposes the seam instead of har
   acceptance criterion, not an aspiration.
 - The skills are wrappers, not a second implementation. Behaviour lives in the CLI and the facade,
   so a skill cannot drift from the library it drives.
-- `scripts/check_no_workspace.py` runs over `skills/` like everything else, which is what catches
+- `scripts/check_publishable.py` runs over `skills/` like everything else, which is what catches
   a consumer assumption smuggled in as a default.
 - The `ops` skill is the risky one and may end up smaller than its predecessor. A skill that ships
   less is the correct outcome when the remainder was policy.

@@ -84,14 +84,14 @@ class TestChatRendering:
     def test_day_grouping_and_headers(self) -> None:
         body = render_chat_body(
             _store(
-                _msg("m1", "2026-06-11T09:42:00Z", sender="Matthias", content="first"),
-                _msg("m2", "2026-06-11T10:20:00Z", sender="Samuel", content="second"),
-                _msg("m3", "2026-06-12T08:00:00Z", sender="Matthias", content="next day"),
+                _msg("m1", "2026-06-11T09:42:00Z", sender="Alex", content="first"),
+                _msg("m2", "2026-06-11T10:20:00Z", sender="Jordan", content="second"),
+                _msg("m3", "2026-06-12T08:00:00Z", sender="Alex", content="next day"),
             )
         )
-        assert body.index("## 2026-06-11") < body.index("### 09:42 — Matthias")
-        assert body.index("### 09:42 — Matthias") < body.index("### 10:20 — Samuel")
-        assert body.index("### 10:20 — Samuel") < body.index("## 2026-06-12")
+        assert body.index("## 2026-06-11") < body.index("### 09:42 — Alex")
+        assert body.index("### 09:42 — Alex") < body.index("### 10:20 — Jordan")
+        assert body.index("### 10:20 — Jordan") < body.index("## 2026-06-12")
         assert body.count("## 2026-06-11") == 1
         assert "first" in body and "second" in body and "next day" in body
 
@@ -105,12 +105,12 @@ class TestChatRendering:
         assert body.index("from-a") < body.index("from-b")
 
     def test_edited_marker(self) -> None:
-        body = render_chat_body(_store(_msg("m1", "2026-06-11T10:20:00Z", sender="Samuel", edited=True)))
-        assert "### 10:20 — Samuel *(edited)*" in body
+        body = render_chat_body(_store(_msg("m1", "2026-06-11T10:20:00Z", sender="Jordan", edited=True)))
+        assert "### 10:20 — Jordan *(edited)*" in body
 
     def test_deleted_marker_and_tombstone_body(self) -> None:
-        body = render_chat_body(_store(_msg("m1", "2026-06-11T10:20:00Z", sender="Samuel", deleted=True, content="")))
-        assert "### 10:20 — Samuel *(deleted)*" in body
+        body = render_chat_body(_store(_msg("m1", "2026-06-11T10:20:00Z", sender="Jordan", deleted=True, content="")))
+        assert "### 10:20 — Jordan *(deleted)*" in body
         assert "*Message deleted.*" in body
 
     def test_attachment_links_line(self) -> None:

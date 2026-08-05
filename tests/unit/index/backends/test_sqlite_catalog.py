@@ -34,20 +34,28 @@ def test_set_status_clears_a_previous_error(sqlite_backend):
     assert row["output_path"] == "out.md"
 
 
+def _vocabulary(index_payload: dict, states: list[str]) -> None:
+    """Rename the whole conversion vocabulary. All three named states move with it."""
+    index_payload["catalog"] = {
+        "conversion_states": states,
+        "initial_state": states[0],
+        "converted_state": states[1],
+        "failed_state": states[2],
+    }
+
+
 def test_stats_keys_follow_the_configured_states(index_payload):
-    index_payload["catalog"]["conversion_states"] = ["pending", "done"]
-    index_payload["catalog"]["initial_state"] = "pending"
+    _vocabulary(index_payload, ["pending", "done", "broken"])
     backend = make_backend(index_payload, "sqlite")
     backend.upsert_catalog_entry(a_catalog_entry())
     stats = backend.catalog_stats()
-    assert set(stats) == {"total", "pending", "done"}
-    assert stats == {"total": 1, "pending": 1, "done": 0}
+    assert set(stats) == {"total", "pending", "done", "broken"}
+    assert stats == {"total": 1, "pending": 1, "done": 0, "broken": 0}
 
 
 def test_stats_ignores_a_row_in_an_unconfigured_state(index_payload):
     """The total still counts it -- the summary must not silently lose rows."""
-    index_payload["catalog"]["conversion_states"] = ["pending"]
-    index_payload["catalog"]["initial_state"] = "pending"
+    _vocabulary(index_payload, ["pending", "done", "broken"])
     backend = make_backend(index_payload, "sqlite")
     backend.upsert_catalog_entry(a_catalog_entry(conversion_status="unexpected"))
     stats = backend.catalog_stats()

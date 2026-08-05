@@ -56,6 +56,7 @@ BUILDERS = {
         EmailData(
             subject="Invoice",
             message_id="msg-1",
+            conversation_id="conv-1",
             received_time="2026-03-12T10:00:00Z",
             folder="Inbox",
             mailbox="me@example.com",

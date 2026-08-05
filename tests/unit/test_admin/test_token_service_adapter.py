@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 from sqlmodel import Session, SQLModel, create_engine
 
 from m365_admin.services.token_service import TokenService, TokenServiceAdapter
@@ -15,7 +16,7 @@ pytestmark = pytest.mark.admin
 
 @pytest.fixture()
 def fernet_key():
-    return Fernet.generate_key().decode()
+    return SecretStr(Fernet.generate_key().decode())
 
 
 @pytest.fixture()

@@ -6,6 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import SecretStr
 from sqlmodel import Session, SQLModel, create_engine
 
 from m365_admin.services.token_service import TokenService
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.admin
 
 @pytest.fixture()
 def fernet_key():
-    return Fernet.generate_key().decode()
+    return SecretStr(Fernet.generate_key().decode())
 
 
 @pytest.fixture()
@@ -86,7 +87,7 @@ class TestTokenServiceRoundtrip:
         expires_in=st.integers(min_value=1, max_value=86400),
     )
     def test_roundtrip_property(self, access_token, refresh_token, expires_in):
-        key = Fernet.generate_key().decode()
+        key = SecretStr(Fernet.generate_key().decode())
         engine = create_engine("sqlite://", echo=False)
         SQLModel.metadata.create_all(engine)
         with Session(engine) as s:

@@ -53,6 +53,25 @@ Also **Present**: `vault` (layout, per-extractor directory names, filenames); `a
 `m365.upload` (`inline_attachment_max_bytes`, `simple_upload_max_bytes`, `chunk_bytes` — which
 must be a multiple of 320 KiB, and the validator caught that the constant it replaced was not).
 
+`ops.triage.fields` names the seven things a message corpus is read through — `entity_type` plus the
+`folder`, `conversation_id`, `message_id`, `sender`, `recipients` and `timestamp` observation
+categories. All seven are required and none has a code default, for a reason the other required keys
+do not share: a wrong threshold produces a visibly wrong report, whereas a guessed category name
+produces an empty one, and an empty triage report is indistinguishable from an inbox with nothing
+owing. The `--*-category` options on `ops triage` override one for a single run and are the only
+place a CLI flag may restate a configured value — a category is a statement about which corpus is
+being read, not a policy the config owns.
+
+`conversation_id` and `message_id` are **two identifier spaces and both are read**: a reply is
+paired with the message it answers by conversation, while an intent's `in_reply_to` names a single
+message. Comparing one against the other is not a near miss — it is a clause that cannot fire.
+
+`ops.tiers.interaction_sources` carries the same kind of name and the same hazard. Every
+`entity_type`, `party_from` and `timestamp` in it is a statement about what the corpus contains, so
+a source naming something no producer writes reports zero counterparties, which reads as a quiet
+quarter rather than as a fault. The shipped sources are checked against the bundled builders' real
+output, per source, in `tests/unit/test_ops.py`.
+
 Sections **Pending**: `index` (backend selection, roots, exclusions, vector settings) →
 knowledge-layer stage; `hooks.post_cycle` → runtime stage.
 
@@ -158,6 +177,23 @@ that carries them.
 Downstream consumers may rely on: the file being valid UTF-8 markdown; the frontmatter parsing as
 YAML; the path being stable for a given upstream item id; and the file disappearing when the
 upstream item does.
+
+**A fact an operation has to read is written as a scalar.** `m365_brain/parsers/document.py`
+promotes a scalar frontmatter key to an observation and leaves a list or a dict in metadata, and
+metadata is not retrievable per entity — `EntityRef` carries none, and `IndexBackend` offers only a
+filter over it. A structure is therefore not a formatting choice but an invisible fact. The email
+builder consequently carries Graph's `conversationId` through as a `conversation_id` key and its
+`id` as a `message_id` key — duplicating `source.id`, which is inside a dict and so unreadable —
+and writes `to` as a comma-joined string rather than the list Graph returns;
+`ops.names.email_addresses` splits the addresses back out. `source` and `tags` are the two
+deliberate structures, and nothing reads them out of the index.
+
+**A fact with N values is written as N body relations**, because a scalar cannot hold them and
+joining them into one string makes them one value. An event's attendees are the case: the calendar
+builder emits `attendees` as a list for a reader *and* one `- attended_by [[Name]]` line per
+attendee through `attendee_relations`, which is what `ops tiers` counts. Joining the names instead
+— the repair that was right for an email's `to` line — would have produced a single counterparty
+called "Ana Ruiz, Bo Frey", because `ops tiers` groups on the whole observation.
 
 ### Sync state
 
@@ -305,7 +341,7 @@ from data.
 | `vault path AREA` | `--extractor` · `--outbox` · `--json` | one path | 0 / 3 |
 | `ops resolve-links` | `--json` | unresolved links and their candidates | 0 / 3 |
 | `ops tiers` | `--json` | per-counterparty tier and staleness; reports only, `write_back.enabled: true` raises | 0 / 3 |
-| `ops triage` | `--timeframe` · six required `--*-category` options naming the observation categories the messages use · `--json` | messages awaiting a reply | 0 / 3 |
+| `ops triage` | `--timeframe` · seven optional `--*-category` overrides of `ops.triage.fields` · `--json` | messages awaiting a reply | 0 / 3 |
 | `worker` | — | multi-user per-`(user, extractor)` job loop (requires the `web` section) | 0 / 1 / 3 |
 
 **Not present, and deliberately.** There is no `outbox new` — an intent *is* a markdown file in the
@@ -534,7 +570,7 @@ apply is traceable to a named config key, tabulated in
 15. **Results go to stdout, logs go to stderr.** Every read verb offers `--json`, and its output
     parses without first being separated from log noise. *(Present.)*
 13. **No consumer vocabulary appears anywhere in the repo.** Enforced by
-    `scripts/check_no_workspace.py` over all tracked text, in pre-commit and CI. *(Present.)*
+    `scripts/check_publishable.py` over all tracked text, in pre-commit and CI. *(Present.)*
 
 ## Pydantic / schema source
 

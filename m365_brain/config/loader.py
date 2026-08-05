@@ -140,4 +140,25 @@ def load_config(path: str) -> Config:
     except ValidationError as exc:
         # The file path matters as much as the key path: with multi-file merge
         # an operator otherwise has to guess which of them owns the bad key.
-        raise ConfigError(f"invalid config in {path}: {exc}") from exc
+        raise ConfigError(f"invalid config in {path}: {_render(exc)}") from exc
+
+
+def _render(exc: ValidationError) -> str:
+    """Format a validation error without echoing the input that failed.
+
+    `str(ValidationError)` embeds `input_value`, and for a *model*-level error
+    that input is the whole surrounding mapping -- so one missing or misspelt
+    key next to a secret prints the secret. Pydantic truncates a long value to
+    its first two and last seven characters, which hides the middle of a
+    connection string and nothing at all of a short one.
+
+    Dropping the input costs nothing diagnostically: pydantic puts the
+    offending key in `loc`, not only in `input_value`, so "which key" and
+    "what is wrong with it" both survive. What is lost is only the echo of a
+    value the operator can read in their own file.
+    """
+    lines = [f"{len(exc.errors())} validation error(s) for {exc.title}"]
+    for error in exc.errors(include_input=False, include_url=False):
+        location = ".".join(str(part) for part in error["loc"]) or "(root)"
+        lines.append(f"  {location}: {error['msg']}")
+    return "\n".join(lines)

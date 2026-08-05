@@ -1,4 +1,4 @@
-"""Tests for the calendar frontmatter builder."""
+"""Tests for the calendar frontmatter builder and its attendee relations."""
 
 from __future__ import annotations
 
@@ -7,7 +7,14 @@ import re
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_brain.m365.frontmatter.calendar import CalendarEventData, build_calendar_frontmatter
+from m365_brain.config.index import RelationConfig
+from m365_brain.m365.frontmatter.calendar import (
+    ATTENDED_BY,
+    CalendarEventData,
+    attendee_relations,
+    build_calendar_frontmatter,
+)
+from m365_brain.parsers.relations import parse_relations
 
 REQUIRED_KEYS = {
     "title",
@@ -52,7 +59,7 @@ class TestCalendarFrontmatterProperties:
         assert fm["status"] == "raw"
         assert fm["source"]["system"] == "microsoft365"
         assert fm["source"]["service"] == "exchange"
-        assert fm["source"]["extractor"] == "m365-brain/calendar/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/calendar/1.1"
         assert fm["source"]["id"] == data.event_id
         assert all(isinstance(tag, str) for tag in fm["tags"])
         # permalink is ascii-safe: calendar-<YYYY-MM-DD>-<slug>-<6 hex>
@@ -147,6 +154,84 @@ class TestCalendarFrontmatterShapes:
 
         assert fm["permalink"].startswith("calendar-2026-04-01-all-hands-")
         assert fm["tags"] == ["calendar", "recurring"]
+
+    def test_attendees_are_relation_lines_the_parser_reads_back(self):
+        """The counterparty an event states has to survive into the index.
+
+        `attendees` is a list, so it is metadata and no per-entity read can see
+        it -- which is why the edge is written into the body instead. Parsed
+        with the real relation parser rather than a regex, so this is the same
+        reading `ops tiers` does.
+        """
+        lines = attendee_relations(
+            CalendarEventData(
+                subject="Weekly review",
+                event_id="evt-5",
+                start_time="2026-03-12T09:00:00Z",
+                end_time="2026-03-12T10:00:00Z",
+                location="",
+                organizer_name="Ana Ruiz",
+                organizer_email="ana@example.com",
+                attendees=["Bo Frey", "Cleo Nix"],
+                attendee_details=[
+                    {"name": "Bo Frey", "email": "bo@example.com", "status": "accepted"},
+                    {"email": "cleo@example.com"},
+                ],
+                is_recurring=False,
+                web_link="",
+            )
+        )
+        parsed = parse_relations(
+            "\n".join(lines), RelationConfig(explicit_default_type="relates_to", inline_type="links_to")
+        )
+
+        assert [(edge.relation_type, edge.to_name) for edge in parsed] == [
+            (ATTENDED_BY, "Bo Frey"),
+            (ATTENDED_BY, "cleo@example.com"),
+        ]
+        assert parsed[0].context == "bo@example.com, accepted"
+        # An attendee with no display name links on the address, and does not
+        # then repeat it as context.
+        assert parsed[1].context is None
+
+    def test_names_are_used_when_no_details_were_returned(self):
+        lines = attendee_relations(
+            CalendarEventData(
+                subject="Standup",
+                event_id="evt-6",
+                start_time="2026-03-12T09:00:00Z",
+                end_time="2026-03-12T09:15:00Z",
+                location="",
+                organizer_name="",
+                organizer_email="",
+                attendees=["Bo Frey"],
+                attendee_details=[],
+                is_recurring=False,
+                web_link="",
+            )
+        )
+
+        assert lines == [f"- {ATTENDED_BY} [[Bo Frey]]"]
+
+    def test_an_event_with_no_attendees_states_no_edges(self):
+        assert (
+            attendee_relations(
+                CalendarEventData(
+                    subject="Focus Time",
+                    event_id="evt-7",
+                    start_time="2026-03-12T09:00:00Z",
+                    end_time="2026-03-12T11:00:00Z",
+                    location="",
+                    organizer_name="",
+                    organizer_email="",
+                    attendees=[],
+                    attendee_details=[],
+                    is_recurring=False,
+                    web_link="",
+                )
+            )
+            == []
+        )
 
     def test_unicode_subject_slugified_but_title_preserved(self):
         fm = build_calendar_frontmatter(

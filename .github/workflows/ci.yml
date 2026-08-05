@@ -26,8 +26,8 @@ jobs:
       # to set up -- a broken pixi env cannot make a guardrail silently pass.
       - name: Repository structure
         run: python3 scripts/check_structure.py
-      - name: No consuming-workspace references
-        run: python3 scripts/check_no_workspace.py
+      - name: No real-world identifiers
+        run: python3 scripts/check_publishable.py
       - name: Trellis templates carry no bilingual Chinese
         run: python3 scripts/check_trellis_cjk.py
 

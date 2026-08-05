@@ -188,6 +188,8 @@ def _index_section() -> dict:
         "catalog": {
             "conversion_states": ["pending", "converted", "failed"],
             "initial_state": "pending",
+            "converted_state": "converted",
+            "failed_state": "failed",
         },
         "vector": {
             "enabled": True,
@@ -274,6 +276,15 @@ def _ops_section() -> dict:
             "inbox_folder": "Inbox",
             "sent_folders": ["SentItems"],
             "forward_prefixes": ["fw:"],
+            "fields": {
+                "entity_type": "email",
+                "folder": "folder",
+                "conversation_id": "conversation_id",
+                "message_id": "message_id",
+                "sender": "sender",
+                "recipients": "to",
+                "timestamp": "date",
+            },
         },
     }
 
@@ -429,6 +440,22 @@ class TestMissingAndUnknownKeys:
         del payload["index"]["vector"]["dimensions"]
 
         with pytest.raises(ConfigError, match=r"index\.vector\.dimensions"):
+            load(tmp_path, payload)
+
+    @pytest.mark.parametrize(
+        "field",
+        ["entity_type", "folder", "conversation_id", "message_id", "sender", "recipients", "timestamp"],
+    )
+    def test_a_triage_category_has_no_default(self, tmp_path, field):
+        """Seven names, none of them guessable.
+
+        A default here would not fail -- it would produce an empty report, which
+        reads exactly like an inbox with nothing in it.
+        """
+        payload = full_payload()
+        del payload["ops"]["triage"]["fields"][field]
+
+        with pytest.raises(ConfigError, match=rf"ops\.triage\.fields\.{field}"):
             load(tmp_path, payload)
 
     def test_error_message_names_the_config_file(self, tmp_path):

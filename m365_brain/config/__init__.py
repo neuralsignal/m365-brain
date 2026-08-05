@@ -42,6 +42,7 @@ from m365_brain.config.ops import (
     TierWriteBackConfig,
     TimestampSelector,
     TriageConfig,
+    TriageFieldsConfig,
 )
 from m365_brain.config.outbox import (
     EmailOutboxConfig,
@@ -130,6 +131,7 @@ __all__ = [
     "TiersConfig",
     "TimestampSelector",
     "TriageConfig",
+    "TriageFieldsConfig",
     "UploadConfig",
     "VaultConfig",
     "VaultFilenames",

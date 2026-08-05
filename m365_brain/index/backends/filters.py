@@ -9,6 +9,11 @@ Frontmatter scalars are normalised to strings when they are parsed, so
 `priority: 3` is stored as `"3"`. A numeric filter therefore has to coerce
 before comparing -- otherwise `priority>=10` is false because `"10" < "3"` as
 text.
+
+`normalised_extension` is here for the same reason and after the same defect:
+the two backends each normalised a catalog `--ext` filter their own way, one
+case-sensitively and one not, so the same query returned different rows
+depending on configuration. It was invisible while the catalog was empty.
 """
 
 from __future__ import annotations
@@ -17,6 +22,17 @@ from m365_brain.index.backends.base import MetadataFilter
 
 # op -> SQL comparison operator, for the operators that map to one.
 SQL_COMPARISON: dict[str, str] = {"eq": "=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+
+
+def normalised_extension(extension: str) -> str:
+    """`PDF`, `.PDF` and `.pdf` are one filter: a lower-cased, dotted suffix.
+
+    Registration stores the lower-cased suffix, so a filter that does not
+    lower-case matches nothing -- and `--ext PDF` returning no rows for a vault
+    full of PDFs reads as "none catalogued" rather than "wrong case".
+    """
+    lowered = extension.lower()
+    return lowered if lowered.startswith(".") else f".{lowered}"
 
 
 def evaluate(value: object, metadata_filter: MetadataFilter) -> bool:

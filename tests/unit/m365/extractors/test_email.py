@@ -1128,11 +1128,9 @@ class TestSharedMailbox:
         }
 
     def test_shared_mailbox_uses_users_endpoint_and_subdir(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
-        config = self._config(
-            [MailboxConfig(address="ai@sanoptis.com", folders=["Inbox"], output_subdir="ai-sanoptis")]
-        )
+        config = self._config([MailboxConfig(address="ai@example.com", folders=["Inbox"], output_subdir="ai-example")])
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders/Inbox/messages/delta.*"),
             json={
                 "value": [self._msg("msg-shared-1", "Hello shared", "2026-05-08T10:00:00Z")],
                 "@odata.deltaLink": "https://delta?token=shared",
@@ -1145,11 +1143,11 @@ class TestSharedMailbox:
         state, count = email.run(client, storage, {}, config, ctx)
 
         assert count == 1
-        assert "delta_link_ai@sanoptis.com_Inbox" in state
+        assert "delta_link_ai@example.com_Inbox" in state
 
         # Storage path must be namespaced under the output_subdir
         files = storage.list_files(ctx.paths.inbox_root("email"))
-        assert any(ctx.paths.inbox_item("email", "ai-sanoptis", "2026", "2026-05-08") + "/" in f for f in files)
+        assert any(ctx.paths.inbox_item("email", "ai-example", "2026", "2026-05-08") + "/" in f for f in files)
         # And NOT placed at the top-level emails/{year}/...
         assert not any(f.startswith(ctx.paths.inbox_item("email", "2026") + "/") for f in files)
 
@@ -1158,14 +1156,14 @@ class TestSharedMailbox:
         from m365_brain.m365.markdown_writer import loads_markdown
 
         fm, _ = loads_markdown(content)
-        assert fm["mailbox"] == "ai@sanoptis.com"
+        assert fm["mailbox"] == "ai@example.com"
         client.close()
 
     def test_personal_and_shared_isolated_in_one_run(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
         config = self._config(
             [
                 MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
-                MailboxConfig(address="ai@sanoptis.com", folders=["Inbox"], output_subdir="ai-sanoptis"),
+                MailboxConfig(address="ai@example.com", folders=["Inbox"], output_subdir="ai-example"),
             ]
         )
         httpx_mock.add_response(
@@ -1176,7 +1174,7 @@ class TestSharedMailbox:
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders/Inbox/messages/delta.*"),
             json={
                 "value": [self._msg("msg-shared", "Shared", "2026-05-08T10:00:00Z")],
                 "@odata.deltaLink": "https://delta?token=ai",
@@ -1190,18 +1188,18 @@ class TestSharedMailbox:
 
         assert count == 2
         assert "delta_link_me_Inbox" in state
-        assert "delta_link_ai@sanoptis.com_Inbox" in state
+        assert "delta_link_ai@example.com_Inbox" in state
 
         files = storage.list_files(ctx.paths.inbox_root("email"))
         personal = [f for f in files if f.startswith(ctx.paths.inbox_item("email", "2026") + "/")]
-        shared = [f for f in files if f.startswith(ctx.paths.inbox_item("email", "ai-sanoptis") + "/")]
+        shared = [f for f in files if f.startswith(ctx.paths.inbox_item("email", "ai-example") + "/")]
         assert len(personal) == 1
         assert len(shared) == 1
         client.close()
 
     def test_auto_discover_filters_system_folders(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
         """When folders=None, discovery uses GET /mailFolders and skips Drafts/Junk/etc."""
-        config = self._config([MailboxConfig(address="ai@sanoptis.com", folders=None, output_subdir="ai-sanoptis")])
+        config = self._config([MailboxConfig(address="ai@example.com", folders=None, output_subdir="ai-example")])
 
         # Discovery response — mix of keep + skip folders.
         # URL params are encoded ($select=id%2CdisplayName...), so match loosely on
@@ -1209,7 +1207,7 @@ class TestSharedMailbox:
         # trailing `?` indicating a query-string list call rather than a sub-resource.
         # Graph API v1.0 returns `isHidden`; `wellKnownName` is beta-only and not selected.
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders\?.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders\?.*"),
             json={
                 "value": [
                     {"id": "id-inbox", "displayName": "Inbox", "isHidden": False},
@@ -1224,7 +1222,7 @@ class TestSharedMailbox:
 
         # Inbox delta (uses well-known "Inbox" as the folder ID)
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/Inbox/messages/delta.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders/Inbox/messages/delta.*"),
             json={
                 "value": [self._msg("m-1", "in inbox", "2026-05-08T10:00:00Z")],
                 "@odata.deltaLink": "https://delta?token=inbox",
@@ -1232,7 +1230,7 @@ class TestSharedMailbox:
         )
         # Projects delta — uses the resolved folder id from discovery cache
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@sanoptis\.com/mailFolders/id-projects/messages/delta.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders/id-projects/messages/delta.*"),
             json={
                 "value": [self._msg("m-2", "in projects", "2026-05-08T10:00:00Z")],
                 "@odata.deltaLink": "https://delta?token=projects",
@@ -1247,12 +1245,12 @@ class TestSharedMailbox:
         # Only Inbox + Projects synced; Drafts/Junk/Deleted skipped by displayName,
         # Internal skipped by isHidden=true.
         assert count == 2
-        assert "delta_link_ai@sanoptis.com_Inbox" in state
-        assert "delta_link_ai@sanoptis.com_Projects" in state
-        assert "delta_link_ai@sanoptis.com_Drafts" not in state
-        assert "delta_link_ai@sanoptis.com_Junk Email" not in state
-        assert "delta_link_ai@sanoptis.com_Deleted Items" not in state
-        assert "delta_link_ai@sanoptis.com_Internal" not in state
+        assert "delta_link_ai@example.com_Inbox" in state
+        assert "delta_link_ai@example.com_Projects" in state
+        assert "delta_link_ai@example.com_Drafts" not in state
+        assert "delta_link_ai@example.com_Junk Email" not in state
+        assert "delta_link_ai@example.com_Deleted Items" not in state
+        assert "delta_link_ai@example.com_Internal" not in state
         client.close()
 
 
@@ -1342,14 +1340,12 @@ class TestResolveFolderId:
         cache: dict[tuple[str, str], str] = {}
 
         first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
-        second = _folder_helpers.resolve_folder_id(
-            client, "/users/ai@sanoptis.com", "ai@sanoptis.com", "Projects", cache
-        )
+        second = _folder_helpers.resolve_folder_id(client, "/users/ai@example.com", "ai@example.com", "Projects", cache)
 
         assert first == "id-personal"
         assert second == "id-shared"
         assert client.get.call_count == 2
-        assert client.get.call_args_list[1].args[0] == "/users/ai@sanoptis.com/mailFolders"
+        assert client.get.call_args_list[1].args[0] == "/users/ai@example.com/mailFolders"
 
 
 class TestFolderCacheIsolation:

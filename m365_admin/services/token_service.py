@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 import structlog
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 from sqlmodel import Session, select
 
 from m365_brain.models import TokenRecord
@@ -21,8 +22,8 @@ log = structlog.get_logger()
 class TokenService:
     """Encrypt, store, retrieve, and delete OAuth tokens."""
 
-    def __init__(self, fernet_key: str) -> None:
-        self._fernet = Fernet(fernet_key.encode())
+    def __init__(self, fernet_key: SecretStr) -> None:
+        self._fernet = Fernet(fernet_key.get_secret_value().encode())
 
     def store_tokens(self, session: Session, user_id: str, tokens: dict) -> None:
         """Encrypt and upsert tokens for a user."""

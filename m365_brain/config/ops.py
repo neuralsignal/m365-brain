@@ -101,12 +101,43 @@ class TiersConfig(BaseModel):
         return self
 
 
+class TriageFieldsConfig(BaseModel):
+    """Which observation categories the message corpus writes each fact under.
+
+    Config rather than code, for the same reason `index.frontmatter.structural_keys`
+    is: every name here is a property of whoever produced the notes, so a library
+    default would ship one author's frontmatter vocabulary. Every field is
+    required -- a guessed category matches nothing, and an empty triage report is
+    indistinguishable from an empty inbox.
+
+    `entity_type` is the odd one out: it names an entity type rather than an
+    observation category. It sits here because it answers the same question --
+    *how does this corpus spell a message?* -- and splitting it into its own block
+    would separate the seven names a caller has to get right together.
+
+    `conversation_id` and `message_id` are two different identifier spaces and
+    both are needed: a reply is paired with the message it answers by
+    *conversation*, while an intent's `in_reply_to` names a single *message*, so
+    a rule that had only one of them could not evaluate both clauses.
+    """
+
+    model_config = SECTION_MODEL_CONFIG
+    entity_type: str
+    folder: str
+    conversation_id: str
+    message_id: str
+    sender: str
+    recipients: str
+    timestamp: str
+
+
 class TriageConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     own_email: str
     inbox_folder: str
     sent_folders: list[str]
     forward_prefixes: list[str]
+    fields: TriageFieldsConfig
 
 
 class OpsConfig(BaseModel):

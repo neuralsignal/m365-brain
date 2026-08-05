@@ -17,10 +17,11 @@ from pytest_httpx import HTTPXMock
 
 from m365_brain.cli import main
 from m365_brain.commands._context import EXIT_AUTH, EXIT_CONFIG, EXIT_FAILURE, EXIT_OK, EXIT_USAGE
-from m365_brain.commands.config import SECRET_KEYS, redact
 from m365_brain.commands.teams import parse_channel_url
 from m365_brain.config import ConfigError
 from tests.conftest import load_fixture
+
+SECRET = "s3cr3t-value-do-not-print"
 
 ALL_VERBS = [
     ("init",),
@@ -44,6 +45,7 @@ ALL_VERBS = [
     ("index", "catalog", "list"),
     ("index", "catalog", "search"),
     ("index", "catalog", "resolve"),
+    ("index", "catalog", "extract"),
     ("index", "catalog", "read"),
     ("outbox",),
     ("outbox", "list"),
@@ -223,36 +225,34 @@ class TestConfigVerbs:
     def test_show_yaml_parses(self, runner, config_file):
         assert isinstance(yaml.safe_load(_run(runner, config_file, "config", "show").stdout), dict)
 
-    def test_secret_values_never_reach_stdout(self, runtime_config, tmp_path, runner):
-        """The property that matters -- not that the key list is right."""
-        from m365_brain.config import AzureBlobStorageConfig
+    @pytest.fixture()
+    def secret_config_file(self, runtime_config, tmp_path):
+        """A config file carrying live secret values, written as an operator would.
 
-        secret = "s3cr3t-value-do-not-print"
-        config = runtime_config.model_copy(
-            update={
-                "auth": runtime_config.auth.model_copy(update={"client_secret": secret}),
-                "storage": runtime_config.storage.model_copy(
-                    update={
-                        "azure_blob": AzureBlobStorageConfig(connection_string=secret, container_name="c", prefix="p")
-                    }
-                ),
-            }
-        )
+        The secrets go in as raw YAML rather than through `model_dump`, which
+        would have masked them before the verb ever ran -- the point is that
+        `config show` loads a real secret and still does not print it.
+        """
+        payload = runtime_config.model_dump(mode="json")
+        payload["auth"]["client_secret"] = SECRET
+        payload["storage"]["azure_blob"] = {"connection_string": SECRET, "container_name": "c", "prefix": "p"}
+        (tmp_path / "vault").mkdir(exist_ok=True)
         path = tmp_path / "secret.yaml"
-        path.write_text(yaml.safe_dump(config.model_dump(mode="json")), encoding="utf-8")
-        output = runner.invoke(main, ["--config", str(path), "config", "show", "--json"]).stdout
-        assert secret not in output
-        assert "***" in output
+        path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        return path
 
-    def test_redaction_reaches_every_depth(self):
-        redacted = redact({"a": {"b": [{"client_secret": "x"}]}})
-        assert redacted == {"a": {"b": [{"client_secret": "***"}]}}
+    @pytest.mark.parametrize("form", [("--json",), ()], ids=["json", "yaml"])
+    def test_secret_values_never_reach_stdout(self, secret_config_file, runner, form):
+        """End-to-end over the verb. The general property lives in test_config_secrets."""
+        result = runner.invoke(main, ["--config", str(secret_config_file), "config", "show", *form])
+        assert result.exit_code == EXIT_OK, result.output
+        assert SECRET not in result.stdout
+        assert "**********" in result.stdout
 
-    def test_a_null_secret_stays_null(self):
-        assert redact({"client_secret": None}) == {"client_secret": None}
-
-    def test_the_secret_key_list_is_not_empty(self):
-        assert SECRET_KEYS
+    def test_a_null_secret_stays_null(self, runner, config_file):
+        """Which flow a config selects stays readable; only the value is hidden."""
+        payload = json.loads(_run(runner, config_file, "config", "show", "--json").stdout)
+        assert payload["auth"]["client_secret"] is None
 
 
 class TestVaultPath:

@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+from pydantic import SecretStr
+
 
 class AzureBlobBackend:
     """Azure Blob Storage backend implementing the StorageBackend protocol.
 
     All file paths are prefixed with ``self._prefix`` to enable per-user or
     per-tenant isolation within a shared container.
+
+    The connection string stays a ``SecretStr`` all the way in and is unwrapped
+    on the line that hands it to the Azure SDK -- the factory that reads it off
+    config never holds the raw value.
     """
 
-    def __init__(self, connection_string: str, container_name: str, prefix: str) -> None:
+    def __init__(self, connection_string: SecretStr, container_name: str, prefix: str) -> None:
         from azure.storage.blob import ContainerClient
 
         self._container_client = ContainerClient.from_connection_string(
-            connection_string,
+            connection_string.get_secret_value(),
             container_name,
         )
         self._prefix = prefix.rstrip("/") + "/" if prefix else ""

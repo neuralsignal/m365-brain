@@ -272,7 +272,11 @@ index:
     min_similarity: 0.55 # 1/(1+distance) below this is discarded
   catalog:
     conversion_states: ["pending", "eager", "converted", "failed", "skipped"]
-    initial_state: "pending" # must be one of conversion_states
+    # All three must name a member of conversion_states. Registration and
+    # `index catalog extract` read them from here; no state is hardcoded.
+    initial_state: "pending" # where a newly catalogued binary starts
+    converted_state: "converted" # extract succeeded; output_path is set
+    failed_state: "failed" # extract failed; error_message says why, and it is not retried
   vector:
     enabled: true # false makes vector/hybrid search raise, never silently fall back
     provider: "fastembed" # fastembed | hash (hash is the offline fake)
@@ -360,14 +364,19 @@ ops:
     # Where interaction counts come from. Three declarative fields over one
     # fixed join shape — if a fourth source needs a different shape, cut the
     # source rather than widening this into a query language.
+    #
+    # Every name below is the vocabulary of the bundled extractors, exactly as
+    # `ops.triage.fields` is: an entity type and an observation category are
+    # statements about the corpus, so a source naming something no producer
+    # writes reports zero counterparties and looks like a quiet quarter.
     interaction_sources:
       - entity_type: "email"
-        party_from: { observation: "from", relation: null }
-        timestamp: { observation: "received_at" }
+        party_from: { observation: "sender", relation: null }
+        timestamp: { observation: "date" }
         exclude_future: true
-      - entity_type: "event"
+      - entity_type: "calendar_event"
         party_from: { observation: null, relation: "attended_by" }
-        timestamp: { observation: "start_time" }
+        timestamp: { observation: "start" }
         exclude_future: true
     write_back:
       enabled: false
@@ -380,6 +389,18 @@ ops:
     inbox_folder: "Inbox"
     sent_folders: ["SentItems", "Gesendete Elemente"]
     forward_prefixes: ["fw:", "fwd:", "wg:"]
+    # Which observation categories the messages carry each fact under. The
+    # values below are the frontmatter keys the bundled email extractor writes;
+    # a corpus written by anything else states its own. `ops triage`'s
+    # --*-category options override one of these for a single run.
+    fields:
+      entity_type: "email"
+      folder: "folder"
+      conversation_id: "conversation_id"
+      message_id: "message_id"
+      sender: "sender"
+      recipients: "to"
+      timestamp: "date"
 # ---------------------------------------------------------------------------
 # web: / worker: — only for the multi-user admin deployment. Omitted here;
 # see config/service/web.yaml for the shape.

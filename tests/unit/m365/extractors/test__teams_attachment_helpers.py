@@ -74,7 +74,7 @@ def _ctx(
 
 class TestEncodeShareUrl:
     def test_roundtrip(self) -> None:
-        url = "https://sanoptis.sharepoint.com/sites/x/Shared Documents/spec.pdf"
+        url = "https://contoso.sharepoint.com/sites/x/Shared Documents/spec.pdf"
         encoded = helpers._encode_share_url(url)
         assert encoded.startswith("u!")
         # Re-pad and decode to verify it round-trips to the original URL
@@ -86,18 +86,18 @@ class TestEncodeShareUrl:
 
 class TestDownloadMessageAttachments:
     def test_reference_attachment_written(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
                 "id": "drive-item-1",
                 "size": 1024,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/_layouts/download.aspx?token=abc",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/_layouts/download.aspx?token=abc",
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/_layouts/download\.aspx.*"),
+            url=re.compile(r"https://contoso\.sharepoint\.com/_layouts/download\.aspx.*"),
             content=b"%PDF-1.4 fake",
         )
 
@@ -150,14 +150,14 @@ class TestDownloadMessageAttachments:
         client.close()
 
     def test_oversized_attachment_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/huge.zip"
+        content_url = "https://contoso.sharepoint.com/sites/x/huge.zip"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
                 "id": "drive-item-big",
                 "size": 200 * 1024 * 1024,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?token=z",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?token=z",
             },
         )
 
@@ -185,7 +185,7 @@ class TestDownloadMessageAttachments:
         client.close()
 
     def test_missing_download_url_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/nourl.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/nourl.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
@@ -251,18 +251,18 @@ class TestDownloadMessageAttachments:
     def test_convert_called_for_matching_extension(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
                 "id": "drive-item",
                 "size": 1024,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x",
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"),
             content=b"%PDF-1.4 fake",
         )
 
@@ -296,18 +296,18 @@ class TestDownloadMessageAttachments:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         """When conversion fails, the ref must not carry a dangling converted link."""
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
                 "id": "drive-item",
                 "size": 1024,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x",
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"),
             content=b"%PDF-1.4 fake",
         )
 
@@ -335,18 +335,18 @@ class TestDownloadMessageAttachments:
         client.close()
 
     def test_path_traversal_in_name_stripped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/file"
+        content_url = "https://contoso.sharepoint.com/sites/x/file"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
                 "id": "drive-item",
                 "size": 16,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x",
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"),
             content=b"data",
         )
 
@@ -373,7 +373,7 @@ class TestDownloadMessageAttachments:
     def test_transient_download_failure_logged_and_not_recorded(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
         # max_retries=1 → the client attempts twice before raising
         for _ in range(2):
@@ -427,7 +427,7 @@ class TestPermanentFailureSkipList:
     def test_permanent_failure_recorded_and_logged(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths, status, code
     ) -> None:
-        content_url = "https://sanoptis-my.sharepoint.com/personal/other_user/secret.pdf"
+        content_url = "https://contoso-my.sharepoint.com/personal/other_user/secret.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
@@ -466,7 +466,7 @@ class TestPermanentFailureSkipList:
     def test_previously_failed_skipped_without_request(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
-        content_url = "https://sanoptis-my.sharepoint.com/personal/other_user/secret.pdf"
+        content_url = "https://contoso-my.sharepoint.com/personal/other_user/secret.pdf"
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
         failed = {"msg-denied:secret.pdf": "http_403"}
@@ -789,7 +789,7 @@ class TestFraudulentDomainSSRF:
         msg = {
             "id": "msg-evil",
             "attachments": [
-                {"contentType": "reference", "name": "x.pdf", "contentUrl": "https://sanoptis.sharepoint.com/x"}
+                {"contentType": "reference", "name": "x.pdf", "contentUrl": "https://contoso.sharepoint.com/x"}
             ],
         }
 
@@ -889,13 +889,13 @@ class TestResolveAttachment:
         client.close()
 
     def test_successful_download_returns_ref(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
-            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
         )
-        httpx_mock.add_response(url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+        httpx_mock.add_response(url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake")
 
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token")
@@ -915,7 +915,7 @@ class TestResolveAttachment:
     def test_permanent_failure_updates_skip_list(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
-        content_url = "https://sanoptis.sharepoint.com/sites/x/secret.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/secret.pdf"
         encoded = helpers._encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
@@ -943,7 +943,7 @@ class TestResolveAttachment:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = MagicMock(spec=GraphClient)
         client.get.side_effect = httpx.ConnectError("network down")
-        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://sanoptis.sharepoint.com/x"}
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://contoso.sharepoint.com/x"}
         failed: dict[str, str] = {}
         result = helpers._resolve_attachment(
             _ctx(client, storage, vault_paths, settings=_config(), converters_config={}, failed_attachments=failed),
