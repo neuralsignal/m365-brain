@@ -75,7 +75,6 @@ def _legacy_sections() -> dict:
                 "enabled": False,
                 "poll_interval_minutes": 3,
                 "mailboxes": [{"address": "me", "folders": ["Inbox"], "output_subdir": ""}],
-                "lookback_days": 30,
                 "max_items_per_sync": 10,
                 "download_attachments": False,
                 "max_attachment_size_mb": 25,

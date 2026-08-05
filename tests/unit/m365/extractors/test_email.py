@@ -29,7 +29,6 @@ def email_config():
         mailboxes=[
             MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
         ],
-        lookback_days=30,
         max_items_per_sync=100,
         download_attachments=False,
         max_attachment_size_mb=25,
@@ -152,7 +151,6 @@ class TestEmailExtractor:
             mailboxes=[
                 MailboxConfig(address="me", folders=["Inbox", "SentItems"], output_subdir=""),
             ],
-            lookback_days=30,
             max_items_per_sync=100,
             download_attachments=False,
             max_attachment_size_mb=25,
@@ -494,7 +492,6 @@ class TestDeltaPageBudget:
             enabled=True,
             poll_interval_minutes=3,
             mailboxes=[MailboxConfig(address="me", folders=["Inbox"], output_subdir="")],
-            lookback_days=30,
             max_items_per_sync=2,
             download_attachments=False,
             max_attachment_size_mb=25,
@@ -571,17 +568,25 @@ class _GraphDeltaFolder:
     everything past the cap is never fetched and never resumed. A mock that
     returns exactly what the caller asked for is the mock that let a constant
     `$top=50` ship as a "page size" and cap every initial sync at 50 messages.
+
+    `$filter` is likewise honoured the way Graph honours it on a message delta
+    query: not at all, and without complaint. It is recorded, never applied.
     """
 
     def __init__(self, available: int, server_page_size: int) -> None:
         self.available = available
         self.server_page_size = server_page_size
         self.requested_top: str | None = None
+        self.requested_filter: str | None = None
+        self.rounds = 0
         self.served = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if self.requested_top is None:
             self.requested_top = request.url.params.get("$top")
+        if self.rounds == 0:
+            self.requested_filter = request.url.params.get("$filter")
+        self.rounds += 1
 
         cap = self.available if self.requested_top is None else min(self.available, int(self.requested_top))
         count = min(self.server_page_size, cap - self.served)
@@ -619,7 +624,6 @@ class TestDeltaTopCarriesTheItemBudget:
             enabled=True,
             poll_interval_minutes=3,
             mailboxes=[MailboxConfig(address="me", folders=["Inbox"], output_subdir="")],
-            lookback_days=30,
             max_items_per_sync=max_items,
             download_attachments=False,
             max_attachment_size_mb=25,
@@ -666,6 +670,67 @@ class TestDeltaTopCarriesTheItemBudget:
         assert count == 25
         assert state["delta_link_me_Inbox"] == "https://graph.example/delta?token=done"
         client.close()
+
+
+class TestInitialDeltaSendsNoFilter:
+    """Regression: no time window on an email delta round, and none pretended.
+
+    A message delta query does not support `$filter`; Graph ignores one instead
+    of rejecting it, so a `receivedDateTime ge <cutoff>` derived from a
+    `lookback_days` setting returned 200 OK and the whole folder anyway —
+    measured at 1061 messages past a 90-day cutoff. Sending it back would
+    silently restore that lie, so the assertion is that nothing is sent.
+    """
+
+    @respx.mock
+    def test_initial_round_sends_no_filter(self, tmp_path, graph_config, ctx, email_config):
+        folder = _GraphDeltaFolder(available=5, server_page_size=10)
+        respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        email.run(client, LocalBackend(str(tmp_path / "vault")), {}, email_config, ctx)
+
+        assert folder.requested_filter is None
+        client.close()
+
+    @respx.mock
+    def test_initial_sync_takes_messages_of_any_age(self, tmp_path, graph_config, ctx, email_config):
+        """The documented consequence: an initial sync enumerates the whole folder."""
+        folder = _AgedDeltaFolder(received="2019-01-04T09:00:00Z")
+        respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        _, count = email.run(client, storage, {}, email_config, ctx)
+
+        assert count == 3
+        assert len(storage.list_files(ctx.paths.inbox_root("email"))) == 3
+        client.close()
+
+
+class _AgedDeltaFolder:
+    """A folder whose every message predates any window anyone would configure."""
+
+    def __init__(self, received: str) -> None:
+        self.received = received
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        value = [
+            {
+                "id": f"old{i}",
+                "subject": f"Old message {i}",
+                "body": {"contentType": "text", "content": "body"},
+                "from": {"emailAddress": {"name": "Test", "address": "test@example.com"}},
+                "toRecipients": [],
+                "receivedDateTime": self.received,
+                "importance": "normal",
+                "hasAttachments": False,
+                "webLink": "",
+                "parentFolderId": "inbox",
+            }
+            for i in range(3)
+        ]
+        return httpx.Response(200, json={"value": value, "@odata.deltaLink": "https://graph.example/delta?token=done"})
 
 
 # ---------------------------------------------------------------------------
@@ -767,7 +832,6 @@ def _attachment_config() -> EmailExtractorConfig:
         mailboxes=[
             MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
         ],
-        lookback_days=30,
         max_items_per_sync=100,
         download_attachments=True,
         max_attachment_size_mb=25,
@@ -1105,7 +1169,6 @@ class TestEmailAttachments:
             mailboxes=[
                 MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
             ],
-            lookback_days=30,
             max_items_per_sync=100,
             download_attachments=True,
             max_attachment_size_mb=25,
@@ -1221,7 +1284,6 @@ class TestSharedMailbox:
             enabled=True,
             poll_interval_minutes=3,
             mailboxes=mailboxes,
-            lookback_days=30,
             max_items_per_sync=100,
             download_attachments=False,
             max_attachment_size_mb=25,

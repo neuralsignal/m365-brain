@@ -106,7 +106,6 @@ extractors:
     enabled: true
     poll_interval_minutes: 3
     folders: ["Inbox", "SentItems", "Archive"]
-    lookback_days: 365
     max_items_per_sync: 500
   calendar:
     enabled: true

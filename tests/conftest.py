@@ -170,7 +170,6 @@ def email_config():
         mailboxes=[
             MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
         ],
-        lookback_days=30,
         max_items_per_sync=100,
         download_attachments=False,
         max_attachment_size_mb=25,
@@ -254,7 +253,6 @@ def full_config(tmp_path):
                 mailboxes=[
                     MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
                 ],
-                lookback_days=30,
                 max_items_per_sync=100,
                 download_attachments=False,
                 max_attachment_size_mb=25,
@@ -381,7 +379,6 @@ def full_web_config(tmp_path, web_config):
                 mailboxes=[
                     MailboxConfig(address="me", folders=["Inbox"], output_subdir=""),
                 ],
-                lookback_days=30,
                 max_items_per_sync=100,
                 download_attachments=False,
                 max_attachment_size_mb=25,

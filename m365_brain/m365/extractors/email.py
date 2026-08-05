@@ -8,7 +8,7 @@ Downloads and optionally converts email attachments.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import structlog
 
@@ -146,16 +146,13 @@ def _sync_folder(
         # made every initial folder sync stop at 50 messages, ok=True.
         "$top": str(config.max_items_per_sync),
     }
-
-    if not delta_link:
-        cutoff = datetime.now(UTC).replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-        cutoff = cutoff - timedelta(days=config.lookback_days)
-        params["$filter"] = f"receivedDateTime ge {cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    # No $filter, and no time window at all: a message delta query does not
+    # support $filter, and Graph IGNORES it rather than rejecting it. The
+    # `receivedDateTime ge <cutoff>` that used to sit here read as an enforced
+    # `lookback_days` window while the call happily returned the whole folder —
+    # measured at 1061 messages past a 90-day cutoff. A knob that lies is worse
+    # than no knob, so the knob is gone: an initial sync enumerates the entire
+    # folder and `$top` above is the only real bound.
 
     # Graph pages a delta round at its own size (~10 items) whatever $top says,
     # so a page budget derived from the item budget could never bind. $top bounds

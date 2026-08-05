@@ -56,7 +56,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -177,7 +176,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -284,7 +282,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -386,7 +383,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -492,7 +488,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -596,7 +591,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -700,7 +694,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -809,7 +802,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -913,7 +905,6 @@ class TestLoadConfig:
                   - address: "me"
                     folders: ["Inbox"]
                     output_subdir: ""
-                lookback_days: 365
                 max_items_per_sync: 500
                 download_attachments: false
                 max_attachment_size_mb: 25
@@ -1013,7 +1004,6 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
           - address: "me"
             folders: ["Inbox"]
             output_subdir: ""
-        lookback_days: 365
         max_items_per_sync: 500
         download_attachments: false
         max_attachment_size_mb: 25
