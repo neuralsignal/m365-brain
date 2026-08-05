@@ -156,7 +156,7 @@ Per-extractor configuration. Each extractor has an `enabled` flag and extractor-
 | `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `folders` | `list[str]` | Mail folders to sync. Valid values: `Inbox`, `SentItems`, `Drafts`, `Archive`, `DeletedItems`, `JunkEmail`. |
 | `lookback_days` | `int` | Number of days to look back on first sync (before any delta link exists). |
-| `max_items_per_sync` | `int` | Maximum number of emails to write per sync cycle per folder. |
+| `max_items_per_sync` | `int` | Item budget per folder per cycle, sent verbatim as `$top` on the delta query. On a delta query `$top` caps the **whole enumeration**, not the page size: Graph returns at most this many messages and then reports the folder complete with a delta link, so an initial sync never picks up the remainder. Set it above the number of messages a folder holds in the `lookback_days` window. |
 
 ```yaml
 extractors:

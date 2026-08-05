@@ -8,7 +8,6 @@ Downloads and optionally converts email attachments.
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -36,11 +35,6 @@ required_scopes = ["Mail.Read"]
 
 # Sentinel meaning "the authenticated user's mailbox"; uses /me/* endpoints.
 _ME = "me"
-
-# Page size requested via $top on delta queries. The per-cycle page budget is
-# derived from it: ceil(max_items_per_sync / page size) pages per folder. A
-# round interrupted by the budget resumes from the pending nextLink next cycle.
-_DELTA_PAGE_SIZE = 50
 
 
 def _endpoint_base(address: str) -> str:
@@ -144,7 +138,13 @@ def _sync_folder(
     params = {
         "$select": "id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
         "receivedDateTime,importance,hasAttachments,webLink,parentFolderId",
-        "$top": str(_DELTA_PAGE_SIZE),
+        # $top on a delta query caps the WHOLE enumeration, not the page: Graph
+        # returns at most this many messages across every page of the round and
+        # then closes with a deltaLink, so anything past the cap is never
+        # fetched and never resumed. It is the item budget, and only the
+        # configured budget may set it. The constant 50 that used to sit here
+        # made every initial folder sync stop at 50 messages, ok=True.
+        "$top": str(config.max_items_per_sync),
     }
 
     if not delta_link:
@@ -157,11 +157,13 @@ def _sync_folder(
         cutoff = cutoff - timedelta(days=config.lookback_days)
         params["$filter"] = f"receivedDateTime ge {cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
-    # The page budget bounds per-cycle work; everything fetched IS processed.
-    # Slicing after the fetch would skip the tail forever once the (resume)
-    # delta link is persisted.
-    max_pages = max(1, math.ceil(config.max_items_per_sync / _DELTA_PAGE_SIZE))
-    messages, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=max_pages)
+    # Graph pages a delta round at its own size (~10 items) whatever $top says,
+    # so a page budget derived from the item budget could never bind. $top bounds
+    # the items server-side; the page walk needs only the global runaway bound,
+    # and a round that bound interrupts resumes from the pending nextLink next
+    # cycle. Everything fetched IS processed — slicing after the fetch would
+    # skip the tail forever once the (resume) delta link is persisted.
+    messages, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 
     written = 0
     for msg in messages:

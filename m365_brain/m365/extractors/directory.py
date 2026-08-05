@@ -53,7 +53,13 @@ def run(
     # user's page stayed in the vault forever. The filter is dropped and the
     # flag is read below; it costs an extra page of results and is the only way
     # deletion is achievable for this extractor at all.
-    params: dict[str, str] = {"$select": _USER_SELECT, "$top": "50"}
+    #
+    # No $top either. On a delta query $top caps the whole enumeration rather
+    # than setting a page size, so the constant 50 that used to sit here was a
+    # ceiling on the entire directory, not a page. This extractor has no item
+    # budget to put in its place; the page walk is bounded by graph.max_pages
+    # and a round that bound interrupts resumes from the pending nextLink.
+    params: dict[str, str] = {"$select": _USER_SELECT}
 
     users, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
 

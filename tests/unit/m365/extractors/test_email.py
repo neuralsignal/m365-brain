@@ -7,7 +7,9 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+import respx
 from pytest_httpx import HTTPXMock
 
 from m365_brain.config import EmailExtractorConfig, GraphConfig, MailboxConfig
@@ -464,7 +466,12 @@ class TestOddVaultLayout:
 
 
 class TestDeltaPageBudget:
-    """B2: the delta page budget derives from max_items_per_sync and nothing fetched is sliced away."""
+    """B2: the page walk is bounded by graph.max_pages and nothing fetched is sliced away.
+
+    The *item* budget is `$top` (see `TestDeltaTopCarriesTheItemBudget`); these
+    tests cover the other bound — a round the page cap interrupts must resume,
+    not restart, and must never drop what it already fetched.
+    """
 
     @staticmethod
     def _msg(msg_id: str, subject: str, received: str) -> dict:
@@ -532,7 +539,9 @@ class TestDeltaPageBudget:
             },
         )
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        # graph.max_pages is what caps the page walk now that $top carries the
+        # item budget, so one page is what makes this round a capped one.
+        client = GraphClient(graph_config.model_copy(update={"max_pages": 1}), lambda: "test-token")
 
         state, count = email.run(client, storage, {}, self._small_config(), ctx)
         assert count == 2
@@ -550,6 +559,112 @@ class TestDeltaPageBudget:
         assert count == 1
         assert state["delta_link_me_Inbox"] == "https://graph.microsoft.com/delta?token=final"
         assert len(storage.list_files(ctx.paths.inbox_root("email"))) == 3
+        client.close()
+
+
+class _GraphDeltaFolder:
+    """Graph's measured delta contract, not a mock that echoes the request.
+
+    `$top` on a delta query is a cap on the ENTIRE enumeration: the endpoint
+    hands back at most that many items across all pages of the round, paged at
+    its own size whatever `$top` said, and then closes with a deltaLink — so
+    everything past the cap is never fetched and never resumed. A mock that
+    returns exactly what the caller asked for is the mock that let a constant
+    `$top=50` ship as a "page size" and cap every initial sync at 50 messages.
+    """
+
+    def __init__(self, available: int, server_page_size: int) -> None:
+        self.available = available
+        self.server_page_size = server_page_size
+        self.requested_top: str | None = None
+        self.served = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if self.requested_top is None:
+            self.requested_top = request.url.params.get("$top")
+
+        cap = self.available if self.requested_top is None else min(self.available, int(self.requested_top))
+        count = min(self.server_page_size, cap - self.served)
+        value = [
+            {
+                "id": f"m{i}",
+                "subject": f"Message {i}",
+                "body": {"contentType": "text", "content": "body"},
+                "from": {"emailAddress": {"name": "Test", "address": "test@example.com"}},
+                "toRecipients": [],
+                "receivedDateTime": f"2026-03-12T{i // 60:02d}:{i % 60:02d}:00Z",
+                "importance": "normal",
+                "hasAttachments": False,
+                "webLink": "",
+                "parentFolderId": "inbox",
+            }
+            for i in range(self.served, self.served + count)
+        ]
+        self.served += count
+
+        body: dict = {"value": value}
+        if self.served >= cap:
+            body["@odata.deltaLink"] = "https://graph.example/delta?token=done"
+        else:
+            body["@odata.nextLink"] = f"https://graph.example/messages/delta?$skiptoken={self.served}"
+        return httpx.Response(200, json=body)
+
+
+class TestDeltaTopCarriesTheItemBudget:
+    """Regression: `$top` is the item budget, so it must be the configured budget."""
+
+    @staticmethod
+    def _config(max_items: int) -> EmailExtractorConfig:
+        return EmailExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=3,
+            mailboxes=[MailboxConfig(address="me", folders=["Inbox"], output_subdir="")],
+            lookback_days=30,
+            max_items_per_sync=max_items,
+            download_attachments=False,
+            max_attachment_size_mb=25,
+            attachment_convert_extensions=[],
+        )
+
+    @respx.mock
+    def test_top_sent_equals_the_configured_budget(self, tmp_path, graph_config, ctx):
+        """The one line that would have caught this: no constant may set $top."""
+        folder = _GraphDeltaFolder(available=200, server_page_size=10)
+        respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
+        config = self._config(40)
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        email.run(client, LocalBackend(str(tmp_path / "vault")), {}, config, ctx)
+
+        assert folder.requested_top == str(config.max_items_per_sync)
+        client.close()
+
+    @respx.mock
+    def test_initial_sync_fetches_the_whole_budget_not_one_page(self, tmp_path, graph_config, ctx):
+        """A 40-message budget against a 200-message folder yields 40, not a page of 10."""
+        folder = _GraphDeltaFolder(available=200, server_page_size=10)
+        respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        _, count = email.run(client, storage, {}, self._config(40), ctx)
+
+        assert count == 40
+        assert len(storage.list_files(ctx.paths.inbox_root("email"))) == 40
+        client.close()
+
+    @respx.mock
+    def test_budget_above_folder_size_takes_the_whole_folder(self, tmp_path, graph_config, ctx):
+        """The budget is a ceiling, not a demand — a small folder still completes."""
+        folder = _GraphDeltaFolder(available=25, server_page_size=10)
+        respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        state, count = email.run(client, storage, {}, self._config(40), ctx)
+
+        assert count == 25
+        assert state["delta_link_me_Inbox"] == "https://graph.example/delta?token=done"
         client.close()
 
 

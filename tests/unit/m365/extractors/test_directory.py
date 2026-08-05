@@ -106,6 +106,20 @@ class TestDirectoryExtractor:
         assert state["delta_link"] == "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=new"
         client.close()
 
+    def test_delta_query_sends_no_top(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, directory_config, directory_response, ctx
+    ):
+        """Regression: $top caps a delta enumeration in total, so the constant 50 capped the directory at 50 users."""
+        httpx_mock.add_response(url=re.compile(r".*/users/delta.*"), json=directory_response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        directory.run(client, storage, {}, directory_config, ctx)
+
+        assert "$top" not in httpx_mock.get_request().url.params
+        client.close()
+
     def test_empty_response(self, httpx_mock: HTTPXMock, tmp_path, graph_config, directory_config, ctx):
         httpx_mock.add_response(
             url=re.compile(r".*/users/delta.*"),

@@ -105,6 +105,8 @@ extractors:
         folders: ["Inbox", "SentItems", "Archive"]
         output_subdir: ""
     lookback_days: 365
+    # sent as $top on the delta query, which caps the WHOLE initial enumeration
+    # per folder — not a page size. Below a folder's volume, the rest never syncs.
     max_items_per_sync: 500
     download_attachments: false
     max_attachment_size_mb: 25
