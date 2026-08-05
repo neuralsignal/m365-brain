@@ -69,7 +69,7 @@ def run(
                 modified_by=meta.modified_by,
                 parent_path=meta.parent_path,
                 web_url=meta.web_url,
-                conversion_status="pending",
+                content_status="pending",
             )
         )
 

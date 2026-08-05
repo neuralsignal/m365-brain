@@ -154,7 +154,7 @@ def _sync_drive(
                 web_url=meta.web_url,
                 site_name=drive_ref.site_name,
                 drive_name=drive_ref.drive_name,
-                conversion_status="pending",
+                content_status="pending",
             )
         )
 

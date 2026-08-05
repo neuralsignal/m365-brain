@@ -12,9 +12,12 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_brain.config import DirectoryExtractorConfig, GraphConfig
+from m365_brain.config.index import RelationConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors import directory
-from m365_brain.m365.markdown_writer import loads_markdown
+from m365_brain.m365.frontmatter import MANAGER
+from m365_brain.m365.markdown_writer import loads_markdown, short_hash, slugify
+from m365_brain.parsers.relations import parse_relations
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
 
@@ -440,6 +443,105 @@ class TestExtractUserData:
         assert data.department == ""
         assert data.office == ""
         assert data.city == ""
+
+
+class TestOrgRelations:
+    """What the extractor wrote, read back by the real relation parser.
+
+    A test that asserted on the string the producer was handed cannot see this
+    defect: `- **Manager:** [[X]]` is a perfectly good line until
+    `parse_relations` reads everything before the wikilink as the edge's
+    *type*, and only the parser can say what type came out.
+    """
+
+    def test_manager_edge_is_typed_with_a_bare_token(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
+        config = DirectoryExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=10080,
+            include_manager_chain=True,
+            include_direct_reports=True,
+            only_active_users=False,
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "user-mgr",
+                        "displayName": "Manager User",
+                        "mail": "mgr@contoso.com",
+                        "userPrincipalName": "mgr@contoso.com",
+                        "accountEnabled": True,
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=rel",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/user-mgr/manager.*"),
+            json={"id": "boss-001", "displayName": "The Boss"},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/user-mgr/directReports.*"),
+            json={"value": [{"id": "report-001", "displayName": "Report One"}]},
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        directory.run(client, storage, {}, config, ctx)
+
+        content = storage.read_file(storage.list_files(ctx.paths.inbox_root("directory"))[0])
+        parsed = parse_relations(content, RelationConfig(explicit_default_type="relates_to", inline_type="links_to"))
+        boss = f"directory-{slugify('The Boss', 80)}-{short_hash('boss-001', 6)}"
+
+        assert (MANAGER, boss) in [(edge.relation_type, edge.to_name) for edge in parsed]
+        # The property, not just this one word: a config spells a bare token, so
+        # a type carrying markup is a type no config can ever name.
+        assert all(edge.relation_type.isidentifier() for edge in parsed), [e.relation_type for e in parsed]
+        client.close()
+
+    def test_direct_reports_remain_untyped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
+        """Stated, not assumed. The sub-bullets still parse as `relates_to`.
+
+        Left that way deliberately -- see CONTRACTS.md. This asserts the gap so
+        that whoever adds a reader finds it here rather than in an empty report.
+        """
+        config = DirectoryExtractorConfig(
+            enabled=True,
+            poll_interval_minutes=10080,
+            include_manager_chain=False,
+            include_direct_reports=True,
+            only_active_users=False,
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "user-lead",
+                        "displayName": "Lead User",
+                        "mail": "lead@contoso.com",
+                        "userPrincipalName": "lead@contoso.com",
+                        "accountEnabled": True,
+                    }
+                ],
+                "@odata.deltaLink": "https://delta?token=reports",
+            },
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/user-lead/directReports.*"),
+            json={"value": [{"id": "report-001", "displayName": "Report One"}]},
+        )
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+        directory.run(client, storage, {}, config, ctx)
+
+        content = storage.read_file(storage.list_files(ctx.paths.inbox_root("directory"))[0])
+        parsed = parse_relations(content, RelationConfig(explicit_default_type="relates_to", inline_type="links_to"))
+
+        assert [edge.relation_type for edge in parsed] == ["relates_to"]
+        client.close()
 
 
 def _flippable_user(enabled: bool, token: str) -> dict:

@@ -24,7 +24,7 @@ SHARED_KEYS = {
     "modified",
     "modified_by",
     "parent_path",
-    "conversion_status",
+    "content_status",
     "source",
     "status",
 }
@@ -40,7 +40,7 @@ ONEDRIVE_FILES = st.builds(
     modified_by=st.text(max_size=30),
     parent_path=st.text(max_size=40),
     web_url=st.text(max_size=40),
-    conversion_status=st.sampled_from(["pending", "converted", "failed", "not_convertible"]),
+    content_status=st.sampled_from(["pending", "converted", "failed", "not_convertible"]),
 )
 
 SHAREPOINT_FILES = st.builds(
@@ -54,7 +54,7 @@ SHAREPOINT_FILES = st.builds(
     web_url=st.text(max_size=40),
     site_name=st.text(max_size=30),
     drive_name=st.text(max_size=30),
-    conversion_status=st.sampled_from(["pending", "converted", "failed", "not_convertible"]),
+    content_status=st.sampled_from(["pending", "converted", "failed", "not_convertible"]),
 )
 
 
@@ -68,7 +68,7 @@ class TestFileFrontmatterProperties:
         assert fm["status"] == "raw"
         assert fm["title"] == data.file_name == fm["file_name"]
         assert fm["file_size"] == data.size
-        assert fm["conversion_status"] == data.conversion_status
+        assert fm["content_status"] == data.content_status
         assert fm["source"]["service"] == "onedrive"
         assert fm["source"]["extractor"] == "m365-brain/onedrive/1.0"
         assert re.fullmatch(r"onedrive-[a-z0-9-]+-[0-9a-f]{6}", fm["permalink"])
@@ -110,7 +110,7 @@ class TestFileFrontmatterShapes:
                 web_url="https://sp.example.com/plan.pptx",
                 site_name="Engineering Hub",
                 drive_name="Documents",
-                conversion_status="converted",
+                content_status="converted",
             )
         )
 
@@ -130,13 +130,13 @@ class TestFileFrontmatterShapes:
                 modified_by="",
                 parent_path="",
                 web_url="",
-                conversion_status="not_convertible",
+                content_status="not_convertible",
             )
         )
 
         assert fm["tags"] == ["onedrive"]
         assert fm["file_size"] == 0
-        assert fm["conversion_status"] == "not_convertible"
+        assert fm["content_status"] == "not_convertible"
 
     def test_dotfile_is_treated_as_pure_extension(self):
         """`.gitignore` has no stem, so the whole name becomes the extension tag."""
@@ -149,7 +149,7 @@ class TestFileFrontmatterShapes:
                 modified_by="Bob",
                 parent_path="repo",
                 web_url="",
-                conversion_status="pending",
+                content_status="pending",
             )
         )
 
@@ -166,7 +166,7 @@ class TestFileFrontmatterShapes:
                 modified_by="Bob",
                 parent_path="",
                 web_url="",
-                conversion_status="pending",
+                content_status="pending",
             )
         )
 
@@ -182,7 +182,7 @@ class TestFileFrontmatterShapes:
                 modified_by="Bob",
                 parent_path="",
                 web_url="",
-                conversion_status="pending",
+                content_status="pending",
             )
         )
         sharepoint = build_sharepoint_frontmatter(
@@ -196,7 +196,7 @@ class TestFileFrontmatterShapes:
                 web_url="",
                 site_name="Hub",
                 drive_name="Documents",
-                conversion_status="pending",
+                content_status="pending",
             )
         )
 

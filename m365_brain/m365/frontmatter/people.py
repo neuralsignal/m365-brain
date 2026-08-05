@@ -47,6 +47,21 @@ deliberately, so that finding one never requires knowing an author's category
 name.
 """
 
+MANAGER = "manager"
+"""The relation type a directory user's manager edge is written under.
+
+A bare lowercase token like `attended_by` and `participant`, and for the same
+reason: `parse_relations` reads whatever precedes the wikilink on a list item as
+the edge's *type*, so `- **Manager:** [[...]]` produced an edge typed
+`**Manager:**`. That edge resolves and is not silent, but no config would ever
+spell it -- the first `ops.tiers.interaction_sources` entry to count managers
+writes `manager`, matches nothing, and reports zero, which reads as a corpus
+with no reporting lines rather than as a defect.
+
+The frontmatter key uses the same constant, so the scalar a reader sees and the
+edge the index traverses are one word, and a grep for it finds both ends.
+"""
+
 
 @dataclass(frozen=True)
 class ContactData:
@@ -155,7 +170,7 @@ def build_directory_user_frontmatter(data: DirectoryUserData) -> dict:
     if data.city:
         fm["city"] = data.city
     if data.manager_link:
-        fm["manager"] = data.manager_link
+        fm[MANAGER] = data.manager_link
     if data.direct_reports_links:
         fm["direct_reports"] = data.direct_reports_links
     return fm

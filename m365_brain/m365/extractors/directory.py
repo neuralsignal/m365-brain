@@ -13,7 +13,7 @@ import structlog
 from m365_brain.config import DirectoryExtractorConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors.base import ExtractorContext
-from m365_brain.m365.frontmatter import DirectoryUserData, build_directory_user_frontmatter
+from m365_brain.m365.frontmatter import MANAGER, DirectoryUserData, build_directory_user_frontmatter
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
@@ -198,7 +198,9 @@ def _write_user(
     if data.manager_link or data.direct_reports_links:
         body_parts.append("\n## Organization\n")
         if data.manager_link:
-            body_parts.append(f"- **Manager:** {data.manager_link}")
+            # A bare token, because `parse_relations` reads the text before the
+            # wikilink as the edge's *type*. See `frontmatter.people.MANAGER`.
+            body_parts.append(f"- {MANAGER} {data.manager_link}")
         if data.direct_reports_links:
             body_parts.append("- **Direct Reports:**")
             for link in data.direct_reports_links:
