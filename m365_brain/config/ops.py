@@ -20,7 +20,26 @@ from m365_brain.config.base import SECTION_MODEL_CONFIG
 class LinkResolutionConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     unresolved_prefix: str
-    target_type: str
+    target_types: list[str]
+    """Every entity type a person is written as, all of them.
+
+    A list rather than one name because one corpus holds more than one spelling
+    of a person: the bundled contacts extractor writes `type: contact` and the
+    directory extractor writes `type: directory_user`, so a single name would
+    make an operator who syncs both pick which half of their own address book
+    `ops links` may see -- and the half left out would report as unresolved
+    rather than as excluded.
+
+    Empty is refused. No candidate type means every link is unresolved, and an
+    all-unresolved report reads as a corpus with nobody in it rather than as a
+    config error.
+    """
+
+    @model_validator(mode="after")
+    def _target_types_is_not_empty(self) -> LinkResolutionConfig:
+        if not self.target_types:
+            raise ValueError("ops.link_resolution.target_types must name at least one entity type")
+        return self
 
 
 class TierLevelConfig(BaseModel):

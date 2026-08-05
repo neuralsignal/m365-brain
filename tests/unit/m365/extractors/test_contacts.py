@@ -155,8 +155,37 @@ class TestContactsExtractor:
 
         assert meta["type"] == "contact"
         assert meta["source"]["service"] == "people"
-        assert meta["source"]["extractor"] == "m365-brain/contacts/1.0"
+        assert meta["source"]["extractor"] == "m365-brain/contacts/1.1"
         assert "# " in body
+        client.close()
+
+    def test_addresses_are_observation_lines_rather_than_prose(
+        self, httpx_mock: HTTPXMock, tmp_path, graph_config, contacts_config, contacts_response, ctx
+    ):
+        """One `- [email] ...` line per address, including for the contact that has two.
+
+        `- **Email:** ...` carries no `[category]` and no `#tag`, so it parsed as
+        an ordinary bullet; the frontmatter `email` key is a list, so it stays in
+        metadata. The address was written twice and readable from neither, which
+        is why `ops links` could never return its address match.
+        """
+        httpx_mock.add_response(url=re.compile(r".*/me/contacts/delta.*"), json=contacts_response)
+
+        storage = LocalBackend(str(tmp_path / "vault"))
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        contacts.run(client, storage, {}, contacts_config, ctx)
+
+        written = "\n".join(
+            loads_markdown(storage.read_file(path))[1] for path in storage.list_files(ctx.paths.inbox_root("contacts"))
+        )
+
+        assert "**Email:**" not in written
+        assert sorted(line for line in written.splitlines() if line.startswith("- [email] ")) == [
+            "- [email] bob.chen@contoso.com",
+            "- [email] bob@example.com",
+            "- [email] jane@contoso.com",
+        ]
         client.close()
 
     def test_everything_fetched_is_processed_no_post_hoc_slice(

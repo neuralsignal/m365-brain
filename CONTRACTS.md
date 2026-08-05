@@ -207,6 +207,30 @@ its senders exist only as rendered prose in the message timeline, which is neith
 nor a relation. There is therefore no `teams_channel` interaction source in the shipped template,
 and adding one would report zero counterparties — indistinguishable from a quiet quarter.
 
+A contact's addresses are the same fact in the other shape. `email` is a list for a reader, and
+`address_observations` writes one `- [email] a@example.com` line per address — an **observation**
+rather than a relation, because an address is an attribute of the person and not an edge to another
+entity. `ops links` is the reader: it looks an address up out of a candidate's observations, by
+shape rather than by category name, so what a producer owes it is that the address reach an
+observation at all. A **directory user** has one address, so its scalar `email` key is promoted
+already and no body line is added — a second spelling of a fact the index holds is duplication,
+not a repair.
+
+A directory user's **org edges are readable but untyped**, and are left that way deliberately.
+`- **Manager:** [[…]]` parses as an explicit relation whose *type* is the literal `**Manager:**`,
+and each direct-report sub-bullet parses under `index.relations.explicit_default_type`
+(`relates_to`). Both reach the index and both resolve, so neither is silent — nothing in this
+family is wrong here. Nothing reads them either, so naming them properly today would be a
+vocabulary with no consumer. The trap to know about: the first config that wants to count managers
+will spell `manager`, not `**Manager:**`, and get an empty report. Give the edges named types at
+that point, in the same move that adds the reader.
+
+**A config key naming a type or category names one a producer writes.** `ops.link_resolution`
+`target_types` is a list for that reason: a person is `contact` from one bundled extractor and
+`directory_user` from the other, and a single name would silently exclude half a corpus. The same
+rule governs `ops.tiers.interaction_sources` and `ops.triage.fields` — a name no producer writes
+yields an empty report, which reads as a clean corpus rather than as a defect.
+
 ### Sync state
 
 **Present.** JSON at `state.state_file_path` (per-`(user, extractor)` files under the multi-user

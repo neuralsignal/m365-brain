@@ -367,7 +367,7 @@ class TestBuildContactFrontmatter:
         assert fm["job_title"] == "VP Engineering"
         assert fm["department"] == "Engineering"
         assert fm["source"]["service"] == "people"
-        assert fm["source"]["extractor"] == "m365-brain/contacts/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/contacts/1.1"
         assert fm["permalink"].startswith("contact-jane-smith-")
 
     def test_empty_optional_fields_omitted(self):

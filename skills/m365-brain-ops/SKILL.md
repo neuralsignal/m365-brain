@@ -27,7 +27,7 @@ reporting rather than a rule to work around.
     m365-brain --config "$M365_BRAIN_CONFIG" ops resolve-links --json
 
 Finds wikilinks that never resolved to an entity and matches them against
-entities of the configured target type. Reports; **writes nothing**.
+entities of the configured target types. Reports; **writes nothing**.
 
 Confidence is derived from the *kind* of match, not from a score you can tune:
 
@@ -40,7 +40,10 @@ Confidence is derived from the *kind* of match, not from a score you can tune:
 A `medium` match is a suggestion for a human, not a fact. Apply it by editing
 the file; this verb will not.
 
-Config: `ops.link_resolution.unresolved_prefix`, `ops.link_resolution.target_type`.
+Config: `ops.link_resolution.unresolved_prefix`, `ops.link_resolution.target_types`.
+`target_types` is a list because one corpus spells a person more than one way —
+the bundled extractors write `contact` and `directory_user` — and a type no
+producer writes reports every link as unresolved.
 
 ## Relationship tiers
 

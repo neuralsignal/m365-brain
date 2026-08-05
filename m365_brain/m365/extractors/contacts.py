@@ -14,7 +14,7 @@ import structlog
 from m365_brain.config import ContactsExtractorConfig
 from m365_brain.m365.client import GraphClient
 from m365_brain.m365.extractors.base import ExtractorContext
-from m365_brain.m365.frontmatter import ContactData, build_contact_frontmatter
+from m365_brain.m365.frontmatter import ContactData, address_observations, build_contact_frontmatter
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
@@ -211,9 +211,10 @@ def _write_contact(
 
     body_parts = [f"# {data.display_name}\n", "## Details\n"]
 
-    if data.email_addresses:
-        for addr in data.email_addresses:
-            body_parts.append(f"- **Email:** {addr}")
+    # Observation lines, not prose: `- **Email:** a@example.com` carries no
+    # [category] and no #tag, so it parsed as nothing and the address was as
+    # unreadable from the body as it was from the list in the frontmatter.
+    body_parts.extend(address_observations(data))
     if data.phones:
         for phone in data.phones:
             body_parts.append(f"- **Phone:** {phone}")

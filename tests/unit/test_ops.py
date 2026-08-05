@@ -15,6 +15,7 @@ import pytest
 import yaml
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from m365_brain.commands.ops import _fields, triage_command
 from m365_brain.config import (
@@ -32,6 +33,13 @@ from m365_brain.config import (
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.m365.frontmatter.calendar import CalendarEventData, attendee_relations, build_calendar_frontmatter
 from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
+from m365_brain.m365.frontmatter.people import (
+    ContactData,
+    DirectoryUserData,
+    address_observations,
+    build_contact_frontmatter,
+    build_directory_user_frontmatter,
+)
 from m365_brain.m365.frontmatter.teams import TeamsChatData, build_teams_chat_frontmatter, participant_relations
 from m365_brain.m365.markdown_writer import dumps_markdown
 from m365_brain.model import Entity, Observation, Relation
@@ -178,7 +186,15 @@ class TestNames:
 # ---------------------------------------------------------------------------
 
 
-LINKS = LinkResolutionConfig(unresolved_prefix="contact-", target_type="person")
+LINKS = LinkResolutionConfig(unresolved_prefix="contact-", target_types=["person"])
+"""A target type that is deliberately *not* one the bundled builders write.
+
+Same reason `FIELDS` below spells its own categories: these tests state the
+behaviour of the verb, and a fixture that happened to agree with the shipped
+template would pass while the template disagreed with the extractors -- the
+shape both halves of this defect had. The pairing is asserted once, at the
+bottom of the file, against the real builders' output.
+"""
 
 
 class TestResolveLinks:
@@ -248,8 +264,39 @@ class TestResolveLinks:
                 entity("note-one", "Note one", "note", relations=[relation("who-is-anna-meier", "who-is-anna-meier")]),
             ],
         )
-        renamed = LinkResolutionConfig(unresolved_prefix="who-is-", target_type="person")
+        renamed = LinkResolutionConfig(unresolved_prefix="who-is-", target_types=["person"])
         assert [r.confidence for r in resolve_links(corpus, renamed, PAGE_SIZE)] == ["high"]
+
+    def test_a_second_target_type_is_a_candidate_like_the_first(self, backend):
+        """One corpus spells a person two ways, and both are lookups.
+
+        A single-name key would have made this an operator's choice between two
+        halves of their own address book.
+        """
+        corpus = loaded(
+            backend,
+            [
+                entity("person-anna", "Anna Meier", "contact"),
+                entity("person-bo", "Bo Frey", "directory_user"),
+                entity(
+                    "note-one",
+                    "Note one",
+                    "note",
+                    relations=[relation("links_to", "contact-anna-meier"), relation("links_to", "contact-bo-frey")],
+                ),
+            ],
+        )
+        both = LinkResolutionConfig(unresolved_prefix="contact-", target_types=["contact", "directory_user"])
+
+        assert [(r.confidence, r.matched.permalink) for r in resolve_links(corpus, both, PAGE_SIZE)] == [
+            ("high", "person-anna"),
+            ("high", "person-bo"),
+        ]
+
+    def test_naming_no_target_type_is_refused_rather_than_reported_as_empty(self):
+        """An all-unresolved report is indistinguishable from a corpus with nobody in it."""
+        with pytest.raises(ValidationError, match="target_types"):
+            LinkResolutionConfig(unresolved_prefix="contact-", target_types=[])
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +935,133 @@ class TestTiersOverExtractorOutput:
         config = tiers_config(SHIPPED_TIERS.ladder, [source], SHIPPED_TIERS.lookback_days)
 
         assert [(a.party, a.interactions) for a in compute_tiers(corpus, config, NOW, PAGE_SIZE)] == [(party, 1)]
+
+
+# ---------------------------------------------------------------------------
+# every shipped link-resolution target type, against the producer it names
+# ---------------------------------------------------------------------------
+
+
+def _contact_document() -> tuple[str, str, str]:
+    """`(markdown the contact builder produces, its permalink, an address it states)`.
+
+    Frontmatter *and* address observations, because the address is not readable
+    from the frontmatter at all: a contact has N of them, so `email` is a list,
+    and a list stays in metadata.
+    """
+    data = ContactData(
+        display_name="Kai Lund",
+        contact_id="contact-1",
+        email_addresses=["kai@example.com"],
+        phones=[],
+        company="",
+        job_title="",
+        department="",
+        categories=[],
+    )
+    frontmatter = build_contact_frontmatter(data)
+    body = "\n".join([f"# {data.display_name}\n", "## Details\n", *address_observations(data)])
+    return dumps_markdown(frontmatter, body), frontmatter["permalink"], data.email_addresses[0]
+
+
+def _directory_user_document() -> tuple[str, str, str]:
+    """The same for the directory builder, whose `email` is a scalar and needs no body line."""
+    data = DirectoryUserData(
+        display_name="Mira Sund",
+        user_id="user-1",
+        email="mira@example.com",
+        upn="mira@example.com",
+        job_title="",
+        department="",
+        office="",
+        city="",
+        manager_link="",
+        direct_reports_links=[],
+    )
+    frontmatter = build_directory_user_frontmatter(data)
+    return dumps_markdown(frontmatter, f"# {data.display_name}\n"), frontmatter["permalink"], data.email
+
+
+PEOPLE_PRODUCERS = {"contact": _contact_document, "directory_user": _directory_user_document}
+"""`entity_type` -> the bundled producer that writes a person under it.
+
+The link-resolution counterpart of `PRODUCERS`, and read the same way: a target
+type absent from this table fails rather than skips, because "no producer writes
+this" is the defect, not a gap in the fixtures.
+"""
+
+SHIPPED_LINKS = LinkResolutionConfig.model_validate(SHIPPED["ops"]["link_resolution"])
+"""The shipped `ops.link_resolution`, loaded rather than restated -- see `SHIPPED_TIERS`."""
+
+
+def _note_linking(targets: list[str]) -> str:
+    """A note whose only content is one dangling link per target."""
+    frontmatter = {"title": "Meeting notes", "permalink": "note-links", "type": "note", "tags": []}
+    lines = [f"- mentions [[{SHIPPED_LINKS.unresolved_prefix}{target}]]" for target in targets]
+    return dumps_markdown(frontmatter, "\n".join(["# Meeting notes\n", *lines]))
+
+
+class TestResolveLinksOverExtractorOutput:
+    """`ops links` over the shipped config and the bundled people builders' real output.
+
+    Every other test in `TestResolveLinks` hands the index entities it wrote by
+    hand, so all of them passed while the shipped `target_type` named `person` --
+    a type no bundled builder writes -- and the contact's address reached neither
+    an observation nor a relation. Against a corpus this library produced, the
+    `high`-confidence address match could not be returned at all, and an
+    all-unresolved report reads as a corpus with nobody in it.
+
+    `resolve_relations` is run before every assertion, so the links really are
+    ones the index could not resolve on its own rather than ones nobody asked it
+    to.
+    """
+
+    def corpus(self, backend, corpus_root, index_config, entity_types: list[str]):
+        produced = [PEOPLE_PRODUCERS[entity_type]() for entity_type in entity_types]
+        documents = [(entity_type, text) for entity_type, (text, _, _) in zip(entity_types, produced, strict=True)]
+        documents.append(("note-links", _note_linking([address for _, _, address in produced])))
+        store = indexed(backend, corpus_root, index_config, documents)
+        store.resolve_relations()
+        return store, produced
+
+    def test_the_shipped_config_resolves_every_person_it_was_given(self, backend, corpus_root, index_config):
+        """The regression itself: an empty report over a corpus this library wrote."""
+        store, produced = self.corpus(backend, corpus_root, index_config, sorted(PEOPLE_PRODUCERS))
+        resolutions = resolve_links(store, SHIPPED_LINKS, PAGE_SIZE)
+
+        assert [(r.confidence, r.matched.permalink) for r in resolutions] == [
+            ("high", permalink) for _, permalink, _ in produced
+        ]
+
+    @pytest.mark.parametrize("target_type", SHIPPED_LINKS.target_types)
+    def test_every_shipped_target_type_is_written_by_the_builder_it_names(
+        self, backend, corpus_root, index_config, target_type: str
+    ):
+        """The generalised guard: one target type at a time, whatever the template lists.
+
+        Driving the type rather than asserting on names covers the shape rule
+        too -- an address that never reaches an observation is unreadable, so a
+        type whose builder writes one into a list yields `unresolved` here
+        without the test having to restate why.
+        """
+        assert target_type in PEOPLE_PRODUCERS, f"no bundled producer writes {target_type!r}"
+        store, [(_, permalink, address)] = self.corpus(backend, corpus_root, index_config, [target_type])
+
+        assert [
+            (r.link_text, r.confidence, r.matched.permalink) for r in resolve_links(store, SHIPPED_LINKS, PAGE_SIZE)
+        ] == [(f"{SHIPPED_LINKS.unresolved_prefix}{address}", "high", permalink)]
+
+    def test_the_unresolved_prefix_is_the_one_a_person_permalink_starts_with(self):
+        """The prefix half of the same agreement, and the reason `contact-` is it.
+
+        Nothing in this library writes such a link -- the Teams extractor was the
+        last to, and stopped. The prefix marks a link a *human* wrote by half
+        remembering the permalink shape, so the shipped value is the one the
+        bundled contact builder's permalinks actually begin with.
+        """
+        _, permalink, _ = _contact_document()
+
+        assert permalink.startswith(SHIPPED_LINKS.unresolved_prefix)
 
 
 class TestShippedFolderNames:
