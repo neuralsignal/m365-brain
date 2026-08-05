@@ -34,6 +34,7 @@ dependencies = [
     "python-dotenv>=1.0,<2",
     "pyopenssl>=26.0,<27",
     "cryptography>=48.0.1,<49",
+    "email-validator>=2.2,<3",
 ]
 
 [project.optional-dependencies]
@@ -43,15 +44,19 @@ azure = [
 convert = [
     "obsidian-import[markitdown,docling]>=1.2.0,<2",
 ]
+vector = [
+    "fastembed>=0.8,<0.9",
+    "sqlite-vec>=0.1.6,<0.2",
+]
 admin = [
     "reflex>=0.8.28,<0.9",
     "sqlmodel>=0.0.22,<1",
     "psycopg2-binary>=2.9,<3",
 ]
 all = [
-    "m365-brain[azure,convert,admin]",
+    "m365-brain[azure,convert,vector,admin]",
 ]
-dev = ["pytest>=9.0.3,<10", "hypothesis>=6.100,<7", "pytest-cov>=5.0,<6", "pytest-httpx>=0.35,<1"]
+dev = ["pytest>=9.0.3,<10", "hypothesis>=6.100,<7", "pytest-cov>=5.0,<6", "pytest-httpx>=0.35,<1", "respx>=0.22,<1"]
 
 [project.urls]
 Documentation = "https://neuralsignal.github.io/m365-brain/"

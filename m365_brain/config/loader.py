@@ -47,7 +47,25 @@ def _expand_env_recursive(data: object) -> object:
 # Path resolution
 # ---------------------------------------------------------------------------
 
-_PATH_KEYS = frozenset({"base_path", "db_path", "state_file_path", "token_cache_path"})
+# Keys whose string value is a filesystem path. A relative one resolves against
+# the config file's directory, never the process CWD -- a daemon launched from
+# `/` and a shell launched from the repo root must read the same database.
+#
+# `path` appears in `index.sqlite.path` and in every `index.roots[].path`,
+# which is exactly the intent: a root path is as much a path as a database is.
+_PATH_KEYS = frozenset(
+    {
+        "base_path",
+        "db_path",
+        "state_file_path",
+        "token_cache_path",
+        "path",
+        "root",
+        "attachment_root",
+        "html_path",
+        "logo_path",
+    }
+)
 
 
 def _resolve_paths(data: object, config_dir: Path) -> object:
@@ -121,4 +139,6 @@ def load_config(path: str) -> Config:
     try:
         return Config.model_validate(resolved)
     except ValidationError as exc:
-        raise ConfigError(str(exc)) from exc
+        # The file path matters as much as the key path: with multi-file merge
+        # an operator otherwise has to guess which of them owns the bad key.
+        raise ConfigError(f"invalid config in {path}: {exc}") from exc

@@ -17,7 +17,15 @@ service:
 
 extractors:
   email:
-    folders: ["Inbox", "SentItems"]
+    # `folders` is per-mailbox, so narrowing it means restating the mailbox
+    # entry -- a list in an override file replaces the base list whole.
+    # This block previously set `folders` directly under `email`, one level too
+    # high, where nothing read it. `extra="forbid"` now rejects that placement
+    # instead of ignoring it, which is how the mistake finally surfaced.
+    mailboxes:
+      - address: "me"
+        folders: ["Inbox", "SentItems"]
+        output_subdir: ""
   onedrive:
     convertible_extensions: [".docx", ".pdf"]
   sharepoint:
