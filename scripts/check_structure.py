@@ -56,27 +56,31 @@ LAYERS: dict[str, int] = {
     "storage": 2,
     "state": 2,
     "manifest": 2,
-    # 3 -- where a file goes, and how it stops being there. Below the three
-    # subsystems because all of them address the vault and none of them owns it.
+    # 3 -- where a file goes, and how it stops being there. Below everything
+    # that addresses the vault, because none of them owns it.
     "vault": 3,
-    # 4 -- the three subsystems, peers by construction. Same layer means no two
-    # of them may import each other, which is the point: `index` must stay
-    # usable with the Microsoft half absent entirely.
-    "index": 4,
+    # 4 -- the vendor-agnostic write-back machinery: intents, tiers, stores,
+    # the runner. It must NOT know that Microsoft 365 exists; the executors
+    # that do live in `m365/outboxes/` and import downward into here.
     "outbox": 4,
-    "m365": 4,
-    # 5 -- one pass over layer 4
-    "sync": 5,
-    # 6 -- orchestration over passes
-    "schedule": 6,
-    "hooks": 6,
-    "cycle": 6,
-    "worker": 6,
-    "dry_run": 6,
-    # 7 -- the facade
-    "workspace": 7,
-    # 8 -- the entry point
-    "cli": 8,
+    # 5 -- the two subsystems, peers by construction. Same layer means neither
+    # may import the other, which is the point: `index` must stay usable with
+    # the Microsoft half absent entirely, and stacking them would block only
+    # the direction we happened to think of first.
+    "index": 5,
+    "m365": 5,
+    # 6 -- one pass over layer 5
+    "sync": 6,
+    # 7 -- orchestration over passes
+    "schedule": 7,
+    "hooks": 7,
+    "cycle": 7,
+    "worker": 7,
+    "dry_run": 7,
+    # 8 -- the facade
+    "workspace": 8,
+    # 9 -- the entry point
+    "cli": 9,
 }
 
 # Modules that exist today and move under `m365/` during the platform stage.
