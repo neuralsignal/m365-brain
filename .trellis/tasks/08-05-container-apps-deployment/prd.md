@@ -31,3 +31,9 @@ One command provisions the deployed service from nothing, and a second deploys t
 
 `infra/main.bicep` already exists and covers part of this. Start by reading it rather than
 starting over.
+
+**The Entra provisioning script is no longer only a deferred concern.** The workspace owner has
+offered to create app registrations programmatically and approve them separately, which gives that
+script an immediate use — see `08-05-application-permission-profile`. Build the script there, for
+one narrow read-only app, and this task inherits a proven tool instead of writing one blind
+against a deployment that does not exist yet.
