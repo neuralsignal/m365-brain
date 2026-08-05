@@ -17,7 +17,9 @@ Every extractor follows the same contract:
 **Required scope:** `Mail.Read`
 **Sync strategy:** Delta query per folder
 
-Syncs emails from configured mail folders using Graph API delta queries. On first sync, applies a `receivedDateTime` filter based on `lookback_days`. Subsequent syncs use the stored delta link for incremental updates.
+Syncs emails from configured mail folders using Graph API delta queries. Subsequent syncs use the stored delta link for incremental updates.
+
+The first sync of a folder enumerates **the whole folder** — there is no time window. A message delta query does not support `$filter`, and Graph silently ignores one rather than rejecting it, so no `receivedDateTime` cutoff can be enforced server-side. `max_items_per_sync` (sent as `$top`, which on a delta query caps the entire enumeration) is the only bound.
 
 ### Graph API Endpoints
 

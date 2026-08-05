@@ -84,7 +84,7 @@ class TestExtractorPreferences:
                 ExtractorPreference.extractor_name == "email",
             )
         ).first()
-        settings = {"folders": ["Inbox", "SentItems"], "lookback_days": 30}
+        settings = {"folders": ["Inbox", "SentItems"], "max_items_per_sync": 30}
         record.settings_json = json.dumps(settings)
         session.add(record)
         session.commit()

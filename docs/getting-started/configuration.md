@@ -155,8 +155,14 @@ Per-extractor configuration. Each extractor has an `enabled` flag and extractor-
 | `enabled` | `bool` | Enable or disable the email extractor. |
 | `poll_interval_minutes` | `int` | Interval between syncs in worker mode. |
 | `folders` | `list[str]` | Mail folders to sync. Valid values: `Inbox`, `SentItems`, `Drafts`, `Archive`, `DeletedItems`, `JunkEmail`. |
-| `lookback_days` | `int` | Number of days to look back on first sync (before any delta link exists). |
-| `max_items_per_sync` | `int` | Item budget per folder per cycle, sent verbatim as `$top` on the delta query. On a delta query `$top` caps the **whole enumeration**, not the page size: Graph returns at most this many messages and then reports the folder complete with a delta link, so an initial sync never picks up the remainder. Set it above the number of messages a folder holds in the `lookback_days` window. |
+| `max_items_per_sync` | `int` | Item budget per folder per cycle, sent verbatim as `$top` on the delta query. On a delta query `$top` caps the **whole enumeration**, not the page size: Graph returns at most this many messages and then reports the folder complete with a delta link, so an initial sync never picks up the remainder. Set it above the number of messages the folder holds. |
+
+**There is no time window on email.** An initial sync (before any delta link exists) enumerates
+the **entire folder**, however old. A message *delta* query does not support `$filter`, and Graph
+**ignores** the parameter rather than rejecting it — so a `receivedDateTime` cutoff looks applied,
+returns 200 OK, and does nothing. `max_items_per_sync` is the only real bound; size it against the
+whole folder, not against a window. (`extractors.calendar.lookback_days` is unrelated and does
+work: `calendarView` takes a genuine date range.)
 
 ```yaml
 extractors:
@@ -164,7 +170,6 @@ extractors:
     enabled: true
     poll_interval_minutes: 3
     folders: ["Inbox", "SentItems", "Archive"]
-    lookback_days: 365
     max_items_per_sync: 500
 ```
 

@@ -36,8 +36,14 @@ class EmailExtractorConfig(BaseModel):
     enabled: bool
     poll_interval_minutes: int
     mailboxes: list[MailboxConfig]
-    lookback_days: int
     max_items_per_sync: int
+    """Item budget per folder per cycle, sent verbatim as `$top` on the delta query.
+
+    The only bound on an initial sync. There is deliberately no `lookback_days`:
+    a message delta query ignores `$filter`, so a time window cannot be expressed
+    server-side (`extractors/email.py`). `calendar.lookback_days` is unaffected —
+    calendarView takes a real date range.
+    """
     download_attachments: bool
     max_attachment_size_mb: int
     attachment_convert_extensions: list[str]

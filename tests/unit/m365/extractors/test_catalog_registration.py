@@ -205,7 +205,6 @@ CASES = {
             enabled=True,
             poll_interval_minutes=3,
             mailboxes=[MailboxConfig(address="me", folders=["Inbox"], output_subdir="")],
-            lookback_days=30,
             max_items_per_sync=100,
             download_attachments=True,
             max_attachment_size_mb=25,
