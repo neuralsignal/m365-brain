@@ -1461,6 +1461,8 @@ packages:
   - pydantic>=2.12,<3
   - python-frontmatter>=1.1,<2
   - markdownify>=0.14,<1
+  - markdown>=3.7,<4
+  - beautifulsoup4>=4.12,<5
   - structlog>=25.0,<26
   - click>=8.3.3,<9
   - python-dotenv>=1.0,<2

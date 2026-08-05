@@ -29,6 +29,12 @@ dependencies = [
     "pydantic>=2.12,<3",
     "python-frontmatter>=1.1,<2",
     "markdownify>=0.14,<1",
+    # Imported directly by the outbox: `markdown` renders an intent body to
+    # HTML, `beautifulsoup4` strips HTML back to text for amendment detection.
+    # Both resolved transitively through obsidian-import until now, which was a
+    # latent break -- a dependency of a dependency is not a dependency.
+    "markdown>=3.7,<4",
+    "beautifulsoup4>=4.12,<5",
     "structlog>=25.0,<26",
     "click>=8.3.3,<9",
     "python-dotenv>=1.0,<2",

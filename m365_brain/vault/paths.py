@@ -22,6 +22,15 @@ from dataclasses import dataclass
 
 from m365_brain.config import VaultConfig
 
+RECEIPT_SUFFIX = ".receipt.json"
+"""Distinguishes a receipt from the intent it sits beside, in one directory
+listing. Not config: it is the pairing rule between two files this package
+writes, not a name an operator chooses."""
+
+RECONCILED_SUFFIX = ".reconciled.json"
+"""Marks a dispatched intent whose fate is settled. Without it the
+reconciliation pass re-fetches every draft it has ever sent, forever."""
+
 
 class VaultPathError(ValueError):
     """Raised when a path argument would escape or corrupt the vault layout."""
@@ -142,10 +151,27 @@ class VaultPaths:
         """A blocked or failed intent, archived byte-identical beside its receipt."""
         return self.meta(self.vault.layout.rejected, f"{uuid}.md")
 
-    def receipt(self, uuid: str) -> str:
-        """The receipt sidecar. A sidecar, not injected frontmatter, so the
-        archived intent still parses under its own `extra="forbid"`."""
-        return self.meta(self.vault.layout.processed, f"{uuid}.receipt.json")
+    def processed_receipt(self, uuid: str) -> str:
+        """The receipt sidecar beside a dispatched intent.
+
+        A sidecar, not injected frontmatter, so the archived intent still
+        parses under its own `extra="forbid"` and can serve as the fixture
+        reconciliation diffs against.
+        """
+        return self.meta(self.vault.layout.processed, f"{uuid}{RECEIPT_SUFFIX}")
+
+    def rejected_receipt(self, uuid: str) -> str:
+        """The receipt sidecar beside a blocked or failed intent.
+
+        Two methods rather than one taking an archive argument: the caller
+        already knows which archive it is writing to, and an argument it could
+        get wrong would put the receipt somewhere nothing looks.
+        """
+        return self.meta(self.vault.layout.rejected, f"{uuid}{RECEIPT_SUFFIX}")
+
+    def reconciled(self, uuid: str) -> str:
+        """The terminal-verdict marker beside a dispatched intent."""
+        return self.meta(self.vault.layout.processed, f"{uuid}{RECONCILED_SUFFIX}")
 
     def meta(self, *segments: str) -> str:
         """Anything the vault keeps about itself: state, manifests, archives."""

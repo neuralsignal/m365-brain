@@ -51,11 +51,8 @@ class GraphClient:
         token_provider: Callable[[], str],
     ) -> None:
         self._token_provider = token_provider
-        self._max_retries = graph_config.max_retries
+        self._config = graph_config
         self._backoff_base_seconds = graph_config.backoff_base_ms / 1000.0
-        self._max_pages = graph_config.max_pages
-        self._max_retry_after_seconds = graph_config.max_retry_after_seconds
-        self._error_message_max_length = graph_config.error_message_max_length
         self._client = httpx.Client(
             base_url=GRAPH_BASE_URL,
             timeout=graph_config.timeout_seconds,
@@ -86,7 +83,7 @@ class GraphClient:
 
     def _raise_for_response(self, response: httpx.Response, log_ref: str) -> None:
         """Map a non-retryable failure response onto its exception and raise."""
-        error_code, error_message = _extract_graph_error(response.text, self._error_message_max_length)
+        error_code, error_message = _extract_graph_error(response.text, self._config.error_message_max_length)
         message = _friendly_error(response.status_code, error_code, error_message, log_ref)
         log.error(
             "graph.request_failed",
@@ -122,7 +119,7 @@ class GraphClient:
         if request_url.startswith("https://"):
             request_url = request_url.removeprefix(GRAPH_BASE_URL)
 
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(self._config.max_retries + 1):
             try:
                 response = self._client.request(
                     method,
@@ -132,7 +129,7 @@ class GraphClient:
                     content=body,
                 )
             except httpx.TransportError as exc:
-                if attempt == self._max_retries:
+                if attempt == self._config.max_retries:
                     raise
                 wait = self._backoff_base_seconds * (2**attempt)
                 log.warning(
@@ -151,7 +148,7 @@ class GraphClient:
                 if attempt == 0:
                     log.info("graph.token_expired, refreshing")
                     continue
-                error_code, error_message = _extract_graph_error(response.text, self._error_message_max_length)
+                error_code, error_message = _extract_graph_error(response.text, self._config.error_message_max_length)
                 log.error(
                     "graph.401_after_retry",
                     path=log_ref,
@@ -160,12 +157,12 @@ class GraphClient:
                 )
                 raise GraphApiError(_friendly_error(401, error_code, error_message, log_ref), 401)
 
-            if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._max_retries:
+            if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._config.max_retries:
                 wait = _retry_wait_seconds(
                     response,
                     attempt,
                     self._backoff_base_seconds,
-                    self._max_retry_after_seconds,
+                    self._config.max_retry_after_seconds,
                 )
                 log.warning(
                     "graph.retryable_error",
@@ -180,13 +177,20 @@ class GraphClient:
                 log.error("graph.max_retries_exceeded", status=response.status_code, path=log_ref)
             self._raise_for_response(response, log_ref)
 
-        msg = f"Graph API request failed after {self._max_retries} retries: {log_ref}"
+        msg = f"Graph API request failed after {self._config.max_retries} retries: {log_ref}"
         raise GraphApiError(msg, None)
 
     @property
     def max_pages(self) -> int:
         """Return the configured maximum number of pages for paginated requests."""
-        return self._max_pages
+        return self._config.max_pages
+
+    @property
+    def config(self) -> GraphConfig:
+        """The transport policy this client runs. Collaborators that need a
+        timeout or a truncation length read it here instead of being handed
+        ``GraphConfig`` a second time alongside the client itself."""
+        return self._config
 
     def _read(
         self,

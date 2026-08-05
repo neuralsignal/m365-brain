@@ -46,10 +46,15 @@ Sections present today:
 | `converters` | conversion backends per file type, extraction limits, media options, slug/hash lengths |
 | `web`, `worker` | optional; required only by the admin UI and the multi-user worker |
 
-Sections **Pending**: `vault` (layout and per-extractor directory names) → M365-platform stage;
-`index` (backend selection, roots, exclusions, vector settings) → knowledge-layer stage;
-`auth.profiles` (N named Entra apps replacing the single-app `auth` block) → M365-platform stage;
-`outboxes` (per-outbox permission tier) → M365-platform stage; `hooks.post_cycle` → runtime stage.
+Also **Present**: `vault` (layout, per-extractor directory names, filenames); `auth.profiles`
+(N named Entra apps, each with its own scopes and token cache); `outboxes`
+(`attachment_root`, `forbidden_send_scopes`, `definitions.<name>.{tier,auth_profile}`,
+`email.signature.{html_path,logo_path,logo_content_id}`, `reconcile.quote_markers`);
+`m365.upload` (`inline_attachment_max_bytes`, `simple_upload_max_bytes`, `chunk_bytes` — which
+must be a multiple of 320 KiB, and the validator caught that the constant it replaced was not).
+
+Sections **Pending**: `index` (backend selection, roots, exclusions, vector settings) →
+knowledge-layer stage; `hooks.post_cycle` → runtime stage.
 
 ### Microsoft Graph
 
@@ -73,9 +78,47 @@ a side effect.
 
 ### Intents
 
-**Pending → M365-platform stage.** JSON files written into the configured outbox directory by any
-caller. Each carries a client-supplied idempotency key and a payload validated against that
-outbox's Pydantic schema with `extra="forbid"` — an unknown field is a rejection, not a warning.
+**Present.** **Markdown with YAML frontmatter** — not JSON — written into
+`<layout.outbox>/<outbox name>/<uuid>.md` by any caller. The frontmatter is the envelope, the
+markdown body is the payload's `body` field. Rationale and the differences from the schema this
+was ported from: ADR 0018.
+
+```yaml
+uuid: 5f2c…            # client-supplied idempotency key; MUST equal the filename stem
+schema_version: 1
+created_at: 2026-08-05T09:00:00Z
+created_by: inbox-responder
+payload:
+  kind: email.draft    # the discriminator
+  …
+```
+
+Envelope fields: `uuid` (1–64 chars), `schema_version`, `created_at`, `created_by` (1–128), and
+`payload`. There is no `outbox` field and no `integration` field — `payload.kind` is the single
+source of both.
+
+Payload kinds and their required fields (`m365_brain/vault/payloads.py` is authoritative):
+
+| `kind` | Fields |
+|---|---|
+| `email.draft` | `mailbox`, `to`, `cc`, `bcc`, `subject`, `attachments`, `inline_images`, `include_signature`, `revises_message_id` |
+| `email.reply` | `mailbox`, `in_reply_to`, `reply_all`, `cc`, `attachments`, `inline_images`, `include_signature`, `revises_message_id` |
+| `email.forward` | `mailbox`, `in_reply_to`, `to`, `cc`, `attachments`, `inline_images`, `include_signature`, `revises_message_id` |
+| `teams.post_message` | `team_id`, `channel_id` |
+| `file.update` | `site_hostname`, `site_path`, `library_name`, `item_path`, `etag`, `content_type` |
+
+Every payload also takes its `body` from the markdown. Validation is `extra="forbid"` **and**
+`strict=True`: an unknown field is a rejection, `reply_all: "true"` is a rejection, and a
+`X | None` field carries **no default** — it is a required key that must be spelled `null`.
+
+Hard parse errors, each of which was a real defect in the ported schema:
+
+1. a frontmatter `body:` key, or `payload.body:` — the body comes from the markdown and nowhere else;
+2. `uuid` ≠ filename stem — the two are one identity;
+3. `in_reply_to` in legacy MAPI EntryID form (`0{8,}[0-9A-F]{16,}`) — re-ingest the source message.
+
+`include_signature` is the polarity flip of the previous pipeline's `skip_signature`:
+`include_signature = not skip_signature`. It has no default, so every intent states it.
 
 ## Outbound contracts
 
@@ -158,11 +201,58 @@ per extractor, with errors, persisted under the configured meta directory. It is
 hooks consume, and it replaces filesystem re-scanning — the manifest *is* the watermark, so a
 consumer keeping its own seen-set file is doing work the manifest already did.
 
+### The intent archive
+
+**Present.** Dispatch is claim → route → execute → receipt → archive, and the archive is the
+**ledger**: `already_dispatched(uuid)` is true once either archive holds the uuid, so a replayed
+intent is skipped and a rejected one is not retried. Purging `<layout.processed>` re-arms replay —
+a deliberate operator act, not something guarded against.
+
+```
+<meta>/<inflight>/<uuid>.md              claimed, outcome unknown — never auto-retried (ADR 0017)
+<meta>/<processed>/<uuid>.md             the intent, byte-identical to what was submitted
+<meta>/<processed>/<uuid>.receipt.json   DispatchReceipt
+<meta>/<processed>/<uuid>.reconciled.json  terminal verdict, written by the reconcile pass
+<meta>/<rejected>/<uuid>.md              + <uuid>.receipt.json
+```
+
+`DispatchReceipt`: `uuid`, `kind`, `outcome` (`dispatched` | `rejected` | `blocked`),
+`dispatched_at`, `graph_message_id`, `reason`, `detail`. `reason` is a **closed set** —
+`tier_blocked`, `no_approval_recorded`, `etag_conflict`, `graph_error`, `attachment_missing`,
+`parse_error`, `unknown_outbox` — because an operator greps by it. See ADR 0019.
+
+### Permission tiers
+
+**Present.** A tier is a property of the **outbox**, read from `outboxes.definitions.<name>.tier`,
+never from the intent file.
+
+| tier | `pending` | `approved` | terminal |
+|---|---|---|---|
+| `never_auto` | `await_admin` → `blocked`, `reason: tier_blocked` | *raises* | `archive` |
+| `human_approval` | `await_approval` → `rejected`, `reason: no_approval_recorded` | `execute` | `archive` |
+| `draft_only` | **`execute`** (ADR 0013) | *raises* | `archive` |
+| `auto_send` | `execute` | *raises* | `archive` |
+
+Two guards run at registry build — process start, not per intent — and both crash the process:
+
+1. a `draft_only` outbox whose handler declares an operation outside
+   `{create_draft, update_draft, attach}`;
+2. a `draft_only` outbox whose auth profile is granted a scope in
+   `outboxes.forbidden_send_scopes`.
+
+A *data* item whose tier forbids dispatch is not an exception: it is a receipt with an outcome and
+a reason, and the pass continues.
+
 ### Writes into Microsoft 365
 
-**Pending → M365-platform stage.** Email drafts via `createReply` / `createForward` — never
-`/reply` or `/forward`, and `Mail.Send` is not among the requested scopes. Teams channel posts.
-File updates via `put_file` with eTag `If-Match`.
+**Present.** Email drafts via `createReply` / `createReplyAll` / `createForward` — never `/reply`
+or `/forward`, and `Mail.Send` is not among the requested scopes. Teams channel posts
+(delegated-only; `ChannelMessage.Send` has no application variant). File writes via `create_file`
+or `update_file`; **there is no unconditional-write function** (ADR 0016).
+
+The reply/forward flow is three requests and must stay three: `POST create*` → `GET` the stub →
+`PATCH` the merged body. The middle call reads back the quoted original Graph generated; collapsing
+the sequence drops the quote silently.
 
 ### The index
 
@@ -206,7 +296,8 @@ The seam set. One implementation each today, each shipping an in-memory fake (AD
 | `IndexBackend` | `m365_brain/index/backends/base.py` | Pending → knowledge-layer | SQLite + FTS5 |
 | `EmbeddingProvider` | `m365_brain/index/vector/base.py` | Pending → knowledge-layer | fastembed |
 | `VectorStore` | `m365_brain/index/vector/base.py` | Pending → knowledge-layer | sqlite-vec |
-| `IntentStore` | `m365_brain/outbox/` | Pending → M365-platform | filesystem + JSON |
+| `IntentStore` | `m365_brain/outbox/stores.py` | **Present** | `FilesystemIntentStore` + `InMemoryIntentStore` |
+| `OutboxHandler` | `m365_brain/vault/dispatch.py` | **Present** | `EmailOutbox`, `TeamsPostOutbox`, `FileUpdateOutbox` |
 | `StateStore` | `m365_brain/state.py` | Pending → M365-platform | JSON under the meta directory |
 
 `StorageBackend` today: `write_file(path, content)`, `read_file(path)`, `file_exists(path)`,
@@ -232,6 +323,26 @@ Every extractor takes `run(client, storage, state, config, ctx)` where `ctx` is 
 `ExtractorContext(paths, converters, removal)`. One shape for all eight — `EXTRACTORS` no longer
 carries a `needs_converters` flag, because there is no longer a second call shape to dispatch to.
 
+**Present** for the outbox half:
+
+- `m365_brain.m365.auth.profiles.AuthProfiles(profiles)` — `provider(name)`, `login(name)`,
+  `status(name)`, `scopes(name)`. One MSAL app and one token cache per named profile; two profiles
+  sharing a `token_cache_path` is refused at construction.
+- `m365_brain.m365.files` — `resolve_site_id`, `resolve_drive_id`, `resolve_default_drive_id`,
+  `list_children`, `get_file`, `item_etag`, `download_file_bytes`, `create_file`, `update_file`.
+- `m365_brain.m365.outboxes.build_handlers(outboxes_config, upload_config, clients)` — one handler
+  per configured outbox, each bound to the `GraphClient` of the auth profile its config names.
+- `m365_brain.outbox.build_registry(outboxes_config, auth_profiles, handlers)` — handlers are
+  **injected**, so no module imports both `outbox` and `m365` (ADR 0014).
+- `m365_brain.outbox.runner.push(store, registry, router) -> PushCounts` and
+  `reconcile(store, fetch, markers) -> list[ReconcileOutcome]`. The reconciliation Graph fetch is a
+  `(mailbox, message_id, select) -> dict | None` callable supplied by the caller.
+
+`ReconcileOutcome` carries `uuid`, `verdict` (`sent` | `amended` | `rejected` | `pending`),
+`graph_message_id`, `conversation_id`, `sent_at`, `sent_body_html`, `original_body`. The sent HTML
+and the original body travel **by value**, so no knowledge-base path crosses the boundary in either
+direction; `post_reconcile` hooks do the projection.
+
 **Pending → knowledge-layer stage.** `m365_brain/workspace.py` — the facade that opens a config
 and returns a working handle. It is the API the bundled skills, the CLI, and migrating call sites
 target, and it is the intended entry point once it exists.
@@ -253,9 +364,12 @@ apply is traceable to a config key (ADR 0008).
    marker for an id it has already sent one for, and a second pass must be a no-op rather than a
    404. A backend that raised on a missing path would turn every repeated removal into a failed
    sync cycle.
-2. **A stale eTag raises rather than overwriting.** `put_file` sends `If-Match`; a `412` is a
+2. **A stale eTag raises rather than overwriting.** `update_file` sends `If-Match`; a `412` is a
    loud failure, never a retry-with-force. This is the only silent-data-loss path in the package
-   and it is tested explicitly. *(Pending → M365-platform.)*
+   and it is tested explicitly — on the mock's call log, because "it raised" is not the property,
+   "it did not write" is. Structural rather than behavioural: no public function in
+   `m365_brain/m365/files.py` takes a nullable `if_match`, so there is no unconditional-write path
+   to call. *(Present — ADR 0016.)*
 3. **Every configurable value comes from config; there is no code default.** No module-level
    constant that an adopter would want to change — no dimension count, embedding model name,
    chunk size, interval, threshold, or directory name. *(Present for the config sections that
@@ -267,13 +381,17 @@ apply is traceable to a config key (ADR 0008).
 6. **Re-running is safe.** Extraction, indexing, intent push, and reconciliation are idempotent:
    a second run over unchanged input produces no additional side effect. Intents carry a
    client-supplied idempotency key so a retried push does not duplicate a draft. *(Present for
-   extraction; pending for the outbox.)*
+   extraction and the outbox; pending for indexing.)*
+
+   Corollary, also **Present**: an intent claimed with no recorded outcome is **never
+   auto-retried**. Repeating a send whose result is unknown duplicates mail, which is the failure
+   an outbox exists to prevent. See ADR 0017, including the named non-atomicity of the claim.
 7. **Upstream deletion propagates exactly once.** One canonical removal handler maps an upstream
    id to its written path, hard-deletes, and drops the state-map entry, so a repeated `@removed`
    does not re-404. *(Pending → M365-platform.)*
 8. **Email outboxes are `draft_only`.** They create drafts for human review; `Mail.Send` is not
-   requested, so auto-send is impossible by permission, not merely by policy. *(Pending →
-   M365-platform.)*
+   requested, so auto-send is impossible by permission, not merely by policy — and a config that
+   grants it anyway fails at process start rather than at dispatch. *(Present — ADR 0013.)*
 9. **`index/` never imports `m365/`.** A same-layer import between the two halves is a CI
    failure. The knowledge layer must work end to end on ordinary markdown with no Microsoft 365
    present. *(Enforced now by `scripts/check_structure.py`.)*
@@ -301,7 +419,10 @@ Authoritative for field-level detail; this document summarises.
 | Admin/worker database tables | `m365_brain/models.py` (SQLModel), migrated by `alembic/` |
 | Knowledge model — `Entity`, `Observation`, `Relation` | `m365_brain/model.py` — *pending → knowledge-layer stage* |
 | Index, vector, and embedding seams | `m365_brain/index/backends/base.py`, `m365_brain/index/vector/base.py` — *pending → knowledge-layer stage* |
-| Intent envelope and per-outbox payload schemas | `m365_brain/outbox/` and `m365_brain/m365/outboxes/` — *pending → M365-platform stage* |
+| Intent envelope and per-outbox payload schemas | `m365_brain/vault/intent.py` and `m365_brain/vault/payloads.py` (ADR 0014) |
+| Dispatch vocabulary — `GraphOp`, `DispatchResult`, `DispatchReceipt`, `OutboxHandler` | `m365_brain/vault/dispatch.py` |
+| Tier state machine | `m365_brain/outbox/tiers.py`; guards in `m365_brain/outbox/registry.py` |
+| Reconciliation outcome | `m365_brain/outbox/reconcile.py` |
 | Change manifest | `m365_brain/manifest.py` — *pending → runtime stage* |
 
 Structural contracts that are not Pydantic — allowed directories, import direction, module size,

@@ -44,6 +44,23 @@ class DeviceCodeAuth:
         self._save_cache()
         return self._extract_token(result)
 
+    def cached_token(self) -> str | None:
+        """Return a token from the cache, or None. Never prompts.
+
+        `get_token` falls back to the interactive flow, which makes it the
+        wrong call for a status check -- asking "am I signed in?" would sign
+        you in. This is the read-only half.
+        """
+        result = self._try_silent()
+        if result is None:
+            return None
+        self._save_cache()
+        return str(result["access_token"])
+
+    def account_names(self) -> list[str]:
+        """Usernames MSAL holds in this profile's cache."""
+        return [str(account.get("username", "")) for account in self._app.get_accounts()]
+
     def _try_silent(self) -> dict | None:
         """Try to acquire a token silently from the cache."""
         accounts = self._app.get_accounts()

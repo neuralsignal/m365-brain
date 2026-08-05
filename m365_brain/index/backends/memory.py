@@ -5,16 +5,16 @@ own suites, and a protocol with one implementation drifts into that
 implementation's shape within two commits.
 
 Two behaviours are copied deliberately rather than improved on, because the
-shared contract test asserts them against both backends:
+shared contract test asserts them against both backends: text search reflects
+the **last `rebuild_text_index()`** rather than the current entities (both
+stores keep a derived index, and pretending otherwise would hide a missing
+rebuild in the sync), and deleting an entity clears `to_entity_id` on edges
+pointing at it rather than deleting them, matching `ON DELETE SET NULL`.
 
-* text search reflects the **last `rebuild_text_index()`**, not the current
-  entities. Both stores keep a derived text index; pretending otherwise here
-  would hide a missing rebuild in the sync.
-* deleting an entity clears `to_entity_id` on edges pointing at it rather than
-  deleting them, matching `ON DELETE SET NULL`.
-
-What it does *not* claim is FTS5 semantics: `TextQuery.fts` is matched as a
-case-insensitive substring. No test may assume more.
+What it does *not* claim is FTS5 semantics. `TextQuery.fts` is split on
+whitespace and every token must appear as a case-insensitive substring: `AND`,
+`OR`, `NOT` and brackets are ignored rather than obeyed, so `NOT` does not
+exclude and a quoted phrase is matched word by word. No test may assume more.
 """
 
 from __future__ import annotations
@@ -36,6 +36,19 @@ from m365_brain.model import (
     SearchHit,
     SearchPage,
 )
+
+_IGNORED_FTS_TOKENS = frozenset({"and", "or", "not", "(", ")", ""})
+
+
+def _search_tokens(fts: str) -> list[str]:
+    """Casefolded substrings to look for, with FTS5 decoration removed.
+
+    `TextQuery.fts` carries FTS5 syntax. A fake that took `telesc*` literally
+    would match nothing for anything routed through `index/search.py`, which is
+    silence rather than an error.
+    """
+    tokens = (token.strip('*()"').casefold() for token in fts.split())
+    return [token for token in tokens if token not in _IGNORED_FTS_TOKENS]
 
 
 @dataclass
@@ -253,8 +266,10 @@ class InMemoryIndexBackend:
 
     def _matches(self, entity_id: int, row: tuple[str, str, str], query: TextQuery) -> bool:
         entity = self._entities[entity_id]
-        if query.fts is not None and query.fts.casefold() not in " ".join(row).casefold():
-            return False
+        if query.fts is not None:
+            haystack = " ".join(row).casefold()
+            if not all(token in haystack for token in _search_tokens(query.fts)):
+                return False
         if query.entity_type is not None and entity.entity_type != query.entity_type:
             return False
         if query.tag is not None and query.tag not in entity.tags:

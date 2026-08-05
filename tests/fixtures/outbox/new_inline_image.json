@@ -1,0 +1,40 @@
+[
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "subject": "With an image",
+      "body": {
+        "contentType": "html",
+        "content": "<h1 style=\"font-size:20px;font-weight:bold;margin:16px 0 8px 0;Margin:16px 0 8px 0;\">Heading</h1>\n<p>Hello <strong>there</strong>.</p>\n<ul style=\"margin:10px 0 10px 25px;Margin:10px 0 10px 25px;padding:0;\">\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">one</li>\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">two</li>\n</ul>"
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "address": "a@example.com"
+          }
+        }
+      ],
+      "ccRecipients": [],
+      "bccRecipients": []
+    }
+  },
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/MSG-1/attachments",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      "name": "banner.png",
+      "contentType": "image/png",
+      "contentBytes": "iVBORw0KGgpCQU5ORVI=",
+      "isInline": true,
+      "contentId": "banner"
+    }
+  }
+]

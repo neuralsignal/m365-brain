@@ -1,0 +1,52 @@
+[
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "subject": "Large file",
+      "body": {
+        "contentType": "html",
+        "content": "<h1 style=\"font-size:20px;font-weight:bold;margin:16px 0 8px 0;Margin:16px 0 8px 0;\">Heading</h1>\n<p>Hello <strong>there</strong>.</p>\n<ul style=\"margin:10px 0 10px 25px;Margin:10px 0 10px 25px;padding:0;\">\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">one</li>\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">two</li>\n</ul>"
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "address": "a@example.com"
+          }
+        }
+      ],
+      "ccRecipients": [],
+      "bccRecipients": []
+    }
+  },
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/MSG-1/attachments/createUploadSession",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "AttachmentItem": {
+        "attachmentType": "file",
+        "name": "large.bin",
+        "size": 2304000,
+        "contentType": "application/octet-stream",
+        "isInline": false
+      }
+    }
+  },
+  {
+    "method": "PUT",
+    "url": "https://tenant.sharepoint.com/_api/upload/session-1",
+    "headers": {
+      "Content-Range": "bytes 0-2303999/2304000"
+    },
+    "body": {
+      "__sha256__": "62bf4dac314280c65bfec2a49872d67974db10af14c8a4b84c70166fb11252b9",
+      "__length__": 2304000
+    }
+  }
+]

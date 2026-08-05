@@ -1,0 +1,43 @@
+[
+  {
+    "method": "GET",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/MSG-EXISTING?$select=id,isDraft",
+    "headers": {},
+    "body": null
+  },
+  {
+    "method": "PATCH",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/MSG-EXISTING",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "subject": "Revised subject",
+      "body": {
+        "contentType": "html",
+        "content": "<h1 style=\"font-size:20px;font-weight:bold;margin:16px 0 8px 0;Margin:16px 0 8px 0;\">Heading</h1>\n<p>Hello <strong>there</strong>.</p>\n<ul style=\"margin:10px 0 10px 25px;Margin:10px 0 10px 25px;padding:0;\">\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">one</li>\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">two</li>\n</ul><br><br><p>--<br>Test Sender</p><img src='cid:brand_logo'>"
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "address": "a@example.com"
+          }
+        }
+      ],
+      "ccRecipients": [
+        {
+          "emailAddress": {
+            "address": "c@example.com"
+          }
+        }
+      ],
+      "bccRecipients": [
+        {
+          "emailAddress": {
+            "address": "b@example.com"
+          }
+        }
+      ]
+    }
+  }
+]
