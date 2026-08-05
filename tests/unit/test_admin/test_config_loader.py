@@ -128,7 +128,7 @@ def _write_config_yaml(tmp_path, full_web_config):
             "host": "127.0.0.1",
             "port": 8000,
             "secret_key": "test-secret",
-            "fernet_key": full_web_config.web.fernet_key,
+            "fernet_key": full_web_config.web.fernet_key.get_secret_value(),
             "db_path": str(tmp_path / "web.db"),
             "session_timeout_minutes": 60,
             "db_url": "sqlite://",

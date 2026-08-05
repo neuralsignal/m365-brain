@@ -630,7 +630,12 @@ class TestSyncSkipsInvalidEvents:
 
 
 class TestWriteEventPlainAttendees:
-    """Test _write_event branch where attendees exist but attendee_details is empty."""
+    """Test _write_event branch where attendees exist but attendee_details is empty.
+
+    The written file must carry the attendee *edges*, not a prose list: an
+    attendee is the counterparty `ops tiers` counts, and the extractor calling
+    `attendee_relations` is the half of that agreement no builder test can see.
+    """
 
     def test_write_event_plain_attendees(self, tmp_path, ctx):
         from m365_brain.m365.frontmatter import CalendarEventData
@@ -658,7 +663,8 @@ class TestWriteEventPlainAttendees:
         assert len(files) == 1
         assert path_map == {"EVT-PLAIN-ATT": files[0]}
         content = storage.read_file(files[0])
-        assert "**Attendees:** Alice, Bob" in content
+        assert "- attended_by [[Alice]]" in content
+        assert "- attended_by [[Bob]]" in content
         assert "Let's eat" in content
 
 

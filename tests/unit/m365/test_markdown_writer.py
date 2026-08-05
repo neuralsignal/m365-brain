@@ -114,6 +114,7 @@ class TestBuildEmailFrontmatter:
             EmailData(
                 subject="Test Subject",
                 message_id="msg-123",
+                conversation_id="conv-123",
                 received_time="2026-03-12T10:00:00Z",
                 folder="Inbox",
                 mailbox="me",
@@ -130,7 +131,7 @@ class TestBuildEmailFrontmatter:
         assert "email" in fm["tags"]
         assert fm["sender"] == "alice@example.com"
         assert fm["mailbox"] == "me"
-        assert fm["source"]["extractor"] == "m365-brain/email/1.1"
+        assert fm["source"]["extractor"] == "m365-brain/email/1.3"
         assert "permalink" in fm
 
     def test_mailbox_field_carries_shared_address(self):
@@ -138,24 +139,26 @@ class TestBuildEmailFrontmatter:
             EmailData(
                 subject="Vendor enquiry",
                 message_id="msg-shared-1",
+                conversation_id="conv-shared-1",
                 received_time="2026-05-08T10:00:00Z",
                 folder="Inbox",
-                mailbox="ai@sanoptis.com",
+                mailbox="ai@example.com",
                 sender_address="vendor@example.com",
                 sender_name="Vendor",
-                to_recipients=["ai@sanoptis.com"],
+                to_recipients=["ai@example.com"],
                 importance="normal",
                 has_attachments=False,
                 web_link="",
             )
         )
-        assert fm["mailbox"] == "ai@sanoptis.com"
+        assert fm["mailbox"] == "ai@example.com"
 
     def test_permalink_includes_date_and_hash(self):
         fm = build_email_frontmatter(
             EmailData(
                 subject="Budget Review",
                 message_id="msg-456",
+                conversation_id="conv-456",
                 received_time="2026-03-12T10:00:00Z",
                 folder="Inbox",
                 mailbox="me",

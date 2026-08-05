@@ -6,9 +6,12 @@ that overrode a configured threshold would mean the report a person ran by hand
 and the report a scheduler ran disagreed, with nothing in either output saying
 which threshold produced it.
 
-The exception is `ops triage`'s field options, and it is an acknowledged gap:
-`ops.triage` names no observation categories, so the caller has to. They are
-required rather than defaulted for the usual reason -- a guessed frontmatter
+`ops triage`'s field options are the one exception, and they are overrides of
+`ops.triage.fields` rather than a way to supply it: a category name is a
+statement about what the corpus contains, not a threshold, so pointing the same
+rule at a second corpus for one run says nothing about the first. Omitting them
+all is the ordinary case. The absent value is `None` and means "read the config"
+-- there is no default category name here, because a guessed frontmatter
 vocabulary produces an empty report that looks like an empty inbox.
 """
 
@@ -20,10 +23,10 @@ import click
 
 from m365_brain.commands._context import emit, open_workspace, require_config
 from m365_brain.config import Config, require_section
-from m365_brain.config.ops import OpsConfig
+from m365_brain.config.ops import OpsConfig, TriageFieldsConfig
 from m365_brain.ops.links import resolve_links
 from m365_brain.ops.tiers import compute_tiers
-from m365_brain.ops.triage import MessageFields, triage
+from m365_brain.ops.triage import triage
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
 from m365_brain.storage import create_storage
 from m365_brain.vault.paths import VaultPaths
@@ -103,25 +106,39 @@ def tiers_command(ctx: click.Context, as_json: bool) -> None:
     )
 
 
+def _fields(configured: TriageFieldsConfig, overrides: dict[str, str | None]) -> TriageFieldsConfig:
+    """`ops.triage.fields`, with any option the caller passed substituted in.
+
+    Rebuilt through the model rather than `model_copy`, so an override goes
+    through the same validation the config file does -- `model_copy` skips it,
+    and a config-shaped object that the loader would have rejected is exactly
+    what should never reach the library.
+    """
+    stated = {name: value for name, value in overrides.items() if value is not None}
+    return TriageFieldsConfig.model_validate(configured.model_dump() | stated)
+
+
 @ops_group.command("triage")
 @click.option("--timeframe", type=str, required=True, help="e.g. 7d, 2 weeks ago")
-@click.option("--entity-type", type=str, required=True, help="Entity type the messages carry")
-@click.option("--folder-category", type=str, required=True, help="Observation category holding the folder")
-@click.option("--conversation-category", type=str, required=True, help="Observation category holding the thread id")
-@click.option("--sender-category", type=str, required=True, help="Observation category holding the sender")
-@click.option("--recipients-category", type=str, required=True, help="Observation category holding the `to` line")
-@click.option("--timestamp-category", type=str, required=True, help="Observation category holding the receipt time")
+@click.option("--entity-type", type=str, default=None, help="Override ops.triage.fields.entity_type")
+@click.option("--folder-category", type=str, default=None, help="Override ops.triage.fields.folder")
+@click.option("--conversation-category", type=str, default=None, help="Override ops.triage.fields.conversation_id")
+@click.option("--message-id-category", type=str, default=None, help="Override ops.triage.fields.message_id")
+@click.option("--sender-category", type=str, default=None, help="Override ops.triage.fields.sender")
+@click.option("--recipients-category", type=str, default=None, help="Override ops.triage.fields.recipients")
+@click.option("--timestamp-category", type=str, default=None, help="Override ops.triage.fields.timestamp")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
 def triage_command(
     ctx: click.Context,
     timeframe: str,
-    entity_type: str,
-    folder_category: str,
-    conversation_category: str,
-    sender_category: str,
-    recipients_category: str,
-    timestamp_category: str,
+    entity_type: str | None,
+    folder_category: str | None,
+    conversation_category: str | None,
+    message_id_category: str | None,
+    sender_category: str | None,
+    recipients_category: str | None,
+    timestamp_category: str | None,
     as_json: bool,
 ) -> None:
     """Received messages with no reply and no recorded rejection."""
@@ -131,13 +148,17 @@ def triage_command(
     store = FilesystemIntentStore(
         create_storage(config.storage), VaultPaths(vault), tuple(sorted(outboxes.definitions))
     )
-    fields = MessageFields(
-        entity_type=entity_type,
-        folder=folder_category,
-        conversation_id=conversation_category,
-        sender=sender_category,
-        recipients=recipients_category,
-        timestamp=timestamp_category,
+    fields = _fields(
+        ops.triage.fields,
+        {
+            "entity_type": entity_type,
+            "folder": folder_category,
+            "conversation_id": conversation_category,
+            "message_id": message_id_category,
+            "sender": sender_category,
+            "recipients": recipients_category,
+            "timestamp": timestamp_category,
+        },
     )
 
     with open_workspace(config) as workspace:

@@ -66,7 +66,7 @@ def _graph_msg(msg_id: str, *, etag: str, attachments: list[dict]) -> dict:
 
 
 def _ref_attachment(name: str) -> dict:
-    return {"contentType": "reference", "name": name, "contentUrl": f"https://sanoptis.sharepoint.com/x/{name}"}
+    return {"contentType": "reference", "name": name, "contentUrl": f"https://contoso.sharepoint.com/x/{name}"}
 
 
 def _ctx(

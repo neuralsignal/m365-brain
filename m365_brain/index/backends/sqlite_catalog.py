@@ -11,12 +11,21 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 
+from m365_brain.index.backends.filters import normalised_extension
 from m365_brain.model import CatalogEntry, CatalogQuery
 
 COLUMNS = (
     "id, source, original_path, file_name, extension, size_bytes, "
     "modified_at, conversion_status, output_path, error_message"
 )
+
+LIKE_ESCAPE = "\\"
+"""`_` and `%` are LIKE wildcards, and filenames are full of underscores.
+
+Unescaped, a search for `annual_report` also matches `annualXreport`, and a
+search for `%` matches every row in the table. Neither is visible until the
+catalog has rows in it, which is exactly how both survived this long.
+"""
 
 
 def upsert_catalog_entry(conn: sqlite3.Connection, entry: CatalogEntry) -> int:
@@ -56,14 +65,14 @@ def search_catalog(conn: sqlite3.Connection, query: CatalogQuery) -> list[Catalo
     params: list[object] = []
 
     if query.name_contains is not None:
-        clauses.append("file_name LIKE ?")
-        params.append(f"%{query.name_contains}%")
+        clauses.append(f"file_name LIKE ? ESCAPE '{LIKE_ESCAPE}'")
+        params.append(_contains_pattern(query.name_contains))
     if query.source is not None:
         clauses.append("source = ?")
         params.append(query.source)
     if query.extension is not None:
         clauses.append("extension = ?")
-        params.append(_normalise_extension(query.extension))
+        params.append(normalised_extension(query.extension))
     if query.status is not None:
         clauses.append("conversion_status = ?")
         params.append(query.status)
@@ -131,8 +140,10 @@ def catalog_stats(conn: sqlite3.Connection, conversion_states: Sequence[str]) ->
     return {"total": total, **{state: int(counts.get(state, 0)) for state in conversion_states}}
 
 
-def _normalise_extension(extension: str) -> str:
-    return extension if extension.startswith(".") else f".{extension}"
+def _contains_pattern(text: str) -> str:
+    """A literal substring as a LIKE pattern, wildcards neutralised."""
+    escaped = text.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2).replace("%", f"{LIKE_ESCAPE}%").replace("_", f"{LIKE_ESCAPE}_")
+    return f"%{escaped}%"
 
 
 def _entry(row: sqlite3.Row) -> CatalogEntry:

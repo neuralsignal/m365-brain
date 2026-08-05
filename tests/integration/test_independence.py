@@ -222,8 +222,8 @@ def test_nothing_the_cli_produced_names_a_consuming_workspace(runner, scratch, g
 
 
 def _workspace_checker():
-    script = Path(__file__).resolve().parents[2] / "scripts" / "check_no_workspace.py"
-    spec = importlib.util.spec_from_file_location("check_no_workspace", script)
+    script = Path(__file__).resolve().parents[2] / "scripts" / "check_publishable.py"
+    spec = importlib.util.spec_from_file_location("check_publishable", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

@@ -9,11 +9,14 @@ config.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
 from hypothesis import given
 from hypothesis import strategies as st
 
+from m365_brain.commands.ops import _fields, triage_command
 from m365_brain.config import (
     ConfigError,
     InteractionSourceConfig,
@@ -24,8 +27,12 @@ from m365_brain.config import (
     TierWriteBackConfig,
     TimestampSelector,
     TriageConfig,
+    TriageFieldsConfig,
 )
 from m365_brain.index.backends.memory import InMemoryIndexBackend
+from m365_brain.m365.frontmatter.calendar import CalendarEventData, attendee_relations, build_calendar_frontmatter
+from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
+from m365_brain.m365.markdown_writer import dumps_markdown
 from m365_brain.model import Entity, Observation, Relation
 from m365_brain.ops.links import resolve_links
 from m365_brain.ops.names import (
@@ -36,8 +43,9 @@ from m365_brain.ops.names import (
     reverse_comma_name,
 )
 from m365_brain.ops.tiers import assign_rung, compute_tiers, is_stale
-from m365_brain.ops.triage import MessageFields, is_cc_only, is_forward, rejected_references, triage
+from m365_brain.ops.triage import is_cc_only, is_forward, rejected_references, triage
 from m365_brain.outbox.stores import InMemoryIntentStore
+from m365_brain.parsers.document import parse_markdown_file
 from m365_brain.vault.dispatch import DispatchReceipt
 from m365_brain.vault.intent import IntentEnvelope, dump_intent
 from m365_brain.vault.payloads import EmailReplyPayload
@@ -423,24 +431,35 @@ class TestComputeTiers:
 # ---------------------------------------------------------------------------
 
 
+FIELDS = TriageFieldsConfig(
+    entity_type="email",
+    folder="folder",
+    conversation_id="conversation",
+    message_id="graph_id",
+    sender="sender",
+    recipients="to",
+    timestamp="date",
+)
+"""A vocabulary that is deliberately *not* the bundled extractor's.
+
+`conversation` rather than `conversation_id`, `graph_id` rather than
+`message_id`, so these tests cannot pass by accidentally agreeing with the
+shipped config. The pairing tests at the bottom of the file are the ones that
+read what the extractor actually writes.
+"""
+
 TRIAGE = TriageConfig(
     own_email="owner@example.com",
     inbox_folder="Inbox",
     sent_folders=["SentItems"],
     forward_prefixes=["fw:", "fwd:"],
-)
-
-FIELDS = MessageFields(
-    entity_type="email",
-    folder="folder",
-    conversation_id="conversation",
-    sender="sender",
-    recipients="to",
-    timestamp="date",
+    fields=FIELDS,
 )
 
 
 def message(key: str, subject: str, folder: str, conversation: str, when: str, to: str) -> Entity:
+    """One indexed message. Its message id is its key -- a *different* identifier
+    from `conversation`, which is the distinction the declined clause turns on."""
     return entity(
         key,
         subject,
@@ -448,6 +467,7 @@ def message(key: str, subject: str, folder: str, conversation: str, when: str, t
         [
             observation("folder", folder),
             observation("conversation", conversation),
+            observation("graph_id", key),
             observation("sender", "alice@example.com"),
             observation("to", to),
             observation("date", when),
@@ -523,7 +543,7 @@ class TestTriage:
     @pytest.fixture()
     def store(self):
         store = InMemoryIntentStore()
-        rejected_reply(store, "intent-one", "conv-3")
+        rejected_reply(store, "intent-one", "m-declined")
         return store
 
     def keys(self, corpus, store):
@@ -551,16 +571,314 @@ class TestTriage:
 
     def test_a_dispatched_intent_with_no_rejection_declines_nothing(self, corpus):
         store = InMemoryIntentStore()
-        rejected_reply(store, "intent-one", "conv-3")
+        rejected_reply(store, "intent-one", "m-declined")
         store.mark_reconciled("intent-one", "sent")
+        assert "m-declined" in self.keys(corpus, store)
+
+    def test_a_rejection_naming_the_conversation_declines_nothing(self, corpus):
+        """`in_reply_to` is a message id; a thread id is a different space.
+
+        The clause used to compare it against the conversation, so it matched
+        only where a test happened to feed a conversation id in -- and never on
+        a corpus, where the two identifiers never coincide.
+        """
+        store = InMemoryIntentStore()
+        rejected_reply(store, "intent-one", "conv-3")
         assert "m-declined" in self.keys(corpus, store)
 
     def test_rejected_references_names_the_message_the_draft_answered(self):
         store = InMemoryIntentStore()
-        rejected_reply(store, "intent-one", "conv-3")
-        assert rejected_references(store) == frozenset({"conv-3"})
+        rejected_reply(store, "intent-one", "m-declined")
+        assert rejected_references(store) == frozenset({"m-declined"})
 
     def test_a_message_missing_a_required_observation_is_named_not_skipped(self, backend):
         corpus = loaded(backend, [entity("m-broken", "Broken", "email", [observation("folder", "Inbox")])])
         with pytest.raises(ValueError, match="m-broken"):
             triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+
+    def test_a_blank_conversation_id_is_refused_rather_than_grouped(self, backend):
+        """An empty thread id is worse than a missing one: it collides.
+
+        Every message carrying `""` lands in one thread, so a single sent mail
+        with a blank id would answer all of them at once -- and the report would
+        be empty rather than wrong-looking.
+        """
+        corpus = loaded(
+            backend,
+            [
+                entity(
+                    "m-blank",
+                    "Blank thread",
+                    "email",
+                    [
+                        observation("folder", "Inbox"),
+                        observation("conversation", "   "),
+                        observation("date", "2026-07-30T09:00:00Z"),
+                    ],
+                )
+            ],
+        )
+        with pytest.raises(ValueError, match="m-blank"):
+            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+
+
+# ---------------------------------------------------------------------------
+# the shipped config, read against what the bundled builders actually write
+# ---------------------------------------------------------------------------
+
+
+TEMPLATE = Path(__file__).resolve().parents[2] / "m365_brain" / "templates" / "m365-brain.yaml"
+
+SHIPPED = yaml.safe_load(TEMPLATE.read_text(encoding="utf-8"))
+
+SHIPPED_TRIAGE = TriageConfig.model_validate(SHIPPED["ops"]["triage"] | {"own_email": "owner@example.com"})
+"""The shipped `ops.triage`, with only the `${VAR}` field replaced.
+
+Loading it rather than restating it is the point: a test that spelled the seven
+categories itself would agree with itself while the template disagreed with the
+extractor, which is the shape the original defect had.
+"""
+
+SHIPPED_TIERS = TiersConfig.model_validate(SHIPPED["ops"]["tiers"])
+"""The shipped `ops.tiers`, loaded for the same reason and with nothing replaced."""
+
+
+def received(subject: str, conversation_id: str, folder: str, when: str, to: list[str]) -> EmailData:
+    return EmailData(
+        subject=subject,
+        message_id=f"msg-{subject}",
+        conversation_id=conversation_id,
+        received_time=when,
+        folder=folder,
+        mailbox="owner@example.com",
+        sender_address="alice@example.com",
+        sender_name="Alice",
+        to_recipients=to,
+        importance="normal",
+        has_attachments=False,
+        web_link="",
+    )
+
+
+class TestTriageOverExtractorOutput:
+    """The pairing rule, end to end over the email builder's own frontmatter.
+
+    Every other triage test hands the index observations it wrote by hand, so
+    all of them passed while the extractor emitted no conversation id at all and
+    `ops triage` could not run on a real corpus. This one starts at
+    `build_email_frontmatter`, goes through the real markdown parser into the
+    real index, and reads the categories the shipped config names -- so it fails
+    if either side of that agreement moves.
+    """
+
+    @pytest.fixture()
+    def corpus(self, backend, corpus_root, index_config):
+        messages = [
+            received("Budget question", "conv-unanswered", "Inbox", "2026-07-30T09:00:00Z", ["owner@example.com"]),
+            received("Invoice query", "conv-answered", "Inbox", "2026-07-30T09:00:00Z", ["owner@example.com"]),
+            received("Re: Invoice query", "conv-answered", "SentItems", "2026-07-31T09:00:00Z", ["alice@example.com"]),
+        ]
+        entities = []
+        for data in messages:
+            frontmatter = build_email_frontmatter(data)
+            path = corpus_root / f"{frontmatter['permalink']}.md"
+            path.write_text(dumps_markdown(frontmatter, f"# {data.subject}\n"), encoding="utf-8")
+            parsed = parse_markdown_file(path, index_config.roots[0], index_config)
+            assert parsed is not None
+            entities.append(parsed)
+        return loaded(backend, entities)
+
+    def items(self, corpus):
+        return triage(corpus, InMemoryIntentStore(), SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, "7d", NOW, PAGE_SIZE)
+
+    def test_exactly_the_message_with_no_reply_is_reported(self, corpus):
+        """One of the two received messages has a sent sibling; only the other survives."""
+        assert [item.subject for item in self.items(corpus)] == ["Budget question"]
+
+    def test_the_reported_message_carries_the_thread_it_was_paired_on(self, corpus):
+        assert [item.conversation_id for item in self.items(corpus)] == ["conv-unanswered"]
+
+    def test_the_owner_is_seen_on_the_joined_to_line(self, corpus):
+        """`to` is one joined string by the time it reaches the index, and still parses."""
+        assert [item.is_cc_only for item in self.items(corpus)] == [False]
+
+    def test_a_rejected_draft_excludes_the_message_it_answered(self, corpus):
+        """`in_reply_to` is a Graph message id and is matched as one, end to end."""
+        store = InMemoryIntentStore()
+        rejected_reply(store, "intent-one", "msg-Budget question")
+
+        assert triage(corpus, store, SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, "7d", NOW, PAGE_SIZE) == []
+
+    def test_the_shipped_categories_are_the_ones_the_builder_writes(self):
+        """The config-side half of the same agreement, stated once, in one place."""
+        frontmatter = build_email_frontmatter(
+            received("Anything", "conv-1", "Inbox", "2026-07-30T09:00:00Z", ["owner@example.com"])
+        )
+        fields = SHIPPED_TRIAGE.fields
+        named = set(fields.model_dump().values()) - {fields.entity_type}
+
+        assert frontmatter["type"] == fields.entity_type
+        assert named <= set(frontmatter)
+        # A structure is metadata and unreadable per entity, so naming one is
+        # the same defect as naming a key that does not exist.
+        assert all(not isinstance(frontmatter[category], dict | list) for category in named)
+
+
+class TestTriageCommandFields:
+    """`ops triage` reads its categories from config; the options only override.
+
+    The verb previously demanded all seven on every invocation, which is the same
+    defect as a code default wearing the opposite disguise: the value was config,
+    and the operator retyped it.
+    """
+
+    CATEGORY_OPTIONS = (
+        "entity_type",
+        "folder_category",
+        "conversation_category",
+        "message_id_category",
+        "sender_category",
+        "recipients_category",
+        "timestamp_category",
+    )
+
+    def test_no_category_option_is_required(self):
+        """One assert covering both halves: the seven exist, and none demands a value."""
+        stated = {
+            parameter.name: parameter.required
+            for parameter in triage_command.params
+            if parameter.name in self.CATEGORY_OPTIONS
+        }
+
+        assert stated == dict.fromkeys(self.CATEGORY_OPTIONS, False)
+
+    def test_stating_nothing_uses_the_configured_names(self):
+        assert _fields(FIELDS, dict.fromkeys(FIELDS.model_dump())) == FIELDS
+
+    def test_an_override_replaces_one_name_and_leaves_the_rest(self):
+        overridden = _fields(FIELDS, {"conversation_id": "thread", "folder": None})
+
+        assert overridden.conversation_id == "thread"
+        assert overridden.model_dump() | {"conversation_id": FIELDS.conversation_id} == FIELDS.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# every shipped interaction source, against the producer it names
+# ---------------------------------------------------------------------------
+
+
+WHEN = "2026-07-20T09:00:00Z"
+"""Inside the shipped lookback window and behind `NOW`, so `exclude_future` holds."""
+
+
+def _email_document() -> tuple[str, str]:
+    """`(markdown the email builder produces, the counterparty it states)`."""
+    data = received("Budget question", "conv-1", "Inbox", WHEN, ["owner@example.com"])
+    return dumps_markdown(build_email_frontmatter(data), f"# {data.subject}\n"), data.sender_address
+
+
+def _event_document() -> tuple[str, str]:
+    """The same for the calendar builder -- frontmatter *and* attendee relations.
+
+    Both halves, because the counterparty is not in the frontmatter at all: an
+    event has N of them and only the body can carry N readable values.
+    """
+    data = CalendarEventData(
+        subject="Weekly review",
+        event_id="evt-1",
+        start_time=WHEN,
+        end_time=WHEN,
+        location="",
+        organizer_name="Owner",
+        organizer_email="owner@example.com",
+        attendees=["Robin Vale"],
+        attendee_details=[{"name": "Robin Vale", "email": "robin@example.com", "status": "accepted"}],
+        is_recurring=False,
+        web_link="",
+    )
+    body = "\n".join([f"# {data.subject}\n", *attendee_relations(data)])
+    return dumps_markdown(build_calendar_frontmatter(data), body), "Robin Vale"
+
+
+PRODUCERS = {"email": _email_document, "calendar_event": _event_document}
+"""`entity_type` -> the bundled producer that writes it.
+
+Keyed by the entity type so the parametrised test below can look a source up by
+the name the shipped config uses. A source naming a type absent from this table
+fails rather than skips: "no producer writes this" is exactly the defect.
+"""
+
+
+def indexed(store: InMemoryIndexBackend, corpus_root: Path, index_config, documents: list[tuple[str, str]]):
+    """Write markdown, parse it with the real parser, index it. No hand-built entities."""
+    entities = []
+    for name, text in documents:
+        path = corpus_root / f"{name}.md"
+        path.write_text(text, encoding="utf-8")
+        parsed = parse_markdown_file(path, index_config.roots[0], index_config)
+        assert parsed is not None
+        entities.append(parsed)
+    return loaded(store, entities)
+
+
+class TestTiersOverExtractorOutput:
+    """`ops tiers` over the shipped config and the bundled builders' real output.
+
+    Every other tiers test writes the observations it then reads, so all of them
+    passed while both shipped sources named categories no builder wrote and the
+    verb reported zero counterparties against a full vault -- which reads as a
+    quiet quarter, not as a bug.
+    """
+
+    @pytest.fixture()
+    def corpus(self, backend, corpus_root, index_config):
+        return indexed(
+            backend,
+            corpus_root,
+            index_config,
+            [(entity_type, producer()[0]) for entity_type, producer in sorted(PRODUCERS.items())],
+        )
+
+    def test_the_shipped_config_reports_the_counterparties_it_was_given(self, corpus):
+        """The regression itself: an empty report over a corpus this library wrote."""
+        assignments = compute_tiers(corpus, SHIPPED_TIERS, NOW, PAGE_SIZE)
+
+        assert [(a.party, a.interactions) for a in assignments] == [("alice@example.com", 1), ("Robin Vale", 1)]
+
+    @pytest.mark.parametrize(
+        "source", SHIPPED_TIERS.interaction_sources, ids=[s.entity_type for s in SHIPPED_TIERS.interaction_sources]
+    )
+    def test_every_shipped_source_reads_the_builder_it_names(
+        self, backend, corpus_root, index_config, source: InteractionSourceConfig
+    ):
+        """The generalised guard: one source at a time, whatever the template lists.
+
+        Driving the source rather than asserting on key names covers the shape
+        rule too -- a list-valued frontmatter key is metadata, so a source
+        naming one yields nothing here without the test having to restate why.
+        """
+        assert source.entity_type in PRODUCERS, f"no bundled producer writes {source.entity_type!r}"
+        text, party = PRODUCERS[source.entity_type]()
+        corpus = indexed(backend, corpus_root, index_config, [(source.entity_type, text)])
+        config = tiers_config(SHIPPED_TIERS.ladder, [source], SHIPPED_TIERS.lookback_days)
+
+        assert [(a.party, a.interactions) for a in compute_tiers(corpus, config, NOW, PAGE_SIZE)] == [(party, 1)]
+
+
+class TestShippedFolderNames:
+    """The folder half of the same family, checkable without a corpus.
+
+    The email extractor writes `folder` verbatim from the mailbox's configured
+    folder list, so a triage filter naming a folder that list never produces
+    reports nothing -- the same silence, from the other direction.
+    """
+
+    EXTRACTED = {
+        folder for mailbox in SHIPPED["extractors"]["email"]["mailboxes"] for folder in (mailbox["folders"] or [])
+    }
+
+    def test_the_inbox_folder_is_one_the_extractor_writes(self):
+        assert SHIPPED_TRIAGE.inbox_folder in self.EXTRACTED
+
+    def test_at_least_one_sent_folder_is_one_the_extractor_writes(self):
+        assert set(SHIPPED_TRIAGE.sent_folders) & self.EXTRACTED

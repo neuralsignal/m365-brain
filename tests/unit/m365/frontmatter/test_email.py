@@ -9,6 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
+from m365_brain.ops.names import email_addresses
 
 EXPECTED_KEYS = {
     "title",
@@ -19,6 +20,8 @@ EXPECTED_KEYS = {
     "sender_name",
     "to",
     "date",
+    "conversation_id",
+    "message_id",
     "folder",
     "mailbox",
     "importance",
@@ -27,10 +30,20 @@ EXPECTED_KEYS = {
     "status",
 }
 
+SCALAR_KEYS = EXPECTED_KEYS - {"tags", "source"}
+"""Every key that must promote to an observation when the file is indexed.
+
+`parsers.document` promotes a scalar and leaves a list or a dict in metadata, and
+metadata is not readable per entity -- so a key of the wrong shape here is not a
+formatting preference, it is a fact `ops triage` cannot see. `tags` and `source`
+are the two deliberate structures.
+"""
+
 EMAILS = st.builds(
     EmailData,
     subject=st.text(min_size=1, max_size=60),
     message_id=st.text(min_size=1, max_size=40),
+    conversation_id=st.text(min_size=1, max_size=40),
     received_time=st.sampled_from(["2026-03-12T10:00:00Z", "2025-11-01T08:30:00Z"]),
     folder=st.sampled_from(["Inbox", "Sent Items", "Archive/2026", "Deleted Items"]),
     mailbox=st.emails(),
@@ -52,9 +65,42 @@ class TestEmailFrontmatterProperties:
         assert set(fm) == EXPECTED_KEYS
         assert fm["type"] == "email"
         assert fm["status"] == "raw"
-        assert fm["source"]["extractor"] == "m365-brain/email/1.1"
+        assert fm["source"]["extractor"] == "m365-brain/email/1.3"
         assert fm["source"]["service"] == "exchange"
         assert fm["source"]["id"] == data.message_id
+
+    @given(EMAILS)
+    def test_every_readable_key_is_a_scalar(self, data: EmailData):
+        """A list or a dict here is invisible to any operation over the index."""
+        fm = build_email_frontmatter(data)
+
+        assert all(isinstance(fm[key], str | bool) for key in SCALAR_KEYS)
+
+    @given(EMAILS)
+    def test_the_conversation_id_is_carried_through_verbatim(self, data: EmailData):
+        """Pairing a reply with its message is string equality, so nothing may reshape it."""
+        fm = build_email_frontmatter(data)
+
+        assert fm["conversation_id"] == data.conversation_id
+
+    @given(EMAILS)
+    def test_the_message_id_is_readable_and_matches_the_source_block(self, data: EmailData):
+        """An intent's `in_reply_to` is a message id, and `source` is unreadable.
+
+        The duplication is the point: `source.id` is inside a dict, so it is
+        metadata, and the "the human threw this draft away" clause of `ops
+        triage` has nothing to match on unless the id is also a scalar key.
+        """
+        fm = build_email_frontmatter(data)
+
+        assert fm["message_id"] == data.message_id == fm["source"]["id"]
+
+    @given(EMAILS)
+    def test_every_recipient_survives_the_join(self, data: EmailData):
+        """`to` is joined for the index, not truncated: the addresses parse back out."""
+        fm = build_email_frontmatter(data)
+
+        assert email_addresses(fm["to"]) == [address.casefold() for address in data.to_recipients]
 
     @given(EMAILS)
     def test_permalink_is_slug_safe(self, data: EmailData):
@@ -79,6 +125,7 @@ class TestEmailFrontmatterShapes:
             EmailData(
                 subject="Re: Invoice",
                 message_id="msg-1",
+                conversation_id="conv-1",
                 received_time="2026-03-12T10:00:00Z",
                 folder="Sent Items",
                 mailbox="me@example.com",
@@ -93,7 +140,7 @@ class TestEmailFrontmatterShapes:
 
         assert fm["tags"] == ["email", "sent-items"]
         assert fm["folder"] == "Sent Items"
-        assert fm["to"] == ["bob@example.com", "carol@example.com"]
+        assert fm["to"] == "bob@example.com, carol@example.com"
         assert fm["importance"] == "high"
         assert fm["has_attachments"] is True
         assert fm["source"]["url"] == "https://outlook.office365.com/m/1"
@@ -103,6 +150,7 @@ class TestEmailFrontmatterShapes:
             EmailData(
                 subject="Draft note to self",
                 message_id="msg-2",
+                conversation_id="conv-2",
                 received_time="2026-03-12T10:00:00Z",
                 folder="Drafts",
                 mailbox="me@example.com",
@@ -115,7 +163,7 @@ class TestEmailFrontmatterShapes:
             )
         )
 
-        assert fm["to"] == []
+        assert fm["to"] == ""
         assert fm["sender_name"] == ""
         assert fm["permalink"].startswith("email-2026-03-12-draft-note-to-self-")
 
@@ -125,6 +173,7 @@ class TestEmailFrontmatterShapes:
             EmailData(
                 subject="Orphan",
                 message_id="msg-3",
+                conversation_id="conv-3",
                 received_time="2026-03-12T10:00:00Z",
                 folder="",
                 mailbox="me@example.com",
@@ -159,6 +208,7 @@ class TestEmailFrontmatterShapes:
             EmailData(
                 subject="Archived thread",
                 message_id="msg-4",
+                conversation_id="conv-4",
                 received_time="2026-03-12T10:00:00Z",
                 folder=folder,
                 mailbox="me@example.com",

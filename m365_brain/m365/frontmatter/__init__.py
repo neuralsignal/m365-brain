@@ -1,6 +1,10 @@
 """Per-extractor frontmatter builder functions for Obsidian-compatible markdown."""
 
-from m365_brain.m365.frontmatter.calendar import CalendarEventData, build_calendar_frontmatter
+from m365_brain.m365.frontmatter.calendar import (
+    CalendarEventData,
+    attendee_relations,
+    build_calendar_frontmatter,
+)
 from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
 from m365_brain.m365.frontmatter.files import (
     OneDriveFileData,
@@ -30,6 +34,7 @@ __all__ = [
     "SharePointFileData",
     "TeamsChannelData",
     "TeamsChatData",
+    "attendee_relations",
     "build_calendar_frontmatter",
     "build_contact_frontmatter",
     "build_directory_user_frontmatter",

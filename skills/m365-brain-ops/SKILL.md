@@ -58,23 +58,25 @@ rung is a config edit.
 
 Where the interactions come from is also config: `ops.tiers.interaction_sources`
 lists them, each naming an entity type, where to read the counterparty from,
-and which observation carries the timestamp.
+and which observation carries the timestamp. **Those names have to be the ones
+your notes actually carry** — a source naming a category nothing writes counts
+nothing, and the verb then reports zero counterparties over a full collection,
+which reads as a quiet quarter rather than as a fault. Run
+`m365-brain --config "$M365_BRAIN_CONFIG" index context --permalink <one item>`
+to see what yours are called.
 
 ## Inbox triage
 
-    m365-brain --config "$M365_BRAIN_CONFIG" ops triage --timeframe 7d \
-      --entity-type email --folder-category folder --conversation-category conversation_id \
-      --sender-category sender --recipients-category to --timestamp-category date --json
+    m365-brain --config "$M365_BRAIN_CONFIG" ops triage --timeframe 7d --json
 
 Lists messages in the configured inbox folder, within the timeframe, with no
 sent message sharing their conversation, and not already recorded as rejected.
 
-The six `--*-category` options name the observation categories your messages
-actually use. They are required rather than defaulted because the vocabulary
-inside a note belongs to whoever writes the notes — guessing `folder` and
-`date` would work for one collection and silently return nothing for the next.
-Run `m365-brain --config "$M365_BRAIN_CONFIG" index context --permalink <one message>`
-to see what the categories are called in yours.
+The categories come from `ops.triage.fields` — seven of them, all required and
+none defaulted, because the vocabulary inside a note belongs to whoever writes
+the notes and guessing `folder` or `date` would work for one collection and
+silently return nothing for the next. The `--*-category` options override one
+for a single run; the ordinary invocation is the line above.
 
 Two enrichments the source of this pass had are deliberately **absent**:
 
@@ -88,6 +90,6 @@ the window, the conversation-pairing, the rejection record, whether a message
 is a forward (`ops.triage.forward_prefixes`) and whether the recipient was on
 cc only.
 
-Config: `ops.triage.own_email`, `inbox_folder`, `sent_folders`, `forward_prefixes`.
-The timeframe and the six categories are arguments, not config — see
-`references/config-keys.md` for why, and for the gap that would remove them.
+Config: `ops.triage.own_email`, `inbox_folder`, `sent_folders`, `forward_prefixes`,
+`fields.*`. Only the timeframe is an argument — see `references/config-keys.md`
+for why, and for what each of the seven field names decides.

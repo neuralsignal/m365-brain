@@ -8,8 +8,8 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 
 ### Phase 1: Azure Foundation
 
-1. **Log in to Azure CLI**: `az login --tenant ea0bd7d3-b29f-47f4-aedc-da7b52a28ba0`
-2. **Verify subscription**: `az account set --subscription 9f079696-135d-4d18-a208-3e2e55fca2f5`
+1. **Log in to Azure CLI**: `az login --tenant 00000000-0000-0000-0000-000000000001`
+2. **Verify subscription**: `az account set --subscription 00000000-0000-0000-0000-000000000002`
 3. **Register resource providers** (one-time, async -- may take minutes):
    ```bash
    az provider register --namespace Microsoft.Storage
@@ -82,8 +82,8 @@ For updates after the initial deployment:
 
 | Item | Value |
 |------|-------|
-| Tenant | Sanoptis (`ea0bd7d3-b29f-47f4-aedc-da7b52a28ba0`) |
-| Subscription | `sub-san-mdai` (`9f079696-135d-4d18-a208-3e2e55fca2f5`) |
+| Tenant | Example Corp (`00000000-0000-0000-0000-000000000001`) |
+| Subscription | `sub-example` (`00000000-0000-0000-0000-000000000002`) |
 | Role | Owner (upgraded 2026-03-25; was Contributor) |
 | Region | `switzerlandnorth` |
 
@@ -94,7 +94,7 @@ This is the app users authenticate against (OAuth2 authorization code flow). **N
 | Item | Value |
 |------|-------|
 | App name | `workflow-read` |
-| App ID (client ID) | `f209d856-e14d-4dcf-87cc-bf0d98bb092b` |
+| App ID (client ID) | `00000000-0000-0000-0000-000000000003` |
 | Client secret name | `reader` (expires 2028-03-04) |
 | Redirect URIs | See below |
 
@@ -108,7 +108,7 @@ https://app-m365-admin-dev.azurewebsites.net/callback  <- Azure dev
 
 **How to update redirect URIs:**
 ```bash
-az ad app update --id f209d856-e14d-4dcf-87cc-bf0d98bb092b \
+az ad app update --id 00000000-0000-0000-0000-000000000003 \
   --web-redirect-uris \
     "http://localhost:3000/callback" \
     "http://localhost:8000/auth/callback" \
@@ -132,9 +132,9 @@ Separate from the Entra app above. Used only by GitHub Actions for OIDC login + 
 | Item | Value |
 |------|-------|
 | Display name | `sp-m365-brain-deploy` |
-| App ID (client ID) | `e31a8416-7cd9-4b71-9d7e-7f89cbd7631a` |
-| Object ID (SP) | `0c9fe08b-b292-4954-920d-5a7bdeeb7a06` |
-| Object ID (App reg) | `d471c1e7-77bc-4b2b-a58c-e42ab4546bf9` |
+| App ID (client ID) | `00000000-0000-0000-0000-000000000004` |
+| Object ID (SP) | `00000000-0000-0000-0000-000000000005` |
+| Object ID (App reg) | `00000000-0000-0000-0000-000000000006` |
 | Role | Contributor on subscription |
 | Created | 2026-03-25 |
 
@@ -146,13 +146,13 @@ Separate from the Entra app above. Used only by GitHub Actions for OIDC login + 
 # If you only have Contributor, the SP is created but the role assignment fails.
 az ad sp create-for-rbac --name "sp-m365-brain-deploy" \
   --role Contributor \
-  --scopes /subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5
+  --scopes /subscriptions/00000000-0000-0000-0000-000000000002
 
 # Step 2 (if role assignment failed): Assign role separately as Owner
 az role assignment create \
-  --assignee e31a8416-7cd9-4b71-9d7e-7f89cbd7631a \
+  --assignee 00000000-0000-0000-0000-000000000004 \
   --role Contributor \
-  --scope /subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5
+  --scope /subscriptions/00000000-0000-0000-0000-000000000002
 ```
 
 **Gotcha:** `az ad sp create-for-rbac` creates the SP and app reg even if the role assignment fails (exits non-zero). Check `az ad sp list --display-name "sp-m365-brain-deploy"` to confirm.
@@ -169,8 +169,8 @@ GitHub Actions authenticates to Azure via OIDC (no stored client secrets). Three
 
 **How they were created:**
 ```bash
-# Replace APP_OBJECT_ID with the app registration object ID (d471c1e7-...)
-APP_OBJECT_ID="d471c1e7-77bc-4b2b-a58c-e42ab4546bf9"
+# Replace APP_OBJECT_ID with the app registration object ID (...0006)
+APP_OBJECT_ID="00000000-0000-0000-0000-000000000006"
 
 az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
   "name": "github-main",
@@ -231,15 +231,15 @@ az provider show --namespace Microsoft.ContainerInstance --query registrationSta
 
 | Secret | Value source | Purpose |
 |--------|-------------|---------|
-| `AZURE_CLIENT_ID` | SP app ID: `e31a8416-...` | OIDC login for GitHub Actions |
-| `AZURE_TENANT_ID` | `ea0bd7d3-...` | Azure tenant |
-| `AZURE_SUBSCRIPTION_ID` | `9f079696-...` | Target subscription |
-| `ENTRA_CLIENT_ID` | Entra app ID: `f209d856-...` | User auth (passed to Bicep as `entraClientId`) |
+| `AZURE_CLIENT_ID` | SP app ID: `...0004` | OIDC login for GitHub Actions |
+| `AZURE_TENANT_ID` | `...0001` | Azure tenant |
+| `AZURE_SUBSCRIPTION_ID` | `...0002` | Target subscription |
+| `ENTRA_CLIENT_ID` | Entra app ID: `...0003` | User auth (passed to Bicep as `entraClientId`) |
 | `AZURE_CLIENT_SECRET` | Entra app `reader` secret | User auth client secret |
 | `POSTGRES_ADMIN_PASSWORD` | Chosen at setup | PostgreSQL admin password |
 | `SECRET_KEY` | `python -c "import secrets; print(secrets.token_hex(32))"` | Session signing |
 | `FERNET_KEY` | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | Token encryption |
-| `ADMIN_EMAIL` | `matthias.christenson@sanoptis.com` | Admin user for UI |
+| `ADMIN_EMAIL` | `admin@example.com` | Admin user for UI |
 
 **Important:** `AZURE_CLIENT_ID` (SP for deploy) and `ENTRA_CLIENT_ID` (app for user auth) are **different values**. The deploy workflow uses `AZURE_CLIENT_ID` for OIDC login and passes `ENTRA_CLIENT_ID` to Bicep for injecting into the app's config.
 
@@ -399,9 +399,9 @@ export POSTGRES_ADMIN_PASSWORD="<strong-password>"
 export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 export FERNET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 export AZURE_CLIENT_SECRET="<entra-client-secret>"
-export AZURE_CLIENT_ID="f209d856-e14d-4dcf-87cc-bf0d98bb092b"
-export AZURE_TENANT_ID="ea0bd7d3-b29f-47f4-aedc-da7b52a28ba0"
-export ADMIN_EMAIL="matthias.christenson@sanoptis.com"
+export AZURE_CLIENT_ID="00000000-0000-0000-0000-000000000003"
+export AZURE_TENANT_ID="00000000-0000-0000-0000-000000000001"
+export ADMIN_EMAIL="admin@example.com"
 
 # Deploy dev
 bash scripts/deploy-infra.sh dev
@@ -420,7 +420,7 @@ The deploy script:
 4. Retrieves storage connection string
 5. Writes `.env.{env}` with all connection details
 
-**Note:** `AZURE_CLIENT_ID` in `deploy-infra.sh` refers to the **Entra app** (workflow-read, `f209d856-...`), not the deploy SP. The deploy script injects this into the app's config so users authenticate against the right Entra app.
+**Note:** `AZURE_CLIENT_ID` in `deploy-infra.sh` refers to the **Entra app** (workflow-read, `...0003`), not the deploy SP. The deploy script injects this into the app's config so users authenticate against the right Entra app.
 
 ### Build and push Docker images (manual)
 
@@ -442,7 +442,7 @@ PRINCIPAL_ID=$(az webapp identity show --name app-m365-admin-dev \
 az role assignment create \
   --assignee "$PRINCIPAL_ID" \
   --role "Key Vault Secrets User" \
-  --scope "/subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5/resourceGroups/rg-m365-brain-dev/providers/Microsoft.KeyVault/vaults/kv-m365-ext-dev"
+  --scope "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-m365-brain-dev/providers/Microsoft.KeyVault/vaults/kv-m365-ext-dev"
 ```
 
 ## CI/CD
@@ -523,7 +523,7 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 ### GitHub Actions
 
-21. **Two different client IDs in secrets** -- `AZURE_CLIENT_ID` is the deploy service principal (`e31a8416-...`) used for OIDC login. `ENTRA_CLIENT_ID` is the user auth app (`f209d856-...`) passed to Bicep. Mixing them up causes OIDC login to fail or users to authenticate against the wrong Entra app.
+21. **Two different client IDs in secrets** -- `AZURE_CLIENT_ID` is the deploy service principal (`...0004`) used for OIDC login. `ENTRA_CLIENT_ID` is the user auth app (`...0003`) passed to Bicep. Mixing them up causes OIDC login to fail or users to authenticate against the wrong Entra app.
 
 22. **`gh api` with `-f` sends strings, not integers** -- For GitHub environment creation, `gh api ... -f wait_timer=0` fails because the API expects an integer. Fix: use `--input /dev/null` for default settings, or pipe JSON: `--input <(echo '{"wait_timer":0}')`.
 
@@ -625,7 +625,7 @@ az monitor log-analytics query \
 - [x] `docker-compose.yaml` for full-stack local testing with PostgreSQL
 - [x] Bicep template compiles with all env vars (App Service settings)
 - [x] `deploy.yml` triggers on push to main (-> dev) and tag push (-> prod)
-- [x] Service principal `sp-m365-brain-deploy` created (`e31a8416-...`)
+- [x] Service principal `sp-m365-brain-deploy` created (`...0004`)
 - [x] SP Contributor role assigned on subscription
 - [x] 3 OIDC federated credentials (main, dev env, prod env)
 - [x] All 9 GitHub secrets configured

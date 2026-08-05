@@ -460,8 +460,8 @@ class TestRendering:
             url=re.compile(r".*/me/chats/.*/messages.*"),
             json={
                 "value": [
-                    _graph_msg("m2", "2026-06-11T10:20:00Z", sender="Samuel Scholl", content="reply", edited=True),
-                    _graph_msg("m1", "2026-06-11T09:42:00Z", sender="Matthias Christenson", content="hi"),
+                    _graph_msg("m2", "2026-06-11T10:20:00Z", sender="Jordan Kim", content="reply", edited=True),
+                    _graph_msg("m1", "2026-06-11T09:42:00Z", sender="Alex Doe", content="hi"),
                 ]
             },
         )
@@ -470,8 +470,8 @@ class TestRendering:
 
         content = storage.read_file(_md(ctx.paths))
         assert "## 2026-06-11" in content
-        assert "### 09:42 — Matthias Christenson" in content
-        assert "### 10:20 — Samuel Scholl *(edited)*" in content
+        assert "### 09:42 — Alex Doe" in content
+        assert "### 10:20 — Jordan Kim *(edited)*" in content
         assert "## Messages" in content
         assert "# Alice, Bob" in content
 
@@ -500,8 +500,8 @@ class TestRendering:
                         "chatType": "oneOnOne",
                         "topic": None,
                         "members": [
-                            {"displayName": "Matthias Christenson"},
-                            {"displayName": "Samuel Scholl"},
+                            {"displayName": "Alex Doe"},
+                            {"displayName": "Jordan Kim"},
                         ],
                     }
                 ]
@@ -514,10 +514,10 @@ class TestRendering:
 
         teams_chats.run(client, storage, {}, _config(), ctx)
 
-        content = storage.read_file(_md(ctx.paths, title="Matthias Christenson, Samuel Scholl", chat_id=chat_id))
+        content = storage.read_file(_md(ctx.paths, title="Alex Doe, Jordan Kim", chat_id=chat_id))
         assert "## Relations" in content
-        assert "[[contact-matthias-christenson]]" in content
-        assert "[[contact-samuel-scholl]]" in content
+        assert "[[contact-alex-doe]]" in content
+        assert "[[contact-jordan-kim]]" in content
 
     def test_deleted_message_renders_tombstone(self, httpx_mock: HTTPXMock, storage, client, ctx):
         _mock_chats(httpx_mock)
@@ -562,7 +562,7 @@ class TestAttachments:
             max_attachment_size_mb=100,
             attachment_convert_extensions=[],
         )
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
 
         _mock_chats(httpx_mock)
         msg = _graph_msg("msg-att", "2026-06-10T09:00:00Z", content="see attached")
@@ -570,9 +570,9 @@ class TestAttachments:
         httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
         httpx_mock.add_response(
             url=re.compile(r".*/shares/.*/driveItem.*"),
-            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
         )
-        httpx_mock.add_response(url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+        httpx_mock.add_response(url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake")
 
         state, _ = teams_chats.run(client, storage, {}, config, ctx)
         content = storage.read_file(_md(ctx.paths))
@@ -604,16 +604,16 @@ class TestAttachments:
 
     def _seed_with_attachment(self, httpx_mock: HTTPXMock, storage, client, ctx) -> dict:
         """Backfill one message carrying spec.pdf; returns the resulting state."""
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         _mock_chats(httpx_mock)
         msg = _graph_msg("msg-att", "2026-06-10T09:00:00Z", content="see attached")
         msg["attachments"] = [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}]
         httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [msg]})
         httpx_mock.add_response(
             url=re.compile(r".*/shares/.*/driveItem.*"),
-            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
         )
-        httpx_mock.add_response(url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+        httpx_mock.add_response(url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake")
         state, _ = teams_chats.run(client, storage, {}, self._attachment_config(), ctx)
         return state
 
@@ -635,7 +635,7 @@ class TestAttachments:
             {
                 "contentType": "reference",
                 "name": "spec.pdf",
-                "contentUrl": "https://sanoptis.sharepoint.com/sites/x/spec.pdf",
+                "contentUrl": "https://contoso.sharepoint.com/sites/x/spec.pdf",
             }
         ]
         httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [bumped]})
@@ -666,22 +666,22 @@ class TestAttachments:
             {
                 "contentType": "reference",
                 "name": "spec.pdf",
-                "contentUrl": "https://sanoptis.sharepoint.com/sites/x/spec.pdf",
+                "contentUrl": "https://contoso.sharepoint.com/sites/x/spec.pdf",
             },
             {
                 "contentType": "reference",
                 "name": "extra.pdf",
-                "contentUrl": "https://sanoptis.sharepoint.com/sites/x/extra.pdf",
+                "contentUrl": "https://contoso.sharepoint.com/sites/x/extra.pdf",
             },
         ]
         httpx_mock.add_response(url=re.compile(r".*/me/chats/.*/messages.*"), json={"value": [edited]})
         httpx_mock.add_response(
             url=re.compile(r".*/shares/.*/driveItem.*"),
-            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
             is_reusable=True,
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake", is_reusable=True
+            url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake", is_reusable=True
         )
 
         teams_chats.run(client, storage, state, self._attachment_config(), ctx)
@@ -883,8 +883,8 @@ class TestRelations:
                         "chatType": "oneOnOne",
                         "topic": None,
                         "members": [
-                            {"displayName": "Matthias Christenson"},
-                            {"displayName": "Samuel Scholl"},
+                            {"displayName": "Alex Doe"},
+                            {"displayName": "Jordan Kim"},
                         ],
                     }
                 ]
@@ -897,10 +897,10 @@ class TestRelations:
 
         teams_chats.run(client, storage, {}, _config(), ctx)
 
-        content = storage.read_file(_md(ctx.paths, title="Matthias Christenson, Samuel Scholl"))
+        content = storage.read_file(_md(ctx.paths, title="Alex Doe, Jordan Kim"))
         assert "## Relations" in content
-        assert "[[contact-matthias-christenson]]" in content
-        assert "[[contact-samuel-scholl]]" in content
+        assert "[[contact-alex-doe]]" in content
+        assert "[[contact-jordan-kim]]" in content
 
 
 class TestChatTitle:
@@ -993,7 +993,7 @@ class TestConvertedAttachmentLink:
             max_attachment_size_mb=100,
             attachment_convert_extensions=[".docx"],
         )
-        content_url = "https://sanoptis.sharepoint.com/sites/x/report.docx"
+        content_url = "https://contoso.sharepoint.com/sites/x/report.docx"
 
         _mock_chats(httpx_mock)
         msg = _graph_msg("msg-conv", "2026-06-10T09:00:00Z", content="see report")
@@ -1004,11 +1004,11 @@ class TestConvertedAttachmentLink:
             json={
                 "id": "di",
                 "size": 64,
-                "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x",
+                "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x",
             },
         )
         httpx_mock.add_response(
-            url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"),
+            url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"),
             content=b"PK\x03\x04fake docx",
         )
 

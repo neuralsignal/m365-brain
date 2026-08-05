@@ -29,7 +29,7 @@ class AuthCodeAuth:
         self._app = msal.ConfidentialClientApplication(
             auth_config.client_id,
             authority=f"https://login.microsoftonline.com/{auth_config.tenant_id}",
-            client_credential=auth_config.client_secret,
+            client_credential=auth_config.client_secret.get_secret_value(),
         )
         self._scopes = [s for s in auth_config.scopes if s not in _RESERVED_SCOPES]
 

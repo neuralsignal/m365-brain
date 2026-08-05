@@ -13,7 +13,7 @@ from m365_brain.config import CalendarExtractorConfig
 from m365_brain.m365.client import GraphClient
 from m365_brain.m365.converters.html_to_md import html_to_markdown
 from m365_brain.m365.extractors.base import ExtractorContext
-from m365_brain.m365.frontmatter import CalendarEventData, build_calendar_frontmatter
+from m365_brain.m365.frontmatter import CalendarEventData, attendee_relations, build_calendar_frontmatter
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
@@ -192,21 +192,12 @@ def _write_event(
         body_parts.append(f"**Where:** {data.location}")
     if data.organizer_name:
         body_parts.append(f"**Organizer:** {data.organizer_name}")
-    if data.attendee_details:
-        att_strs = []
-        for d in data.attendee_details:
-            parts = [d.get("name", "")]
-            extra = []
-            if d.get("email"):
-                extra.append(d["email"])
-            if d.get("status"):
-                extra.append(d["status"])
-            if extra:
-                parts.append(f"({', '.join(extra)})")
-            att_strs.append(" ".join(parts))
-        body_parts.append(f"**Attendees:** {', '.join(att_strs)}")
-    elif data.attendees:
-        body_parts.append(f"**Attendees:** {', '.join(data.attendees)}")
+    # Relation lines, not a prose list: an attendee is a counterparty `ops
+    # tiers` counts, and prose is not readable back out of the index.
+    relations = attendee_relations(data)
+    if relations:
+        body_parts.append("**Attendees:**\n")
+        body_parts.extend(relations)
     body_parts.append("")
     body_parts.append("---\n")
     if body_md:

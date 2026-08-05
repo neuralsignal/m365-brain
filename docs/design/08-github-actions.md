@@ -329,7 +329,7 @@ jobs:
         run: pixi run test
 ```
 
-The structure step is not decoration: the layering rules in `02-package-architecture.md` and the consumer-vocabulary ban are enforced by scripts (`check_structure.py`, `check_no_workspace.py`), and CI is where they bite.
+The structure step is not decoration: the layering rules in `02-package-architecture.md` and the real-world-identifier ban are enforced by scripts (`check_structure.py`, `check_publishable.py`), and CI is where they bite.
 
 ### Release Workflow
 

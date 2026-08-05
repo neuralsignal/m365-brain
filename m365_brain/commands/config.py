@@ -31,37 +31,21 @@ def validate(ctx: click.Context) -> None:
     click.echo(f"  hooks:    {len(specs)} resolved")
 
 
-SECRET_KEYS = frozenset({"client_secret", "connection_string", "secret_key", "fernet_key"})
-"""Config keys whose value never reaches stdout.
-
-Redacted by name rather than by type because the schema declares these as
-plain `str`. That is a weaker guarantee than a `SecretStr` would give, so the
-test for this verb asserts the *values* are absent from the output rather than
-asserting this list is right -- a list can be typo'd, and a value either leaked
-or it did not. Promoting these four fields to `SecretStr` is filed as its own
-change; it touches every consumer that reads them."""
-
-REDACTED = "***"
-
-
 @config_group.command("show")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
 def show(ctx: click.Context, as_json: bool) -> None:
-    """The merged, env-expanded, path-resolved config, with secrets redacted."""
-    payload = redact(require_config(ctx).model_dump(mode="json"))
+    """The merged, env-expanded, path-resolved config, with secrets redacted.
+
+    Redaction is the schema's job, not this verb's: every secret is a
+    `SecretStr`, which serialises as `**********` in both output modes. The
+    denylist of secret-looking key names this used to carry is gone -- it could
+    fail open on a typo or on a fifth secret nobody added to it, and a type
+    cannot. A `null` secret still serialises as `null`, so `config show` keeps
+    saying which flow a config selects.
+    """
+    payload = require_config(ctx).model_dump(mode="json")
     emit(as_json, payload, _yaml_lines(payload))
-
-
-def redact(value: object) -> object:
-    """Replace every secret-named leaf, at any depth. Non-null values only."""
-    if isinstance(value, dict):
-        return {
-            key: REDACTED if key in SECRET_KEYS and inner is not None else redact(inner) for key, inner in value.items()
-        }
-    if isinstance(value, list):
-        return [redact(item) for item in value]
-    return value
 
 
 def _present(loaded) -> list[str]:

@@ -13,13 +13,22 @@ other, so a config that indexes a folder of markdown and never talks to Graph
 is a legitimate config, and so is the reverse. Absence means "this subsystem is
 not in use"; `require_section()` turns using it anyway into a named crash.
 Inside a section, every field is required.
+
+Every secret in the tree is `SecretStr`, never `str`. That makes redaction a
+property of the type rather than of a list of field names kept somewhere else:
+`repr`, `str`, `model_dump` and `model_dump_json` all render `**********`, so
+`config show`, a log line and an exception message are safe by construction and
+not by anybody remembering. The raw value is reachable only through an explicit
+`.get_secret_value()`, which is what makes the handful of places that genuinely
+need it greppable. Add a new secret as `SecretStr` and it is covered with no
+other edit -- `tests/unit/test_config_secrets.py` walks the annotations.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, SecretStr, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
 from m365_brain.config.extractors import ExtractorsConfig
@@ -43,10 +52,11 @@ class AuthProfileConfig(BaseModel):
     tenant_id: str
     scopes: list[str]
     token_cache_path: str
-    client_secret: str | None
+    client_secret: SecretStr | None
     """`null` for a public client (device-code flow), a string for a
     confidential one (auth-code flow). Required either way: the flow is chosen
-    by this field, so it is never inferred."""
+    by this field, so it is never inferred. Presence -- not the value -- is what
+    selects the flow, so the only reader that unwraps it is the MSAL call."""
 
 
 class AuthConfig(AuthProfileConfig):
@@ -59,7 +69,7 @@ class AuthConfig(AuthProfileConfig):
     """
 
     model_config = SECTION_MODEL_CONFIG
-    client_secret: str | None = None
+    client_secret: SecretStr | None = None
     profiles: dict[str, AuthProfileConfig] | None = None
     """Named Entra apps, addressed by `outboxes.definitions.<name>.auth_profile`
     and `extractors.auth_profile`. `None` means one app -- the `auth:` section
@@ -82,7 +92,7 @@ class LocalStorageConfig(BaseModel):
 
 class AzureBlobStorageConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
-    connection_string: str
+    connection_string: SecretStr
     container_name: str
     prefix: str
 
@@ -132,8 +142,8 @@ class WebConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     host: str
     port: int
-    secret_key: str
-    fernet_key: str
+    secret_key: SecretStr
+    fernet_key: SecretStr
     db_path: str
     session_timeout_minutes: int
     db_url: str

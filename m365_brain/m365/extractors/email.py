@@ -142,7 +142,7 @@ def _sync_folder(
     log.info("email.folder_sync_start", mailbox=address, folder=folder, sync_type=sync_type)
 
     params = {
-        "$select": "id,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
+        "$select": "id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
         "receivedDateTime,importance,hasAttachments,webLink,parentFolderId",
         "$top": str(_DELTA_PAGE_SIZE),
     }
@@ -209,6 +209,7 @@ def _write_email(
 ) -> bool:
     """Write a single email to storage. Returns True if written."""
     message_id = msg.get("id", "")
+    conversation_id = msg.get("conversationId", "")
     subject = msg.get("subject") or "(no subject)"
     received = msg.get("receivedDateTime", "")
 
@@ -242,6 +243,7 @@ def _write_email(
         EmailData(
             subject=subject,
             message_id=message_id,
+            conversation_id=conversation_id,
             received_time=received,
             folder=folder,
             mailbox=address,

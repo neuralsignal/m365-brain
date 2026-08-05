@@ -22,6 +22,13 @@ recipient was on the `to` line at all.
 what reconciliation already records: a draft that was dispatched and whose
 verdict came back `rejected` -- the human deleted it -- names the message it was
 a reply to, and that message stops being triaged.
+
+That name is a **message** id, not a conversation id. The two are different
+identifier spaces, so the clause was compared against the wrong one and could
+never fire on a real corpus; the rule now reads `fields.message_id` and
+compares like with like. It is also the narrower reading and the right one: a
+human declining to answer one message has not declined the thread, and a later
+message on it should surface again.
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from m365_brain.config.ops import TriageConfig
+from m365_brain.config.ops import TriageConfig, TriageFieldsConfig
 from m365_brain.index.backends.base import IndexBackend
 from m365_brain.index.query import parse_timeframe
 from m365_brain.model import EntityRef, Observation
@@ -46,24 +53,6 @@ REJECTED_VERDICT: Verdict = "rejected"
 Typed against `outbox.reconcile.Verdict` so that renaming a verdict is a type
 error here rather than a filter that silently stops matching.
 """
-
-
-@dataclass(frozen=True, slots=True)
-class MessageFields:
-    """Which observation categories the message corpus writes each fact under.
-
-    **A parameter because `ops.triage` has no field for it.** Every name here is
-    a property of whoever produced the notes, so hardcoding one would ship one
-    author's frontmatter vocabulary; the honest place for them is an
-    `ops.triage` config block, and until that exists the caller states them.
-    """
-
-    entity_type: str
-    folder: str
-    conversation_id: str
-    sender: str
-    recipients: str
-    timestamp: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +75,7 @@ class _Message:
     entity: EntityRef
     folder: str
     conversation_id: str
+    message_id: str
     received_at: datetime
     sender: str | None
     recipients: frozenset[str]
@@ -103,7 +93,10 @@ def is_cc_only(recipients: frozenset[str], own_email: str) -> bool:
 
 
 def rejected_references(store: IntentStore) -> frozenset[str]:
-    """Every message id a dispatched-then-rejected reply or forward pointed at.
+    """Every **message id** a dispatched-then-rejected reply or forward pointed at.
+
+    `payload.in_reply_to` is validated as a Graph message id, so what comes back
+    is compared against `fields.message_id` and never against a conversation id.
 
     Walks the dispatched receipts because those are the only intents that can
     have a reconciliation verdict at all -- an intent rejected before dispatch
@@ -125,12 +118,16 @@ def triage(
     backend: IndexBackend,
     store: IntentStore,
     config: TriageConfig,
-    fields: MessageFields,
+    fields: TriageFieldsConfig,
     timeframe: str,
     now: datetime,
     page_size: int,
 ) -> list[TriageItem]:
     """Messages inside `timeframe` that are unanswered and not declined.
+
+    `fields` is `config.fields` for every caller that is not overriding it from
+    the command line, and is passed separately so that an override is visible in
+    the call rather than folded into a rebuilt config section.
 
     Sent siblings are looked for across the **whole** index rather than inside
     the window: a reply written after the window closed still answers the
@@ -159,11 +156,11 @@ def triage(
         if message.folder == config.inbox_folder
         and message.received_at >= since
         and message.conversation_id not in answered
-        and message.conversation_id not in declined
+        and message.message_id not in declined
     ]
 
 
-def _message(backend: IndexBackend, entity: EntityRef, fields: MessageFields) -> _Message:
+def _message(backend: IndexBackend, entity: EntityRef, fields: TriageFieldsConfig) -> _Message:
     """One indexed entity read as a message. Missing structure raises."""
     observations = backend.get_observations(entity.entity_id)
     written = _required(entity, observations, fields.timestamp)
@@ -176,6 +173,7 @@ def _message(backend: IndexBackend, entity: EntityRef, fields: MessageFields) ->
         entity=entity,
         folder=_required(entity, observations, fields.folder),
         conversation_id=_required(entity, observations, fields.conversation_id),
+        message_id=_required(entity, observations, fields.message_id),
         received_at=received_at,
         sender=_first(observations, fields.sender),
         recipients=frozenset(
@@ -197,9 +195,15 @@ def _required(entity: EntityRef, observations: Sequence[Observation], category: 
     Raises rather than skipping: a message with no folder or no conversation id
     cannot be judged either way, and dropping it would report "nothing needs
     attention" for a corpus that was simply mis-emitted.
+
+    **Blank counts as absent**, and that is the more valuable half. A missing
+    category is loud on the first message; an empty conversation id is not, and
+    it does not merely lose one message -- every message carrying one lands in
+    the same thread, so a single sent mail with a blank id would answer all of
+    them at once.
     """
     content = _first(observations, category)
-    if content is None:
+    if content is None or not content.strip():
         raise ValueError(f"{entity.permalink}: no observation in category {category!r}; triage cannot judge it")
     return content
 

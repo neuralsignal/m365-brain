@@ -480,7 +480,7 @@ class TestChannelMedia:
             attachment_convert_extensions=[],
             channels=None,
         )
-        content_url = "https://sanoptis.sharepoint.com/sites/x/spec.pdf"
+        content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
         root = _graph_msg("root-att", "2026-06-11T09:00:00Z", content="see attached")
         root["replies"] = []
         root["attachments"] = [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}]
@@ -488,9 +488,9 @@ class TestChannelMedia:
         httpx_mock.add_response(url=MESSAGES_URL, json={"value": [root]})
         httpx_mock.add_response(
             url=re.compile(r".*/shares/.*/driveItem.*"),
-            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://sanoptis.sharepoint.com/dl?t=x"},
+            json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
         )
-        httpx_mock.add_response(url=re.compile(r"https://sanoptis\.sharepoint\.com/dl.*"), content=b"%PDF fake")
+        httpx_mock.add_response(url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake")
 
         teams_channels.run(client, storage, {}, config, ctx)
 

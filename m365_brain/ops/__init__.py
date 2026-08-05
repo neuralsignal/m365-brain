@@ -17,7 +17,6 @@ from m365_brain.ops.links import Confidence, LinkResolution, indexed_entities, r
 from m365_brain.ops.names import deslugify, email_addresses, name_key, normalize_name, reverse_comma_name
 from m365_brain.ops.tiers import DAYS_PER_MONTH, TierAssignment, assign_rung, compute_tiers, is_stale
 from m365_brain.ops.triage import (
-    MessageFields,
     TriageItem,
     is_cc_only,
     is_forward,
@@ -29,7 +28,6 @@ __all__ = [
     "DAYS_PER_MONTH",
     "Confidence",
     "LinkResolution",
-    "MessageFields",
     "TierAssignment",
     "TriageItem",
     "assign_rung",

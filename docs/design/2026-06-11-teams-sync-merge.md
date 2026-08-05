@@ -103,13 +103,13 @@ Standard format — chats:
 ```markdown
 ## 2026-06-11
 
-### 09:42 — Matthias Christenson
+### 09:42 — Alex Doe
 
 message content
 
 **Attachments:** [report.pdf](attachments/<msg-id>/report.pdf) · [report.pdf (text)](attachments_converted/<msg-id>/report.pdf.md)
 
-### 10:20 — Samuel Scholl *(edited)*
+### 10:20 — Jordan Kim *(edited)*
 
 message content
 ```

@@ -111,11 +111,12 @@ m365-brain --config ./m365-brain.yaml outbox list --json | jq -e '[.intents[] | 
 m365-brain --config ./m365-brain.yaml outbox push --json | jq -e '.dispatched == 1'
 m365-brain --config ./m365-brain.yaml outbox reconcile --json | jq -e '.outcomes'
 
-step "7. nothing here names any consuming workspace"
-if grep -rIn -iE '(^|[^[:alnum:]_-])brain\b|sanoptis' . \
-     --exclude-dir=.venv --exclude-dir=vault \
-   | grep -viE 'm365[-_]brain' | grep -q .; then
-  echo "FAIL: consuming-workspace vocabulary found above"
+step "7. nothing here names a real-world identifier"
+# Delegates to the repo's own check rather than restating a pattern: a second
+# copy of the rule is a second thing to keep in sync, and this script used to
+# spell out the very vocabulary it exists to reject.
+if ! python3 "${REPO}/scripts/check_publishable.py" --root .; then
+  echo "FAIL: real-world identifiers found above"
   exit 1
 fi
 

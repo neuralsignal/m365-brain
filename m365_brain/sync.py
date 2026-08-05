@@ -7,12 +7,14 @@ where web modules imported private functions from the CLI layer.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any
 
 import structlog
 
 from m365_brain.config import Config, require_section
+from m365_brain.index.catalog_storage import catalog_writes
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors import (
     calendar,
@@ -90,12 +92,21 @@ def run_one(
     `run_extractors` below logs and continues, which is the same policy spelled
     at a different level. One implementation of "how an extractor is called"
     either way -- the loop that wraps it is the part that varies.
+
+    Because it is that one implementation, it is also where the file catalog is
+    wired in. Both callers -- the cycle and the loop below -- reach an extractor
+    through here, so wrapping the storage for the length of this call catalogs
+    every binary written by every extractor, including one added tomorrow. The
+    extractor name is the catalog's `source`, and it is in scope here and
+    nowhere lower: `index` and `m365` are peers in the layer map and neither may
+    import the other, so the join has to happen above both.
     """
     try:
         module, config_getter = EXTRACTORS[name]
     except KeyError:
         raise UnknownExtractor(f"no extractor named {name!r}; implemented: {sorted(EXTRACTORS)}") from None
-    return module.run(client, storage, state, config_getter(config), ctx)
+    with catalog_writes(config.index, storage, name, lambda: datetime.now(UTC)) as cataloging:
+        return module.run(client, cataloging, state, config_getter(config), ctx)
 
 
 def run_extractors(
