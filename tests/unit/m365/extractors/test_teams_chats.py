@@ -11,10 +11,13 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from m365_brain.config import GraphConfig, TeamsChatsExtractorConfig
+from m365_brain.config.index import RelationConfig
 from m365_brain.m365.client import GRAPH_BASE_URL, GraphClient
 from m365_brain.m365.extractors import teams_chats
 from m365_brain.m365.extractors._message_store import load_store
+from m365_brain.m365.frontmatter.teams import PARTICIPANT
 from m365_brain.m365.markdown_writer import short_hash, slugify
+from m365_brain.parsers.relations import parse_relations
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.paths import VaultPaths
 
@@ -489,7 +492,7 @@ class TestRendering:
         assert "- [message_count] 1" in content
         assert content.index("## Observations") < content.index("## Messages")
 
-    def test_relations_section_rendered_for_long_participant_names(self, httpx_mock: HTTPXMock, storage, client, ctx):
+    def test_relations_section_rendered_for_participants(self, httpx_mock: HTTPXMock, storage, client, ctx):
         chat_id = "19:relations-chat"
         httpx_mock.add_response(
             url=re.compile(r".*/me/chats\?.*"),
@@ -516,8 +519,8 @@ class TestRendering:
 
         content = storage.read_file(_md(ctx.paths, title="Alex Doe, Jordan Kim", chat_id=chat_id))
         assert "## Relations" in content
-        assert "[[contact-alex-doe]]" in content
-        assert "[[contact-jordan-kim]]" in content
+        assert "- participant [[Alex Doe]]" in content
+        assert "- participant [[Jordan Kim]]" in content
 
     def test_deleted_message_renders_tombstone(self, httpx_mock: HTTPXMock, storage, client, ctx):
         _mock_chats(httpx_mock)
@@ -872,8 +875,13 @@ class TestInlineImageDownload:
 
 
 class TestRelations:
-    def test_long_participant_names_produce_relation_links(self, httpx_mock: HTTPXMock, storage, client, ctx):
-        """Participant slugs longer than 5 chars emit a Relations section with contact links."""
+    def test_written_file_parses_into_one_edge_per_participant(self, httpx_mock: HTTPXMock, storage, client, ctx):
+        """End to end: what the extractor wrote, read back by the real relation parser.
+
+        `ops tiers` counts a chat's counterparties off these edges, so a
+        participant that survives as prose or as a joined observation is a
+        counterparty the report cannot see.
+        """
         httpx_mock.add_response(
             url=re.compile(r".*/me/chats\?.*"),
             json={
@@ -898,9 +906,13 @@ class TestRelations:
         teams_chats.run(client, storage, {}, _config(), ctx)
 
         content = storage.read_file(_md(ctx.paths, title="Alex Doe, Jordan Kim"))
-        assert "## Relations" in content
-        assert "[[contact-alex-doe]]" in content
-        assert "[[contact-jordan-kim]]" in content
+        parsed = parse_relations(content, RelationConfig(explicit_default_type="relates_to", inline_type="links_to"))
+
+        assert [(edge.relation_type, edge.to_name) for edge in parsed] == [
+            (PARTICIPANT, "Alex Doe"),
+            (PARTICIPANT, "Jordan Kim"),
+        ]
+        assert "- [participants]" not in content, "a joined observation is one counterparty, not two"
 
 
 class TestChatTitle:

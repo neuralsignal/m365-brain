@@ -23,6 +23,7 @@ from m365_brain.m365.frontmatter.teams import (
     TeamsChatData,
     build_teams_channel_frontmatter,
     build_teams_chat_frontmatter,
+    participant_relations,
 )
 
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
     "build_sharepoint_frontmatter",
     "build_teams_channel_frontmatter",
     "build_teams_chat_frontmatter",
+    "participant_relations",
 ]

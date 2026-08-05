@@ -1,10 +1,37 @@
-"""Teams frontmatter builders (chats and channels)."""
+"""Teams frontmatter builders (chats and channels), and the fact frontmatter cannot hold.
+
+A chat's counterparties are its participants, and there are N of them. A
+frontmatter key holds one value, and `m365_brain/parsers/document.py` promotes
+only a **scalar** key to an observation -- a list stays in metadata, which no
+per-entity read can reach. So `participants: [...]` renders for a human and is
+invisible to `ops tiers`, exactly as `attendees` was on a calendar event.
+
+Joining the names into one string is the wrong repair, for the reason it was
+wrong there: `ops tiers` groups on the whole value, so a joined one becomes a
+single counterparty called "Ana Ruiz, Bo Frey". The shape that carries N
+readable counterparties is a body relation, one line per participant --
+`participant_relations` below -- which is what
+`ops.tiers.interaction_sources[].party_from.relation` names.
+
+A channel states no counterparty at all: `TeamsChannelData` carries a team and a
+channel, not people, so there is nothing here for a channel to emit and no
+`teams_channel` interaction source in the shipped template.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from m365_brain.m365.markdown_writer import now_iso, short_hash, slugify
+
+PARTICIPANT = "participant"
+"""The relation type each participant edge is written under.
+
+This extractor's vocabulary, like every frontmatter key in this module, so it is
+a literal rather than config -- and a named one, because the config that reads
+it (`ops.tiers.interaction_sources`) has to spell the same word and a grep for
+it should find both ends.
+"""
 
 
 @dataclass(frozen=True)
@@ -50,10 +77,26 @@ def build_teams_chat_frontmatter(data: TeamsChatData) -> dict:
             # has one shape across every entity type.
             "url": None,
             "extracted_at": now_iso(),
-            "extractor": "m365-brain/teams_chats/2.0",
+            "extractor": "m365-brain/teams_chats/2.1",
         },
         "status": "raw",
     }
+
+
+def participant_relations(data: TeamsChatData) -> list[str]:
+    """One `- participant [[Name]]` line per participant.
+
+    Written into the markdown body, because that is the only place a chat can
+    state N counterparties in a shape the index reads back -- see the module
+    docstring.
+
+    The link names the participant as Graph spelled them, not a
+    `contact-<slug>` placeholder. A slug is `ops.link_resolution`'s spelling for
+    a link that can never resolve, and it also becomes the counterparty `ops
+    tiers` reports, so the same person seen in a chat and on a calendar event
+    would not have been one counterparty.
+    """
+    return [f"- {PARTICIPANT} [[{name}]]" for name in data.participants if name]
 
 
 def build_teams_channel_frontmatter(data: TeamsChannelData) -> dict:

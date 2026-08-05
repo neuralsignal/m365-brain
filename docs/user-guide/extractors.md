@@ -103,12 +103,19 @@ Example: `teams-chats/alice-bob_g7h8i9.md`
 
 ### Frontmatter Fields
 
-`title`, `conversation_id`, `conversation_type`, `participants`, `last_message_time`
+`title`, `permalink`, `type` (`teams_chat`), `tags`, `participants`, `last_message_time`, `message_count`, `history_complete`, `source`, `status`
+
+Participants are written **twice**, for the same reason an event's attendees are: as the
+`participants` list for a reader, and as one `- participant [[Name]]` relation per person
+in the body. Only the second is readable back out of the index, and it is what
+`ops.tiers.interaction_sources` counts. The link names the participant as Graph spelled
+them, not a `contact-<slug>` placeholder — a slug would become the counterparty name in
+the tiers report and would never resolve to the person's own note.
 
 ### Body Structure
 
-- Observations section with conversation metadata
-- Relations section linking to participant contacts
+- Observations section with conversation metadata (`conversation_type`, `last_message_time`, `message_count`)
+- Relations section with one `- participant [[Name]]` line per participant
 - Messages section with chronologically ordered messages, each with timestamp and sender
 
 ---

@@ -32,6 +32,7 @@ from m365_brain.config import (
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.m365.frontmatter.calendar import CalendarEventData, attendee_relations, build_calendar_frontmatter
 from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
+from m365_brain.m365.frontmatter.teams import TeamsChatData, build_teams_chat_frontmatter, participant_relations
 from m365_brain.m365.markdown_writer import dumps_markdown
 from m365_brain.model import Entity, Observation, Relation
 from m365_brain.ops.links import resolve_links
@@ -800,7 +801,26 @@ def _event_document() -> tuple[str, str]:
     return dumps_markdown(build_calendar_frontmatter(data), body), "Robin Vale"
 
 
-PRODUCERS = {"email": _email_document, "calendar_event": _event_document}
+def _chat_document() -> tuple[str, str]:
+    """The same for the Teams chat builder -- frontmatter *and* participant relations.
+
+    `participants` is a list, so like an event's attendees the counterparty is
+    not in the frontmatter at all.
+    """
+    data = TeamsChatData(
+        title="Project sync",
+        conversation_id="chat-1",
+        conversation_type="group",
+        participants=["Sam Okoro"],
+        last_message_time=WHEN,
+        message_count=3,
+        history_complete=True,
+    )
+    body = "\n".join([f"# {data.title}\n", *participant_relations(data)])
+    return dumps_markdown(build_teams_chat_frontmatter(data), body), "Sam Okoro"
+
+
+PRODUCERS = {"email": _email_document, "calendar_event": _event_document, "teams_chat": _chat_document}
 """`entity_type` -> the bundled producer that writes it.
 
 Keyed by the entity type so the parametrised test below can look a source up by
@@ -843,7 +863,12 @@ class TestTiersOverExtractorOutput:
         """The regression itself: an empty report over a corpus this library wrote."""
         assignments = compute_tiers(corpus, SHIPPED_TIERS, NOW, PAGE_SIZE)
 
-        assert [(a.party, a.interactions) for a in assignments] == [("alice@example.com", 1), ("Robin Vale", 1)]
+        # Ordered by `names.name_key`, which word-sorts: `okoro sam` before `robin vale`.
+        assert [(a.party, a.interactions) for a in assignments] == [
+            ("alice@example.com", 1),
+            ("Sam Okoro", 1),
+            ("Robin Vale", 1),
+        ]
 
     @pytest.mark.parametrize(
         "source", SHIPPED_TIERS.interaction_sources, ids=[s.entity_type for s in SHIPPED_TIERS.interaction_sources]

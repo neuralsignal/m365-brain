@@ -7,12 +7,16 @@ import re
 from hypothesis import given
 from hypothesis import strategies as st
 
+from m365_brain.config.index import RelationConfig
 from m365_brain.m365.frontmatter.teams import (
+    PARTICIPANT,
     TeamsChannelData,
     TeamsChatData,
     build_teams_channel_frontmatter,
     build_teams_chat_frontmatter,
+    participant_relations,
 )
+from m365_brain.parsers.relations import parse_relations
 
 COMMON_KEYS = {
     "title",
@@ -61,7 +65,7 @@ class TestTeamsFrontmatterProperties:
         assert fm["message_count"] == data.message_count
         assert fm["history_complete"] is data.history_complete
         assert fm["source"]["service"] == "teams"
-        assert fm["source"]["extractor"] == "m365-brain/teams_chats/2.0"
+        assert fm["source"]["extractor"] == "m365-brain/teams_chats/2.1"
         assert re.fullmatch(r"teams-chat-[a-z0-9-]+-[0-9a-f]{6}", fm["permalink"])
 
     @given(CHATS)
@@ -167,3 +171,64 @@ class TestTeamsFrontmatterShapes:
         assert "channel" not in chat
         assert set(chat) - set(channel) == {"participants"}
         assert set(channel) - set(chat) == {"team", "channel"}
+
+
+def _chat(participants: list[str]) -> TeamsChatData:
+    return TeamsChatData(
+        title="Project sync",
+        conversation_id="chat-9",
+        conversation_type="group",
+        participants=participants,
+        last_message_time="2026-03-12T10:00:00Z",
+        message_count=3,
+        history_complete=True,
+    )
+
+
+PLAIN_NAMES = st.lists(
+    st.text(alphabet=st.characters(whitelist_categories=("Lu", "Ll")), min_size=1, max_size=12),
+    max_size=5,
+)
+"""Letters only. A name containing `[` or a newline is not a wikilink target the
+parser can read back, and inventing an escaping rule for one Graph never returns
+would be code with no caller."""
+
+
+class TestParticipantRelations:
+    """The counterparty a chat states, in the one shape the index reads back.
+
+    `participants` is a list, so it is metadata and no per-entity read can see
+    it. Parsed with the real relation parser rather than a regex, so this is the
+    same reading `ops tiers` does.
+    """
+
+    def test_one_edge_per_participant_named_as_written(self):
+        parsed = parse_relations(
+            "\n".join(participant_relations(_chat(["Ana Ruiz", "Bo Frey"]))),
+            RelationConfig(explicit_default_type="relates_to", inline_type="links_to"),
+        )
+
+        assert [(edge.relation_type, edge.to_name) for edge in parsed] == [
+            (PARTICIPANT, "Ana Ruiz"),
+            (PARTICIPANT, "Bo Frey"),
+        ]
+
+    def test_a_short_name_is_an_edge_like_any_other(self):
+        """The slug-length filter this replaces dropped `Bo Ng` and said nothing."""
+        assert participant_relations(_chat(["Bo Ng"])) == [f"- {PARTICIPANT} [[Bo Ng]]"]
+
+    def test_a_chat_with_no_participants_states_no_edges(self):
+        assert participant_relations(_chat([])) == []
+
+    def test_a_blank_display_name_is_not_an_empty_link(self):
+        assert participant_relations(_chat(["", "Ana Ruiz"])) == [f"- {PARTICIPANT} [[Ana Ruiz]]"]
+
+    @given(PLAIN_NAMES)
+    def test_every_participant_survives_into_a_parsed_edge(self, participants: list[str]):
+        parsed = parse_relations(
+            "\n".join(participant_relations(_chat(participants))),
+            RelationConfig(explicit_default_type="relates_to", inline_type="links_to"),
+        )
+
+        assert {edge.to_name for edge in parsed} == set(participants)
+        assert {edge.relation_type for edge in parsed} <= {PARTICIPANT}
