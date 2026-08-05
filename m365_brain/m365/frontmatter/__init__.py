@@ -13,6 +13,7 @@ from m365_brain.m365.frontmatter.files import (
     build_sharepoint_frontmatter,
 )
 from m365_brain.m365.frontmatter.people import (
+    MANAGER,
     ContactData,
     DirectoryUserData,
     address_observations,
@@ -28,6 +29,7 @@ from m365_brain.m365.frontmatter.teams import (
 )
 
 __all__ = [
+    "MANAGER",
     "CalendarEventData",
     "ContactData",
     "DirectoryUserData",

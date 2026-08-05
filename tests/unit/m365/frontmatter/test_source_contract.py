@@ -78,7 +78,7 @@ BUILDERS = {
             modified_by="Alice",
             parent_path="Documents",
             web_url="https://example-my.sharepoint.com/report.docx",
-            conversion_status="pending",
+            content_status="pending",
         ),
     ),
     "sharepoint": (
@@ -93,7 +93,7 @@ BUILDERS = {
             web_url="https://example.sharepoint.com/plan.pptx",
             site_name="Engineering",
             drive_name="Documents",
-            conversion_status="pending",
+            content_status="pending",
         ),
     ),
     "contact": (

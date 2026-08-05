@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +18,9 @@ from m365_brain.m365.extractors._file_helpers import (
     process_drive_item,
     should_eager_convert,
 )
+from m365_brain.m365.frontmatter.files import CONTENT_STATUS, OneDriveFileData, build_onedrive_frontmatter
+from m365_brain.m365.markdown_writer import loads_markdown
+from m365_brain.model import CatalogEntry
 from m365_brain.storage.local import LocalBackend
 
 SAMPLE_CONVERTERS_CONFIG = {
@@ -161,7 +164,7 @@ class TestProcessDriveItem:
             "size": 1024,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
         }
-        fm = {"title": "doc.docx", "conversion_status": "pending"}
+        fm = {"title": "doc.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -192,7 +195,7 @@ class TestProcessDriveItem:
             "size": 5000,
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
         }
-        fm = {"title": "image.png", "conversion_status": "pending"}
+        fm = {"title": "image.png", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -227,7 +230,7 @@ class TestProcessDriveItem:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "@microsoft.graph.downloadUrl": "https://download.example.com/file",
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         with patch(
             "m365_brain.m365.extractors._file_helpers.convert_document",
@@ -254,7 +257,7 @@ class TestProcessDriveItem:
         assert result is True
         content = storage.read_file("onedrive/report.md")
         assert "Report Content" in content
-        assert fm["conversion_status"] == "converted"
+        assert fm["content_status"] == "converted"
 
     def test_eager_convert_handles_missing_download_url(self, tmp_path, ctx):
         storage = LocalBackend(str(tmp_path / "vault"))
@@ -264,7 +267,7 @@ class TestProcessDriveItem:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             # No @microsoft.graph.downloadUrl
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -285,7 +288,7 @@ class TestProcessDriveItem:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_no_download_url"
+        assert fm["content_status"] == "error_no_download_url"
 
     def test_rejects_oversized_file_before_download(self, tmp_path, ctx):
         storage = LocalBackend(str(tmp_path / "vault"))
@@ -297,7 +300,7 @@ class TestProcessDriveItem:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "@microsoft.graph.downloadUrl": "https://download.example.com/huge",
         }
-        fm = {"title": "huge.docx", "conversion_status": "pending"}
+        fm = {"title": "huge.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -318,7 +321,7 @@ class TestProcessDriveItem:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_too_large"
+        assert fm["content_status"] == "error_too_large"
         # Must NOT have tried to download
         mock_client.get_bytes.assert_not_called()
         content = storage.read_file("onedrive/huge.md")
@@ -335,7 +338,7 @@ class TestProcessDriveItem:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "@microsoft.graph.downloadUrl": "https://download.example.com/file",
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -356,7 +359,7 @@ class TestProcessDriveItem:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_download"
+        assert fm["content_status"] == "error_download"
 
 
 class TestProcessDriveItemFallbackFetch:
@@ -377,7 +380,7 @@ class TestProcessDriveItemFallbackFetch:
             "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
             # No @microsoft.graph.downloadUrl — triggers fallback fetch
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         with patch(
             "m365_brain.m365.extractors._file_helpers.convert_document",
@@ -402,7 +405,7 @@ class TestProcessDriveItemFallbackFetch:
             )
 
         assert result is True
-        assert fm["conversion_status"] == "converted"
+        assert fm["content_status"] == "converted"
         mock_client.get.assert_called_once_with(
             "/drives/drive-me/items/item-abc",
             params={"$select": "@microsoft.graph.downloadUrl"},
@@ -424,7 +427,7 @@ class TestProcessDriveItemFallbackFetch:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -445,7 +448,7 @@ class TestProcessDriveItemFallbackFetch:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_no_download_url"
+        assert fm["content_status"] == "error_no_download_url"
         content = storage.read_file("onedrive/report.md")
         assert "No download URL available" in content
 
@@ -513,7 +516,7 @@ class TestRefetchUsesTheItemsOwnDrive:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "parentReference": {"driveId": drive_id, "path": parent_path},
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         with patch(
             "m365_brain.m365.extractors._file_helpers.convert_document",
@@ -528,7 +531,7 @@ class TestRefetchUsesTheItemsOwnDrive:
 
         assert client.paths == [f"/drives/{drive_id}/items/item-abc"]
         assert client.downloaded == ["https://download.example.com/fetched"]
-        assert fm["conversion_status"] == "converted"
+        assert fm["content_status"] == "converted"
 
     def test_missing_drive_id_skips_the_refetch_instead_of_guessing(self, tmp_path, ctx):
         """No drive to address is not a licence to substitute `/me/drive`.
@@ -546,7 +549,7 @@ class TestRefetchUsesTheItemsOwnDrive:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "parentReference": {"path": "/drive/root:"},
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         assert process_drive_item(
             ctx=_eager_docx_ctx(client, storage, ctx.removal),
@@ -556,7 +559,7 @@ class TestRefetchUsesTheItemsOwnDrive:
         )
 
         assert client.paths == []
-        assert fm["conversion_status"] == "error_no_download_url"
+        assert fm["content_status"] == "error_no_download_url"
         assert "No download URL available" in storage.read_file("files/report.md")
 
 
@@ -573,7 +576,7 @@ class TestProcessDriveItemConversionError:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "@microsoft.graph.downloadUrl": "https://download.example.com/file",
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         with patch(
             "m365_brain.m365.extractors._file_helpers.convert_document",
@@ -598,7 +601,7 @@ class TestProcessDriveItemConversionError:
             )
 
         assert result is True
-        assert fm["conversion_status"] == "error_conversion"
+        assert fm["content_status"] == "error_conversion"
         content = storage.read_file("onedrive/report.md")
         assert "Conversion failed" in content
         assert "unsupported format" in content
@@ -617,7 +620,7 @@ class TestGraphApiErrorNotSwallowed:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "@microsoft.graph.downloadUrl": "https://download.example.com/secret",
         }
-        fm = {"title": "secret.docx", "conversion_status": "pending"}
+        fm = {"title": "secret.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -638,7 +641,7 @@ class TestGraphApiErrorNotSwallowed:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_download"
+        assert fm["content_status"] == "error_download"
         content = storage.read_file("onedrive/secret.md")
         assert "Download failed" in content
         assert "403 Forbidden" in content
@@ -656,7 +659,7 @@ class TestGraphApiErrorNotSwallowed:
             "lastModifiedDateTime": "2026-03-12T10:00:00Z",
             "parentReference": {"driveId": "drive-me", "path": "/drive/root:"},
         }
-        fm = {"title": "report.docx", "conversion_status": "pending"}
+        fm = {"title": "report.docx", "content_status": "pending"}
 
         result = process_drive_item(
             ctx=FileProcessingContext(
@@ -677,9 +680,82 @@ class TestGraphApiErrorNotSwallowed:
         )
 
         assert result is True
-        assert fm["conversion_status"] == "error_no_download_url"
+        assert fm["content_status"] == "error_no_download_url"
         content = storage.read_file("onedrive/report.md")
         assert "No download URL available" in content
+
+
+class TestStatusVocabularyIsNotTheCatalogs:
+    """A drive item's status and a catalog row's status are two vocabularies.
+
+    `CatalogEntry.conversion_status` holds one of `index.catalog
+    .conversion_states`, is validated against that config on every write, and
+    describes a **binary attachment** moving through `index catalog extract`.
+    The key below describes a **drive item's markdown body**, and three of its
+    values are download outcomes reached before any conversion is attempted.
+    Nothing maps one onto the other, and the corpora are disjoint: the catalog
+    only sees bytes written through `write_bytes`, which no drive-item
+    extractor calls.
+
+    One word over both means a `--status` filter, an observation category, or a
+    config key naming either one silently reaches for the other -- and gets an
+    empty result, which reads as a clean corpus.
+    """
+
+    def test_the_written_markdown_carries_content_status_and_not_the_catalog_word(self, tmp_path, ctx):
+        """Driven through the real builder and the real writer, then read back.
+
+        The stub branch is the one under test because it writes the word twice
+        -- once as a frontmatter key and once as an observation category -- and
+        a rename that lands on only one of them leaves the corpus stating the
+        same fact under two names.
+        """
+        storage = LocalBackend(str(tmp_path / "vault"))
+        fm = build_onedrive_frontmatter(
+            OneDriveFileData(
+                file_name="doc.docx",
+                item_id="item-1",
+                size=1024,
+                modified_time="2026-03-12T10:00:00Z",
+                modified_by="A Person",
+                parent_path="Documents",
+                web_url="https://example.com/doc.docx",
+                content_status="pending",
+            )
+        )
+
+        process_drive_item(
+            ctx=FileProcessingContext(
+                client=MagicMock(),
+                storage=storage,
+                file_config=FileProcessingConfig(
+                    eager_patterns=[],
+                    convertible_extensions=[".docx"],
+                    max_file_size_mb=100,
+                    converters_config=SAMPLE_CONVERTERS_CONFIG,
+                ),
+                removal=ctx.removal,
+                extractor="onedrive",
+            ),
+            item={"name": "doc.docx", "size": 1024, "lastModifiedDateTime": "2026-03-12T10:00:00Z"},
+            storage_path="onedrive/doc.md",
+            frontmatter=fm,
+        )
+
+        content = storage.read_file("onedrive/doc.md")
+        meta, body = loads_markdown(content)
+
+        assert CONTENT_STATUS == "content_status"
+        assert meta[CONTENT_STATUS] == "pending"
+        assert f"- [{CONTENT_STATUS}] pending" in body
+        assert "conversion_status" not in content
+
+    def test_the_catalog_still_owns_the_word_conversion_status(self):
+        """The other half of the split: the word did not become unused, it became one thing."""
+        catalog_fields = {field.name for field in fields(CatalogEntry)}
+
+        assert "conversion_status" in catalog_fields
+        assert CONTENT_STATUS not in catalog_fields
 
 
 class TestFileProcessingContextImmutable:

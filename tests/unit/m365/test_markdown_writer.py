@@ -267,7 +267,7 @@ class TestBuildOneDriveFrontmatter:
                 modified_by="Alice Smith",
                 parent_path="Documents/Reports",
                 web_url="https://example.com/report.docx",
-                conversion_status="pending",
+                content_status="pending",
             )
         )
         assert fm["type"] == "onedrive_file"
@@ -277,7 +277,7 @@ class TestBuildOneDriveFrontmatter:
         assert fm["file_size"] == 45000
         assert fm["modified_by"] == "Alice Smith"
         assert fm["parent_path"] == "Documents/Reports"
-        assert fm["conversion_status"] == "pending"
+        assert fm["content_status"] == "pending"
         assert fm["source"]["service"] == "onedrive"
         assert fm["source"]["extractor"] == "m365-brain/onedrive/1.0"
         assert "permalink" in fm
@@ -292,7 +292,7 @@ class TestBuildOneDriveFrontmatter:
                 modified_by="Bob",
                 parent_path="",
                 web_url="",
-                conversion_status="not_convertible",
+                content_status="not_convertible",
             )
         )
         assert fm["tags"] == ["onedrive"]
@@ -311,7 +311,7 @@ class TestBuildSharePointFrontmatter:
                 web_url="https://sp.example.com/plan.pptx",
                 site_name="Engineering Hub",
                 drive_name="Documents",
-                conversion_status="converted",
+                content_status="converted",
             )
         )
         assert fm["type"] == "sharepoint_file"

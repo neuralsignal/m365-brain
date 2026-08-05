@@ -64,7 +64,12 @@ def _parse_explicit(body: str, default_type: str) -> list[Relation]:
         end = content.index("]]", start)
         target = content[start + 2 : end].strip()
 
-        relation_type = content[:start].strip() or default_type
+        # Quote characters are never a relation type. A frontmatter list of
+        # wikilinks renders as `- '[[Name]]'`, and the bare `'` in front of the
+        # link used to become the edge's type -- an edge no config would ever
+        # spell, so a reader asking for that relation got an empty result that
+        # reads as "no such links" rather than as a defect.
+        relation_type = content[:start].strip().strip("'\"").strip() or default_type
 
         context = None
         trailing = content[end + 2 :].strip()

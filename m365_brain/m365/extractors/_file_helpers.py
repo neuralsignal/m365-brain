@@ -15,6 +15,7 @@ import structlog
 
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.converters.document import convert_document
+from m365_brain.m365.frontmatter.files import CONTENT_STATUS
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.removal import RemovalHandler
@@ -126,7 +127,7 @@ def process_drive_item(
                 size_mb=round(file_size_mb, 1),
                 limit_mb=ctx.file_config.max_file_size_mb,
             )
-            frontmatter["conversion_status"] = "error_too_large"
+            frontmatter[CONTENT_STATUS] = "error_too_large"
             body = f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB."
             content = dumps_markdown(frontmatter, body)
             ctx.storage.write_file(storage_path, content)
@@ -158,7 +159,7 @@ def process_drive_item(
 
         if not download_url:
             log.warning("file_helpers.no_download_url", file=file_name)
-            frontmatter["conversion_status"] = "error_no_download_url"
+            frontmatter[CONTENT_STATUS] = "error_no_download_url"
             body = f"# {file_name}\n\nNo download URL available."
             content = dumps_markdown(frontmatter, body)
             ctx.storage.write_file(storage_path, content)
@@ -168,7 +169,7 @@ def process_drive_item(
             file_bytes = ctx.client.get_bytes(download_url)
         except GraphApiError as exc:
             log.error("file_helpers.download_failed", file=file_name, error=str(exc))
-            frontmatter["conversion_status"] = "error_download"
+            frontmatter[CONTENT_STATUS] = "error_download"
             body = f"# {file_name}\n\nDownload failed: {exc}"
             content = dumps_markdown(frontmatter, body)
             ctx.storage.write_file(storage_path, content)
@@ -185,11 +186,11 @@ def process_drive_item(
                 file_path=tmp_path,
                 converters_config=ctx.file_config.converters_config,
             )
-            frontmatter["conversion_status"] = "converted"
+            frontmatter[CONTENT_STATUS] = "converted"
             body = f"# {file_name}\n\n{markdown_text}"
         except (ImportError, ValueError, OSError) as exc:
             log.error("file_helpers.conversion_failed", file=file_name, error=str(exc))
-            frontmatter["conversion_status"] = "error_conversion"
+            frontmatter[CONTENT_STATUS] = "error_conversion"
             body = f"# {file_name}\n\nConversion failed: {exc}"
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -199,7 +200,7 @@ def process_drive_item(
         return True
 
     # Non-eager or non-convertible: write a metadata stub
-    frontmatter["conversion_status"] = "pending" if is_convertible else "not_convertible"
+    frontmatter[CONTENT_STATUS] = "pending" if is_convertible else "not_convertible"
     size = item.get("size", 0)
     modified = item.get("lastModifiedDateTime", "")
     body_parts = [f"# {file_name}\n"]
@@ -207,7 +208,7 @@ def process_drive_item(
     body_parts.append(f"- [file_size] {size}")
     body_parts.append(f"- [modified] {modified}")
     body_parts.append(f"- [extension] {extension}")
-    body_parts.append(f"- [conversion_status] {frontmatter['conversion_status']}")
+    body_parts.append(f"- [{CONTENT_STATUS}] {frontmatter[CONTENT_STATUS]}")
 
     content = dumps_markdown(frontmatter, "\n".join(body_parts))
     ctx.storage.write_file(storage_path, content)
