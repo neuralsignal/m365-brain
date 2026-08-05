@@ -93,3 +93,36 @@ converters:
     image_max_dimension: 0
   slug_max_length: 80
   hash_length: 6
+
+# ---------------------------------------------------------------------------
+# vault — every directory and filename, named here and nowhere else. Required
+# for any sync run: `run_extractors` builds its path resolver from this section
+# and raises naming `vault` if it is absent, rather than inventing a layout.
+# ---------------------------------------------------------------------------
+vault:
+  root: "../vault"
+  layout:
+    inbox: "inbox"                # upstream truth, rewritten by extractors
+    annotations: "annotations"    # anything a consumer writes about that truth
+    outbox: "outbox"              # intents waiting to be dispatched
+    meta: "_meta"                 # sync state, delta tokens, manifests, archive
+    processed: "_processed"       # dispatched intents + receipt sidecars
+    rejected: "_rejected"         # blocked or failed intents + receipt sidecars
+    inflight: "_inflight"         # claimed but not archived; never auto-retried
+    state: "state"                # under meta/
+    manifests: "manifests"        # under meta/
+  extractor_dirs:                 # all eight required; an unknown name is an error
+    email: "emails"
+    calendar: "calendar"
+    contacts: "contacts"
+    directory: "directory"
+    onedrive: "onedrive"
+    sharepoint: "sharepoint"
+    teams_chats: "teams-chats"
+    teams_channels: "teams-channels"
+  filenames:
+    entry: "index.md"                        # the file inside a per-item directory
+    conversation: "messages.md"              # rendered conversation
+    conversation_store: "messages.jsonl"     # merge store; not indexed
+    attachments: "attachments"
+    attachments_converted: "attachments_converted"

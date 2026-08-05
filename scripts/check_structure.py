@@ -44,11 +44,11 @@ MAX_MODULE_LINES = 300
 # adding a subpackage should require naming its layer, not just creating a
 # directory.
 LAYERS: dict[str, int] = {
-    # 0 -- configuration. Nothing sits below it.
+    # 0 -- configuration and plain data. Neither imports anything from the package.
     "config": 0,
-    # 1 -- pure data and pure functions over it
-    "model": 1,
-    "models": 1,
+    "model": 0,
+    "models": 0,
+    # 1 -- pure functions over layer 0
     "parsers": 1,
     "validation": 1,
     "logging_config": 1,
@@ -56,23 +56,27 @@ LAYERS: dict[str, int] = {
     "storage": 2,
     "state": 2,
     "manifest": 2,
-    # 3 -- the two halves that must not know about each other
-    "index": 3,
+    # 3 -- where a file goes, and how it stops being there. Below the three
+    # subsystems because all of them address the vault and none of them owns it.
     "vault": 3,
-    "outbox": 3,
-    "m365": 3,
-    # 4 -- one pass over layer 3
-    "sync": 4,
-    # 5 -- orchestration over passes
-    "schedule": 5,
-    "hooks": 5,
-    "cycle": 5,
-    "worker": 5,
-    "dry_run": 5,
-    # 6 -- the facade
-    "workspace": 6,
-    # 7 -- the entry point
-    "cli": 7,
+    # 4 -- the three subsystems, peers by construction. Same layer means no two
+    # of them may import each other, which is the point: `index` must stay
+    # usable with the Microsoft half absent entirely.
+    "index": 4,
+    "outbox": 4,
+    "m365": 4,
+    # 5 -- one pass over layer 4
+    "sync": 5,
+    # 6 -- orchestration over passes
+    "schedule": 6,
+    "hooks": 6,
+    "cycle": 6,
+    "worker": 6,
+    "dry_run": 6,
+    # 7 -- the facade
+    "workspace": 7,
+    # 8 -- the entry point
+    "cli": 8,
 }
 
 # Modules that exist today and move under `m365/` during the platform stage.
@@ -83,17 +87,12 @@ LAYERS: dict[str, int] = {
 # This set is stage M's checklist. When it is empty, the relocation is done,
 # and emptying it is a stated acceptance criterion rather than a cleanup
 # somebody may or may not get to.
-PENDING_RELOCATION: frozenset[str] = frozenset(
-    {
-        "auth",
-        "converters",
-        "extractors",
-        "frontmatter",
-        "graph_client",
-        "graph_helpers",
-        "markdown_writer",
-    }
-)
+#
+# EMPTY as of stage M phase 1: `auth`, `converters`, `extractors`,
+# `frontmatter`, `graph_client` (now `m365/client.py`), `graph_helpers` and
+# `markdown_writer` all live under `m365/`. Keep the set -- and this comment --
+# so a future relocation has somewhere to declare itself.
+PENDING_RELOCATION: frozenset[str] = frozenset()
 
 for _name in PENDING_RELOCATION:
     LAYERS.setdefault(_name, LAYERS["m365"])

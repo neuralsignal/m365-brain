@@ -241,6 +241,9 @@ index:
     type_key: "type"
     permalink_key: "permalink"
     tags_key: "tags"
+    aliases_key: "aliases"       # lifted into a typed column: every backend must
+                                # answer "find by alias", and only some can query
+                                # inside a JSON blob
     default_type: "note"
     # Frontmatter keys that are structure rather than content. Anything NOT
     # listed becomes a synthetic observation, so this list is the contract

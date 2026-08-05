@@ -147,25 +147,36 @@ def test_relative_import_is_intra_subpackage(clean_tree: Path):
     assert cs.check_import_direction(clean_tree) == []
 
 
-def test_pending_relocation_is_exempt_from_layering(clean_tree: Path):
-    """Modules awaiting the move under m365/ keep their pre-layering imports.
+def test_pending_relocation_is_empty():
+    """The stage-M checklist is done: nothing is still awaiting the move.
 
-    Rewriting their imports once now and again after the move is churn, so
-    they are exempt until they move -- but they are still on the allow-list,
-    so they cannot be forgotten.
+    This is the acceptance criterion for the relocation, expressed as a test so
+    a later re-population is a deliberate, visible act rather than a quiet
+    re-opening of the exemption. The mechanism itself is still covered by the
+    two tests below, which inject a fake entry.
     """
-    assert cs.PENDING_RELOCATION, "the exemption set should not be silently empty"
-    name = sorted(cs.PENDING_RELOCATION)[0]
-    assert name in cs.LAYERS
-    (clean_tree / cs.PACKAGE / f"{name}.py").write_text(f"from {cs.PACKAGE} import cli\n")
+    assert frozenset() == cs.PENDING_RELOCATION
+
+
+def test_pending_relocation_is_exempt_from_layering(clean_tree: Path, monkeypatch: pytest.MonkeyPatch):
+    """A module awaiting the move under m365/ keeps its pre-layering imports.
+
+    Rewriting such a module's imports once before the move and again after is
+    churn, so it is exempt until it moves -- but it stays on the allow-list, so
+    it cannot be forgotten.
+    """
+    monkeypatch.setattr(cs, "PENDING_RELOCATION", frozenset({"legacy"}))
+    monkeypatch.setitem(cs.LAYERS, "legacy", cs.LAYERS["m365"])
+    (clean_tree / cs.PACKAGE / "legacy.py").write_text(f"from {cs.PACKAGE} import cli\n")
     assert cs.check_import_direction(clean_tree) == []
 
 
-def test_pending_relocation_target_is_also_exempt(clean_tree: Path):
+def test_pending_relocation_target_is_also_exempt(clean_tree: Path, monkeypatch: pytest.MonkeyPatch):
     """A layered module may still import one that has not moved yet."""
-    name = sorted(cs.PENDING_RELOCATION)[0]
-    (clean_tree / cs.PACKAGE / f"{name}.py").write_text("X = 1\n")
-    (clean_tree / cs.PACKAGE / "config.py").write_text(f"from {cs.PACKAGE} import {name}\n")
+    monkeypatch.setattr(cs, "PENDING_RELOCATION", frozenset({"legacy"}))
+    monkeypatch.setitem(cs.LAYERS, "legacy", cs.LAYERS["m365"])
+    (clean_tree / cs.PACKAGE / "legacy.py").write_text("X = 1\n")
+    (clean_tree / cs.PACKAGE / "config.py").write_text(f"from {cs.PACKAGE} import legacy\n")
     assert cs.check_import_direction(clean_tree) == []
 
 

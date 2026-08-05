@@ -52,6 +52,7 @@ class FrontmatterConfig(BaseModel):
     type_key: str
     permalink_key: str
     tags_key: str
+    aliases_key: str
     default_type: str
     structural_keys: list[str]
 

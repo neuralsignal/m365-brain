@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet
 from sqlmodel import Session, SQLModel, create_engine
 
 from m365_admin.services.token_service import TokenService, TokenServiceAdapter
-from m365_brain.auth.token_provider import TokenStoreProtocol
+from m365_brain.m365.auth.token_provider import TokenStoreProtocol
 from m365_brain.models import User
 
 pytestmark = pytest.mark.admin

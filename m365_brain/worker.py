@@ -20,11 +20,11 @@ import structlog
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from m365_brain.auth.token_provider import TokenRefreshError, TokenStoreProtocol, make_web_token_provider
 from m365_brain.config import Config, WorkerConfig
 from m365_brain.config.errors import ConfigError
-from m365_brain.extractors.errors import ExtractorError
-from m365_brain.graph_client import GraphApiError
+from m365_brain.m365.auth.token_provider import TokenRefreshError, TokenStoreProtocol, make_web_token_provider
+from m365_brain.m365.client import GraphApiError
+from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
 from m365_brain.state import SyncState
 from m365_brain.storage import create_user_storage
@@ -131,7 +131,7 @@ def get_due_jobs(engine, config: Config) -> list[tuple[User, str]]:
         for ext_name in extractor_names:
             if ext_name not in EXTRACTORS:
                 continue
-            _, config_getter, _ = EXTRACTORS[ext_name]
+            _, config_getter = EXTRACTORS[ext_name]
             ext_config = config_getter(config)
             interval_seconds = ext_config.poll_interval_minutes * 60
 

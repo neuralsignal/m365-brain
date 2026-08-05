@@ -11,10 +11,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_brain.auth.token_provider import TokenRefreshError
 from m365_brain.config.errors import ConfigError
-from m365_brain.extractors.errors import ExtractorError
-from m365_brain.graph_client import GraphApiError
+from m365_brain.m365.auth.token_provider import TokenRefreshError
+from m365_brain.m365.client import GraphApiError
+from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
 from m365_brain.worker import (
     _lock_key,
@@ -204,7 +204,7 @@ class TestRunSingleExtractor:
             assert row.items_synced == 42
 
     def test_failure(self, seeded_engine, full_config, tmp_path):
-        from m365_brain.graph_client import GraphApiError
+        from m365_brain.m365.client import GraphApiError
 
         user = get_enabled_users(seeded_engine)[0]
 

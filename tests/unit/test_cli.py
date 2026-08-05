@@ -115,7 +115,7 @@ class TestDryRun:
     def test_dry_run_auth_failure(self, runner, config_file, full_config):
         """--dry-run exits 1 when /me call fails."""
         from m365_brain.cli import main
-        from m365_brain.graph_client import GraphApiError
+        from m365_brain.m365.client import GraphApiError
 
         mock_client = MagicMock()
         mock_client.get.side_effect = GraphApiError("HTTP 401 — token expired", 401)
@@ -139,7 +139,7 @@ class TestDryRun:
     def test_dry_run_extractor_probe_failure(self, runner, config_file, full_config):
         """--dry-run reports per-extractor failures and exits 1."""
         from m365_brain.cli import main
-        from m365_brain.graph_client import GraphApiError
+        from m365_brain.m365.client import GraphApiError
 
         call_count = 0
 

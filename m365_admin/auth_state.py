@@ -32,7 +32,7 @@ import reflex as rx
 
 from m365_admin.config_loader import get_config, get_session
 from m365_admin.services.token_service import TokenService
-from m365_brain.auth.auth_code import AuthCodeAuth, AuthCodeError
+from m365_brain.m365.auth.auth_code import AuthCodeAuth, AuthCodeError
 from m365_brain.models import User
 
 # OAuth state tokens expire after 2 minutes (defense-in-depth; tokens are

@@ -18,11 +18,11 @@ import click
 import structlog
 from dotenv import find_dotenv, load_dotenv
 
-from m365_brain.auth.device_code import DeviceCodeAuth
-from m365_brain.auth.token_provider import make_cli_token_provider
 from m365_brain.config import load_config
 from m365_brain.dry_run import dry_run
 from m365_brain.logging_config import configure_logging
+from m365_brain.m365.auth.device_code import DeviceCodeAuth
+from m365_brain.m365.auth.token_provider import make_cli_token_provider
 from m365_brain.state import SyncState
 from m365_brain.storage import create_storage
 from m365_brain.sync import EXTRACTORS, run_extractors
@@ -129,7 +129,7 @@ def sync(ctx: click.Context, once: bool, dry_run_flag: bool, extractor_names: st
     if extractor_names:
         names = [n.strip() for n in extractor_names.split(",")]
     else:
-        names = [name for name, (_, cfg_getter, _) in EXTRACTORS.items() if cfg_getter(config).enabled]
+        names = [name for name, (_, cfg_getter) in EXTRACTORS.items() if cfg_getter(config).enabled]
 
     if dry_run_flag:
         dry_run(config, token_provider, names)

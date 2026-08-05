@@ -165,6 +165,7 @@ def _index_section() -> dict:
             "type_key": "type",
             "permalink_key": "permalink",
             "tags_key": "tags",
+            "aliases_key": "aliases",
             "default_type": "note",
             "structural_keys": ["title", "type", "permalink", "tags"],
         },

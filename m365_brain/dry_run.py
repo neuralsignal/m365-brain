@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from m365_brain.config import Config
-from m365_brain.graph_client import GraphApiError, GraphClient
+from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.sync import EXTRACTORS
 
 log = structlog.get_logger()
@@ -68,7 +68,7 @@ def dry_run(config: Config, token_provider: Callable[[], str], names: list[str])
                 failed += 1
                 continue
 
-            _, config_getter, _ = EXTRACTORS[ext_name]
+            _, config_getter = EXTRACTORS[ext_name]
             ext_config = config_getter(config)
 
             if not ext_config.enabled:

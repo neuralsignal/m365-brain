@@ -81,20 +81,28 @@ outbox's Pydantic schema with `extra="forbid"` — an unknown field is a rejecti
 
 ### The vault tree
 
-**Pending → M365-platform stage** for the four-directory contract and the path builder; the
-per-extractor markdown output underneath it is **Present**.
+**Present** for the directory contract, the path builder, and the per-extractor markdown output
+underneath it. The outbox subtree is **Pending → outbox stage**; its path methods exist and are
+tested, but nothing writes intents yet.
 
 ```
 <vault.root>/
 ├── <layout.inbox>/        read-only upstream truth, written only by extractors
 │   └── <extractor_dirs.*>/   one subtree per extractor, names from config
 ├── <layout.annotations>/  agent-authored overlays alongside, never inside, inbox
-├── <layout.outbox>/       typed intents, plus _processed/ and _rejected/
-└── <layout.meta>/         sync state, delta cursors, change manifests
+├── <layout.outbox>/       typed intents, one directory per outbox name
+└── <layout.meta>/         sync state, manifests, and the intent archive
+    ├── <layout.inflight>/    claimed, outcome unknown — never auto-retried
+    ├── <layout.processed>/   dispatched intents + receipt sidecars
+    └── <layout.rejected>/    blocked or failed intents + receipt sidecars
 ```
 
-Every segment in that tree is a config value. A hardcoded directory name anywhere in the vault or
-extractor modules defeats the contract, and is grep-checked.
+Every segment in that tree is a config value. `m365_brain/vault/paths.py` is the only thing that
+builds one; a hardcoded directory or filename anywhere under `m365_brain/vault/` or
+`m365_brain/m365/` defeats the contract and is grep-checked.
+
+Paths are **storage-relative POSIX keys**, never filesystem paths — `<vault.root>` above is the
+storage backend's own `base_path`/`prefix` and is not repeated inside the key.
 
 ### Markdown files
 
@@ -113,6 +121,35 @@ upstream item does.
 **Present.** JSON at `state.state_file_path` (per-`(user, extractor)` files under the multi-user
 worker). Holds delta tokens and last-run timestamps. It is bookkeeping, not data: deleting it
 forces a full re-pull, never a data loss.
+
+Every extractor's state carries **`path_map`** (`{upstream id: storage path}`), the key defined by
+`m365_brain.vault.removal.PATH_MAP_STATE_KEY`. It is what makes an upstream deletion actionable:
+without a way back from an id to the file written for it, there is nothing to delete. The two file
+extractors keep the same map under their pre-existing `file_paths` / `file_paths_{site}_{drive}`
+keys. Deleting the state therefore forfeits pending deletions until the next full re-pull, which
+rewrites the map.
+
+**Removal coverage is partial, and this is a permissions limit rather than an omission:**
+
+| Extractor | Upstream signal | Handled |
+|---|---|---|
+| `email` | delta `@removed` | yes |
+| `onedrive`, `sharepoint` | delta `@removed` | yes |
+| `contacts` | delta `@removed` | yes |
+| `calendar` | `isCancelled: true` | yes |
+| `directory` | delta `@removed`, and `accountEnabled: false` | yes — the `$filter=accountEnabled eq true` server-side filter was **dropped** so the disable is visible at all; a filtered-out user simply vanished from results and its page stayed forever |
+| `teams_chats` | none | **no** |
+| `teams_channels` | none | **no** |
+
+The two Teams extractors have no upstream removal signal available: there is no Graph delta
+endpoint for chats or channels under delegated permissions, which is also why they sync by
+watermark rather than by delta. They keep a `path_map` regardless — `vault purge` uses it, and a
+future signal would need it — but a chat deleted upstream persists until the extractor is purged.
+
+The recorded value in `path_map` is a **prefix, not always a file**. Extractors whose item is a
+directory (email, contacts, directory) record the directory, so removal takes the entry file *and*
+the attachments beside it; the rest record the single markdown file they wrote. Removing only the
+markdown would leave attachment blobs orphaned under an unreferenced directory.
 
 ### Change manifest
 
@@ -180,8 +217,20 @@ the backend root.
 
 **Present.** `m365_brain.config.load_config(paths) -> Config`; `m365_brain.storage.create_storage`;
 `m365_brain.state.SyncState`; `m365_brain.sync.run_extractors(config, token_provider, storage,
-state, names)` and the `EXTRACTORS` registry; `m365_brain.graph_client` for a retrying, paginating
-Graph client.
+state, names)` plus `build_context(config, storage)` and the `EXTRACTORS` registry;
+`m365_brain.m365.client.GraphClient` for a retrying, paginating, *writing* Graph client;
+`m365_brain.vault.paths.VaultPaths` for every path in the vault.
+
+`GraphClient` exposes `get` / `get_bytes` / `get_bytes_with_content_type` / `get_pages` /
+`get_paginated` / `get_delta`, and the write verbs `post` / `patch` / `put_bytes`. All of them
+traverse one retry, backoff and 401-refresh policy whose thresholds come from `graph:` in config.
+`GraphNotFoundError` (404) and `GraphConflictError` (412) subclass `GraphApiError` and are raised
+before the retry branch, so an existing `except GraphApiError` still catches them and a conditional
+write never degrades into an unconditional one.
+
+Every extractor takes `run(client, storage, state, config, ctx)` where `ctx` is an
+`ExtractorContext(paths, converters, removal)`. One shape for all eight — `EXTRACTORS` no longer
+carries a `needs_converters` flag, because there is no longer a second call shape to dispatch to.
 
 **Pending → knowledge-layer stage.** `m365_brain/workspace.py` — the facade that opens a config
 and returns a working handle. It is the API the bundled skills, the CLI, and migrating call sites
@@ -197,8 +246,13 @@ apply is traceable to a config key (ADR 0008).
 
 1. **Nothing under `inbox/` is written by anything but an extractor.** Annotations, intents, and
    manifests live in their own siblings. This is what makes `inbox/` re-derivable: it can be
-   deleted and re-pulled without losing authored work. *(Pending → M365-platform, as part of the
-   vault contract.)*
+   deleted and re-pulled without losing authored work. *(Present.)*
+
+   Corollary, also **Present**: `StorageBackend.delete_file` is idempotent. Both backends already
+   swallow a missing path, and `RemovalHandler` relies on it — upstream re-sends a `@removed`
+   marker for an id it has already sent one for, and a second pass must be a no-op rather than a
+   404. A backend that raised on a missing path would turn every repeated removal into a failed
+   sync cycle.
 2. **A stale eTag raises rather than overwriting.** `put_file` sends `If-Match`; a `412` is a
    loud failure, never a retry-with-force. This is the only silent-data-loss path in the package
    and it is tested explicitly. *(Pending → M365-platform.)*
