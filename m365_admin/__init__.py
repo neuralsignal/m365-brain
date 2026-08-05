@@ -1,1 +1,1 @@
-"""m365-admin: Reflex admin dashboard for m365-extract."""
+"""m365-admin: Reflex admin dashboard for m365-brain."""

@@ -15,7 +15,7 @@ def _make_backend(prefix: str) -> tuple:
     with patch(_CONTAINER_CLIENT) as mock_cls:
         mock_client = MagicMock()
         mock_cls.from_connection_string.return_value = mock_client
-        from m365_extract.storage.azure_blob import AzureBlobBackend
+        from m365_brain.storage.azure_blob import AzureBlobBackend
 
         backend = AzureBlobBackend("conn-string", "container", prefix)
     return backend, mock_client

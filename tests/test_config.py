@@ -8,7 +8,7 @@ import textwrap
 import pytest
 from pydantic import ValidationError
 
-from m365_extract.config import (
+from m365_brain.config import (
     Config,
     ConfigError,
     ConvertersConfig,
@@ -16,7 +16,7 @@ from m365_extract.config import (
     TeamsChannelsExtractorConfig,
     load_config,
 )
-from m365_extract.config.loader import _deep_merge
+from m365_brain.config.loader import _deep_merge
 
 
 class TestLoadConfig:

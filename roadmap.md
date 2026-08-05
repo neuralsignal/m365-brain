@@ -1,8 +1,8 @@
-# m365-extract Roadmap
+# m365-brain Roadmap
 
 ## Phase 1: Core Library + CLI (single-user, local storage) -- DONE
 
-`pip install m365-extract && m365-extract sync --once` works end-to-end against real Graph API.
+`pip install m365-brain && m365-brain sync --once` works end-to-end against real Graph API.
 
 - Project scaffold: pyproject.toml, pixi.toml, config.yaml
 - config.py — frozen dataclass config loader, strict validation, env var expansion
@@ -20,7 +20,7 @@
 ### Stopping Point 1: User Testing + Graph API Validation
 
 1. Test Graph API access via Graph Explorer
-2. Run CLI locally: `m365-extract auth login` then `m365-extract sync --once`
+2. Run CLI locally: `m365-brain auth login` then `m365-brain sync --once`
 3. Verify output in `./vault/`
 4. Verify incremental sync: run again, confirm only new items fetched
 
@@ -41,7 +41,7 @@
 ### Stopping Point 2: File Conversion Validation
 
 1. Test via Graph Explorer: `GET /me/drive/root/children`, `GET /me/followedSites`
-2. Run: `m365-extract sync --once --extractors onedrive,sharepoint`
+2. Run: `m365-brain sync --once --extractors onedrive,sharepoint`
 3. Verify DOCX/PPTX/PDF → markdown conversion quality
 4. Test large files for timeout/size limits
 
@@ -49,7 +49,7 @@
 
 ## Phase 3: Azure Blob Storage + Docker
 
-**Goal**: `docker run m365-extract` syncs to Azure Blob Storage.
+**Goal**: `docker run m365-brain` syncs to Azure Blob Storage.
 
 **Implementation**:
 1. `storage/azure_blob.py` — Azure Blob Storage backend with per-user prefix routing
@@ -61,10 +61,10 @@
 
 ### Stopping Point 3: Azure Resource Provisioning
 
-1. Create resource group: `az group create --name rg-m365-extract --location switzerlandnorth`
-2. Create storage account: `az storage account create --name stm365extract --resource-group rg-m365-extract --location switzerlandnorth --sku Standard_LRS --kind StorageV2`
+1. Create resource group: `az group create --name rg-m365-brain --location switzerlandnorth`
+2. Create storage account: `az storage account create --name stm365extract --resource-group rg-m365-brain --location switzerlandnorth --sku Standard_LRS --kind StorageV2`
 3. Create blob container: `az storage container create --name m365-vaults --account-name stm365extract`
-4. Test Docker build + Azure Blob: `docker build -t m365-extract . && docker run --env-file .env m365-extract sync --once`
+4. Test Docker build + Azure Blob: `docker build -t m365-brain . && docker run --env-file .env m365-brain sync --once`
 
 ---
 
@@ -91,7 +91,7 @@
 2. Add redirect URI: `http://localhost:8000/auth/callback` (dev)
 3. Verify "Allow public client flows" still enabled
 4. Generate Fernet token encryption key
-5. Test multi-user locally: `m365-extract serve --config config.web.yaml`
+5. Test multi-user locally: `m365-brain serve --config config.web.yaml`
 
 ---
 
@@ -101,7 +101,7 @@
 
 **Status**: Phase 4 built the complete web service backend (FastAPI, OAuth2, per-user isolation, scheduler). CI/CD infrastructure is complete (18 GitHub Actions workflows). Live validation (2026-03-24) confirmed OAuth2 login, user creation, health endpoint, and all extractors against real Graph API. The core gap: **no UI** — Phase 4 delivered API endpoints only.
 
-**Architecture decision**: m365-extract stays as a library/CLI (extractors, sync API, auth, config, storage, Graph client). A new Reflex app (`web-ui/`) imports m365-extract as a dependency and adds the UI, RBAC, scheduling, and deployment layers. This keeps the PyPI package lean for CLI-only users and lets the UI evolve independently.
+**Architecture decision**: m365-brain stays as a library/CLI (extractors, sync API, auth, config, storage, Graph client). A new Reflex app (`web-ui/`) imports m365-brain as a dependency and adds the UI, RBAC, scheduling, and deployment layers. This keeps the PyPI package lean for CLI-only users and lets the UI evolve independently.
 
 **Done (infrastructure)**:
 - GitHub Actions CI/CD workflows (lint, test, coverage, release-please, PyPI publish, docs deploy)
@@ -137,17 +137,17 @@ Replaced headless FastAPI API with a full Reflex admin dashboard.
 - Admin view: user list, enable/disable users, admin config management
 - Services: TokenService (Fernet encrypt/decrypt), AdminService (config CRUD, role check)
 - 74 admin tests passing
-- Deleted old FastAPI web layer (`m365_extract/web/`, `user_manager.py`, `token_store.py`)
+- Deleted old FastAPI web layer (`m365_brain/web/`, `user_manager.py`, `token_store.py`)
 
 ### Phase 5C: Daemon Integration + Sync Visibility -- DONE
 
 Connect the sync daemon to the database so the UI shows real sync data.
 
 **Completed (2026-03-25)**:
-- `m365_extract/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record, write_health_file)
+- `m365_brain/daemon.py` — daemon sync runner (get_enabled_users, sync_user, run_daemon_cycle, write_sync_record, write_health_file)
 - `TokenStoreProtocol` in `token_provider.py` — replaces deleted `TokenStore` import with Protocol
 - `TokenServiceAdapter` in `token_service.py` — bridges TokenService to TokenStoreProtocol for daemon
-- CLI `daemon` command — `m365-extract --config config.web.yaml daemon` (replaced by `worker` command in Phase 5G)
+- CLI `daemon` command — `m365-brain --config config.web.yaml daemon` (replaced by `worker` command in Phase 5G)
 - Per-user sync state: `state/{user_id}/sync_state.json`
 - SyncRecord written at start (running) and completion (completed/failed)
 - `seed_admin_config()` call at engine startup (idempotent)
@@ -231,7 +231,7 @@ Deploy the Reflex app to Azure App Service.
 
 4. **Post-deploy verification**:
    - OAuth login on `https://app-m365-admin-prod.azurewebsites.net`
-   - App Service logs: `az webapp log tail --name app-m365-admin-prod --resource-group rg-m365-extract-prod` (no separate daemon container — worker runs as a thread within the App Service)
+   - App Service logs: `az webapp log tail --name app-m365-admin-prod --resource-group rg-m365-brain-prod` (no separate daemon container — worker runs as a thread within the App Service)
    - Sync history visible in dashboard
    - Log Analytics receiving data: `az monitor log-analytics query --workspace <id> --analytics-query "AppServiceConsoleLogs | take 5"`
 
@@ -242,20 +242,20 @@ Deploy the Reflex app to Azure App Service.
 Replaced the monolithic daemon thread with an independent sync worker.
 
 **Completed (2026-03-26)**:
-- `m365_extract/worker.py` — independent worker with per-(user, extractor) jobs via `ThreadPoolExecutor`
+- `m365_brain/worker.py` — independent worker with per-(user, extractor) jobs via `ThreadPoolExecutor`
 - Each (user, extractor) pair runs as a separate job with its own token provider, storage, and sync state
 - PostgreSQL advisory locks prevent duplicate runs across worker instances
 - `ExtractorStatus` model replaces `SyncRecord` — single row per (user, extractor) showing latest status
 - `WorkerConfig` added to config schema (`max_concurrent_jobs`, `poll_interval_seconds`)
-- New CLI command: `m365-extract worker` — standalone worker process for multi-user scheduling
+- New CLI command: `m365-brain worker` — standalone worker process for multi-user scheduling
 - `start_worker_thread()` bridge for single-container Azure App Service deployment
 - Dashboard shows per-extractor status grid instead of sync history log
 - docker-compose updated with separate `worker` service
 - 12 new worker tests, 386 total tests passing
 
 **Deleted**:
-- `m365_extract/daemon.py` — replaced by `worker.py`
-- `m365_extract/continuous.py` — replaced by `worker` command
+- `m365_brain/daemon.py` — replaced by `worker.py`
+- `m365_brain/continuous.py` — replaced by `worker` command
 - `m365_admin/daemon_runner.py` — replaced by `worker.start_worker_thread()`
 - `SyncRecord` model — replaced by `ExtractorStatus`
 - CLI `--continuous` flag — replaced by `worker` command
@@ -263,7 +263,7 @@ Replaced the monolithic daemon thread with an independent sync worker.
 **Architecture**:
 ```
 Reflex App (UI only)     PostgreSQL (shared)     Worker Process
-- User OAuth          -> user, tokenrecord    <- m365-extract worker
+- User OAuth          -> user, tokenrecord    <- m365-brain worker
 - Preferences         -> extractorpreference  <- Poll loop
 - Status grid         -> extractorstatus      <- ThreadPoolExecutor
 - Admin panel                                 <- Per (user, extractor) jobs
@@ -325,7 +325,7 @@ Not part of the original roadmap. The dark factory loop (scan → triage → imp
 
 ## Future: MCP Server for Claude Code
 
-Separate package: `m365-extract-mcp`
+Separate package: `m365-brain-mcp`
 
 - Tools: `search(query)`, `read(path)`, `list(prefix)`
 - Connects to Azure Blob Storage (or local filesystem)

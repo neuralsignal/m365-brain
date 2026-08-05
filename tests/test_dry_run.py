@@ -11,7 +11,7 @@ import re
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.dry_run import dry_run
+from m365_brain.dry_run import dry_run
 
 
 class TestDryRun:

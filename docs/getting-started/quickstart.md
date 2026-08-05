@@ -4,10 +4,10 @@ This guide walks you through authenticating with Microsoft 365 and running your 
 
 ## Azure App Registration
 
-Before using m365-extract, you need an Azure AD (Entra ID) app registration:
+Before using m365-brain, you need an Azure AD (Entra ID) app registration:
 
 1. Go to [Azure Portal > App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) and click **New registration**
-2. Set a name (e.g., `m365-extract`)
+2. Set a name (e.g., `m365-brain`)
 3. Set **Supported account types** to "Accounts in this organizational directory only"
 4. Set **Redirect URI** to `https://login.microsoftonline.com/common/oauth2/nativeclient` (type: Public client/native)
 5. Click **Register**
@@ -46,14 +46,14 @@ MSAL_CLIENT_ID=your-client-id-here
 MSAL_TENANT_ID=your-tenant-id-here
 ```
 
-m365-extract automatically loads `.env` from the config file's directory.
+m365-brain automatically loads `.env` from the config file's directory.
 
 ## Authentication
 
 Run the device code login flow:
 
 ```bash
-m365-extract --config config.yaml auth login
+m365-brain --config config.yaml auth login
 ```
 
 This will display a message like:
@@ -70,7 +70,7 @@ Open the URL in your browser, enter the code, and sign in with your Microsoft 36
 Run all enabled extractors once:
 
 ```bash
-m365-extract --config config.yaml sync --once
+m365-brain --config config.yaml sync --once
 ```
 
 Output:
@@ -88,7 +88,7 @@ Your synced markdown files will appear in the configured storage location (defau
 For multi-user deployments (web mode with database), run the sync worker:
 
 ```bash
-m365-extract --config config/base.yaml,config/auth.yaml,config/service/web.yaml worker
+m365-brain --config config/base.yaml,config/auth.yaml,config/service/web.yaml worker
 ```
 
 The worker polls the database for enabled users and their extractor preferences, then runs each (user, extractor) pair as an independent job on its configured `poll_interval_minutes`. Press `Ctrl+C` to stop.
@@ -99,10 +99,10 @@ Run only specific extractors:
 
 ```bash
 # Sync only email and calendar
-m365-extract --config config.yaml sync --once --extractors email,calendar
+m365-brain --config config.yaml sync --once --extractors email,calendar
 
 # Sync only Teams data
-m365-extract --config config.yaml sync --once --extractors teams_chats,teams_channels
+m365-brain --config config.yaml sync --once --extractors teams_chats,teams_channels
 ```
 
 Available extractor names: `email`, `calendar`, `teams_chats`, `teams_channels`, `onedrive`, `sharepoint`

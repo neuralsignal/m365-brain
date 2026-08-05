@@ -5,7 +5,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.frontmatter import (
+from m365_brain.frontmatter import (
     CalendarEventData,
     ContactData,
     DirectoryUserData,
@@ -23,7 +23,7 @@ from m365_extract.frontmatter import (
     build_teams_channel_frontmatter,
     build_teams_chat_frontmatter,
 )
-from m365_extract.markdown_writer import (
+from m365_brain.markdown_writer import (
     dumps_markdown,
     loads_markdown,
     short_hash,
@@ -130,7 +130,7 @@ class TestBuildEmailFrontmatter:
         assert "email" in fm["tags"]
         assert fm["sender"] == "alice@example.com"
         assert fm["mailbox"] == "me"
-        assert fm["source"]["extractor"] == "m365-extract/email/1.1"
+        assert fm["source"]["extractor"] == "m365-brain/email/1.1"
         assert "permalink" in fm
 
     def test_mailbox_field_carries_shared_address(self):
@@ -276,7 +276,7 @@ class TestBuildOneDriveFrontmatter:
         assert fm["parent_path"] == "Documents/Reports"
         assert fm["conversion_status"] == "pending"
         assert fm["source"]["service"] == "onedrive"
-        assert fm["source"]["extractor"] == "m365-extract/onedrive/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/onedrive/1.0"
         assert "permalink" in fm
 
     def test_file_without_extension(self):
@@ -317,7 +317,7 @@ class TestBuildSharePointFrontmatter:
         assert fm["site_name"] == "Engineering Hub"
         assert fm["drive_name"] == "Documents"
         assert fm["source"]["service"] == "sharepoint"
-        assert fm["source"]["extractor"] == "m365-extract/sharepoint/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/sharepoint/1.0"
 
 
 class TestBuildTeamsChannelFrontmatter:
@@ -364,7 +364,7 @@ class TestBuildContactFrontmatter:
         assert fm["job_title"] == "VP Engineering"
         assert fm["department"] == "Engineering"
         assert fm["source"]["service"] == "people"
-        assert fm["source"]["extractor"] == "m365-extract/contacts/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/contacts/1.0"
         assert fm["permalink"].startswith("contact-jane-smith-")
 
     def test_empty_optional_fields_omitted(self):
@@ -429,7 +429,7 @@ class TestBuildDirectoryUserFrontmatter:
         assert fm["manager"] == "[[directory-john-doe-abc123]]"
         assert fm["direct_reports"] == ["[[directory-alice-wong-def456]]"]
         assert fm["source"]["service"] == "directory"
-        assert fm["source"]["extractor"] == "m365-extract/directory/1.0"
+        assert fm["source"]["extractor"] == "m365-brain/directory/1.0"
         assert fm["permalink"].startswith("directory-jane-smith-")
 
     def test_empty_optional_fields_omitted(self):

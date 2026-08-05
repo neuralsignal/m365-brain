@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
 from m365_admin.config_loader import get_session
-from m365_extract.models import ExtractorStatus
+from m365_brain.models import ExtractorStatus
 
 
 class SyncState(AuthState):

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from m365_extract.config import TeamsChatsExtractorConfig
-from m365_extract.extractors._teams_context import TeamsContext
-from m365_extract.extractors._teams_hosted_content import download_inline_images
-from m365_extract.storage.exceptions import StorageError
+from m365_brain.config import TeamsChatsExtractorConfig
+from m365_brain.extractors._teams_context import TeamsContext
+from m365_brain.extractors._teams_hosted_content import download_inline_images
+from m365_brain.storage.exceptions import StorageError
 
 
 def _settings() -> TeamsChatsExtractorConfig:

@@ -1,4 +1,4 @@
-"""Shared test fixtures for m365-extract."""
+"""Shared test fixtures for m365-brain."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ try:
 except ImportError:
     collect_ignore_glob = ["test_admin/test_*.py"]
 
-from m365_extract.config import (
+from m365_brain.config import (
     AuthConfig,
     CalendarExtractorConfig,
     Config,
@@ -36,7 +36,7 @@ from m365_extract.config import (
     WebConfig,
     WorkerConfig,
 )
-from m365_extract.storage.local import LocalBackend
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

@@ -1,6 +1,6 @@
 [workspace]
 channels = ["conda-forge"]
-name = "m365-extract"
+name = "m365-brain"
 platforms = ["linux-64", "osx-arm64"]
 version = "1.1.1" # x-release-please-version
 
@@ -28,7 +28,7 @@ pyopenssl = ">=26.0, <27"
 cryptography = ">=48.0.1, <49"
 sqlmodel = ">=0.0.22,<1"
 jinja2 = ">=3.1.6, <4"
-m365-extract = {path = ".", editable = true, extras = ["azure"]}
+m365-brain = {path = ".", editable = true, extras = ["azure"]}
 obsidian-import = {version = ">=1.2.0,<2", extras = ["markitdown"]}
 lxml = ">=6.1.0, <7"
 pillow = ">=12.3.0, <13"
@@ -46,11 +46,11 @@ mkdocstrings = {version = ">=0.29, <1", extras = ["python"]}
 pymdown-extensions = ">=10.21.3, <11"
 
 [tasks]
-lint = "ruff check m365_extract/ m365_admin/ tests/"
-format-check = "ruff format --check m365_extract/ m365_admin/ tests/"
-format = "ruff format m365_extract/ m365_admin/ tests/"
+lint = "ruff check m365_brain/ m365_admin/ tests/"
+format-check = "ruff format --check m365_brain/ m365_admin/ tests/"
+format = "ruff format m365_brain/ m365_admin/ tests/"
 test = "pytest tests/ -v --tb=short -m 'not integration and not azurite and not admin'"
-test-cov = "pytest tests/ -v --tb=short --cov=m365_extract --cov-report=term-missing -m 'not integration and not azurite and not admin'"
+test-cov = "pytest tests/ -v --tb=short --cov=m365_brain --cov-report=term-missing -m 'not integration and not azurite and not admin'"
 test-azurite = "pytest tests/ -v --tb=short -m azurite"
 pre-commit-install = "pre-commit install"
 docs-build = "mkdocs build"

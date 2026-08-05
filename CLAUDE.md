@@ -1,4 +1,4 @@
-# m365-extract
+# m365-brain
 
 Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 
@@ -6,20 +6,20 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 
 | Path | Purpose |
 |------|---------|
-| `m365_extract/` | Source package |
-| `m365_extract/auth/` | MSAL device code + auth code flow, token provider |
-| `m365_extract/models.py` | SQLModel tables shared between admin UI and worker |
-| `m365_extract/cli.py` | Click CLI (`auth login`, `sync --once`, `worker`) |
-| `m365_extract/sync.py` | Public sync API (extractor runner, used by CLI + worker) |
-| `m365_extract/worker.py` | Sync worker — per-(user, extractor) jobs via ThreadPoolExecutor |
-| `m365_extract/config/` | Frozen dataclass config loader with env var expansion |
-| `m365_extract/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
-| `m365_extract/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
-| `m365_extract/graph_client.py` | Microsoft Graph API client (httpx, pagination, retry, rate limiting) |
-| `m365_extract/markdown_writer.py` | Markdown frontmatter builders + slugify |
-| `m365_extract/logging_config.py` | Central structlog configuration (`configure_logging()`) |
-| `m365_extract/state.py` | Sync state persistence (delta tokens, atomic writes) |
-| `m365_extract/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
+| `m365_brain/` | Source package |
+| `m365_brain/auth/` | MSAL device code + auth code flow, token provider |
+| `m365_brain/models.py` | SQLModel tables shared between admin UI and worker |
+| `m365_brain/cli.py` | Click CLI (`auth login`, `sync --once`, `worker`) |
+| `m365_brain/sync.py` | Public sync API (extractor runner, used by CLI + worker) |
+| `m365_brain/worker.py` | Sync worker — per-(user, extractor) jobs via ThreadPoolExecutor |
+| `m365_brain/config/` | Frozen dataclass config loader with env var expansion |
+| `m365_brain/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
+| `m365_brain/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
+| `m365_brain/graph_client.py` | Microsoft Graph API client (httpx, pagination, retry, rate limiting) |
+| `m365_brain/markdown_writer.py` | Markdown frontmatter builders + slugify |
+| `m365_brain/logging_config.py` | Central structlog configuration (`configure_logging()`) |
+| `m365_brain/state.py` | Sync state persistence (delta tokens, atomic writes) |
+| `m365_brain/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
 | `m365_admin/` | Reflex admin dashboard (OAuth, preferences, admin, sync status) |
 | `m365_admin/auth_state.py` | Entra OAuth2 flow via Reflex state |
 | `m365_admin/services/` | TokenService (Fernet), AdminService (config CRUD) |
@@ -36,7 +36,7 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 
 structlog is the only logging mechanism. No `click.echo`, `print`, or stdlib `logging` for operational output.
 
-- **Central config**: `m365_extract/logging_config.py` — call `configure_logging(log_level, json_output)` once at startup
+- **Central config**: `m365_brain/logging_config.py` — call `configure_logging(log_level, json_output)` once at startup
 - **Entry points**: `cli.py:sync()` and `web/app.py:create_app()` call `configure_logging()` before any log output
 - **Event naming**: `module.action` (e.g., `email.sync_complete`, `graph.retryable_error`, `cli.dry_run_auth_ok`)
 - **Renderer**: JSON when `service.json_logs: true` (daemon/production), ConsoleRenderer when false (dev/interactive)
@@ -91,7 +91,7 @@ Non-negotiable principles. Violating these is a bug.
 - Evaluate libraries on: active maintenance, community size, license compatibility, security track record.
 - Pin versions: stable libraries use `>=current,<next-major`; pre-1.0 libraries use `>=current,<next-minor`.
 - Read changelogs before bumping any dependency. Never do blind `pixi update` across all deps.
-- No circular dependencies. Packages (`m365_extract/`) never import from scripts (`scripts/`) or tests.
+- No circular dependencies. Packages (`m365_brain/`) never import from scripts (`scripts/`) or tests.
 
 ### Git Discipline
 - Commit format: `<type>: <imperative summary>` (feat, fix, docs, chore, refactor, test)
@@ -252,7 +252,7 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 
 ### Architecture
 
-- **Models**: `m365_extract/models.py` — plain SQLModel tables shared between Reflex and the sync worker
+- **Models**: `m365_brain/models.py` — plain SQLModel tables shared between Reflex and the sync worker
 - **Services**: `m365_admin/services/` — `TokenService` (Fernet encrypt/decrypt), `AdminService` (config CRUD, role check)
 - **State classes**: `auth_state.py` (OAuth), `preferences_state.py` (extractor toggles), `admin_state.py` (user mgmt + config), `sync_state.py` (read-only per-extractor status)
 - **Pages**: `/login`, `/callback`, `/dashboard`, `/settings`, `/admin`
@@ -260,18 +260,18 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 - **Database**: SQLModel with 5 tables (`user`, `tokenrecord`, `extractorpreference`, `adminconfig`, `extractorstatus`). SQLite locally, PostgreSQL in production. Configured via `DATABASE_URL` env var.
 - **Admin role**: Emails in `config.web.admin_emails` list. Checked via `AuthState.is_admin` computed var.
 - **Write boundaries**: UI writes users/tokens/preferences/config. Worker writes extractor status. Neither overwrites the other's data.
-- **Worker**: `m365_extract/worker.py` — runs per-(user, extractor) jobs via ThreadPoolExecutor. Can run as a separate process (`m365-extract worker`) or as a thread within the Reflex app. Communicates with the UI only through PostgreSQL.
+- **Worker**: `m365_brain/worker.py` — runs per-(user, extractor) jobs via ThreadPoolExecutor. Can run as a separate process (`m365-brain worker`) or as a thread within the Reflex app. Communicates with the UI only through PostgreSQL.
 
 ### Deleted modules
 
-- `m365_extract/web/` — replaced by Reflex admin UI (Phase 5B)
-- `m365_extract/user_manager.py` — replaced by `User` SQLModel + `rx.session()` (Phase 5B)
-- `m365_extract/auth/token_store.py` — replaced by `TokenRecord` SQLModel + `TokenService` (Phase 5B)
+- `m365_brain/web/` — replaced by Reflex admin UI (Phase 5B)
+- `m365_brain/user_manager.py` — replaced by `User` SQLModel + `rx.session()` (Phase 5B)
+- `m365_brain/auth/token_store.py` — replaced by `TokenRecord` SQLModel + `TokenService` (Phase 5B)
 - CLI `serve` command — replaced by `pixi run -e admin dev` (Phase 5B)
-- `m365_extract/daemon.py` — replaced by `m365_extract/worker.py` (per-extractor jobs)
-- `m365_extract/continuous.py` — replaced by `worker` command
+- `m365_brain/daemon.py` — replaced by `m365_brain/worker.py` (per-extractor jobs)
+- `m365_brain/continuous.py` — replaced by `worker` command
 - `m365_admin/daemon_runner.py` — replaced by `worker.start_worker_thread()`
-- `m365_extract/models.SyncRecord` — replaced by `ExtractorStatus` (per-extractor status)
+- `m365_brain/models.SyncRecord` — replaced by `ExtractorStatus` (per-extractor status)
 
 ### Gotchas
 

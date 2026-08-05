@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Idempotent dev environment setup for m365-extract.
+# Idempotent dev environment setup for m365-brain.
 #
 # What it does:
 #   1. Checks that Docker and pixi are available
@@ -93,7 +93,7 @@ echo "  pixi run test-azurite    # integration tests against Azurite"
 echo ""
 echo "Smoke test sync:"
 echo "  source .env.dev"
-echo "  pixi run m365-extract --config config.azure.yaml sync --once --extractors email"
+echo "  pixi run m365-brain --config config.azure.yaml sync --once --extractors email"
 echo ""
 echo "Teardown:"
 echo "  bash scripts/teardown-dev.sh"

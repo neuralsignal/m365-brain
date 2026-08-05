@@ -13,12 +13,12 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import ExplicitChannel, GraphConfig, TeamsChannelsExtractorConfig
-from m365_extract.extractors import teams_channels
-from m365_extract.extractors._message_store import load_store
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient
-from m365_extract.markdown_writer import short_hash, slugify
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import ExplicitChannel, GraphConfig, TeamsChannelsExtractorConfig
+from m365_brain.extractors import teams_channels
+from m365_brain.extractors._message_store import load_store
+from m365_brain.graph_client import GRAPH_BASE_URL, GraphClient
+from m365_brain.markdown_writer import short_hash, slugify
+from m365_brain.storage.local import LocalBackend
 
 TEAM_ID = "team-1"
 CHANNEL_ID = "ch-1"

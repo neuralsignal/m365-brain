@@ -1,4 +1,4 @@
-"""Tests for m365_extract.logging_config — configure_logging() coverage."""
+"""Tests for m365_brain.logging_config — configure_logging() coverage."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 import pytest
 import structlog
 
-from m365_extract.logging_config import configure_logging
+from m365_brain.logging_config import configure_logging
 
 
 @pytest.fixture(autouse=True)

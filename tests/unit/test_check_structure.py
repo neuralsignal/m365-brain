@@ -121,7 +121,7 @@ def test_terraform_rejected(clean_tree: Path):
 
 
 def test_upward_import(clean_tree: Path):
-    """config (L0) importing cli (L5) is the layering inverted."""
+    """config, the bottom layer, importing cli, the top one, is the layering inverted."""
     (clean_tree / cs.PACKAGE / "config.py").write_text(f"from {cs.PACKAGE} import cli\n")
     findings = cs.check_import_direction(clean_tree)
     assert findings and "upward" in findings[0]
@@ -129,9 +129,7 @@ def test_upward_import(clean_tree: Path):
 
 def test_sideways_import_index_to_m365(clean_tree: Path):
     """The one edge that would make the index depend on the Microsoft half."""
-    (clean_tree / cs.PACKAGE / "index" / "sync.py").write_text(
-        f"from {cs.PACKAGE}.m365 import client\n"
-    )
+    (clean_tree / cs.PACKAGE / "index" / "sync.py").write_text(f"from {cs.PACKAGE}.m365 import client\n")
     findings = cs.check_import_direction(clean_tree)
     assert findings and "sideways" in findings[0]
     assert "index" in findings[0] and "m365" in findings[0]
@@ -146,6 +144,28 @@ def test_downward_import_allowed(clean_tree: Path):
 
 def test_relative_import_is_intra_subpackage(clean_tree: Path):
     (clean_tree / cs.PACKAGE / "index" / "sync.py").write_text("from . import __init__\n")
+    assert cs.check_import_direction(clean_tree) == []
+
+
+def test_pending_relocation_is_exempt_from_layering(clean_tree: Path):
+    """Modules awaiting the move under m365/ keep their pre-layering imports.
+
+    Rewriting their imports once now and again after the move is churn, so
+    they are exempt until they move -- but they are still on the allow-list,
+    so they cannot be forgotten.
+    """
+    assert cs.PENDING_RELOCATION, "the exemption set should not be silently empty"
+    name = sorted(cs.PENDING_RELOCATION)[0]
+    assert name in cs.LAYERS
+    (clean_tree / cs.PACKAGE / f"{name}.py").write_text(f"from {cs.PACKAGE} import cli\n")
+    assert cs.check_import_direction(clean_tree) == []
+
+
+def test_pending_relocation_target_is_also_exempt(clean_tree: Path):
+    """A layered module may still import one that has not moved yet."""
+    name = sorted(cs.PENDING_RELOCATION)[0]
+    (clean_tree / cs.PACKAGE / f"{name}.py").write_text("X = 1\n")
+    (clean_tree / cs.PACKAGE / "config.py").write_text(f"from {cs.PACKAGE} import {name}\n")
     assert cs.check_import_direction(clean_tree) == []
 
 

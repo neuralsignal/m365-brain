@@ -1,4 +1,4 @@
-"""Tests for SQLModel table definitions in m365_extract.models."""
+"""Tests for SQLModel table definitions in m365_brain.models."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import (
+from m365_brain.models import (
     ExtractorPreference,
     ExtractorStatus,
     TokenRecord,

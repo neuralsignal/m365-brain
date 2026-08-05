@@ -7,8 +7,8 @@ from datetime import datetime
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from m365_extract.extractors._message_renderer import render_channel_body, render_chat_body
-from m365_extract.extractors._message_store import StoredMessage
+from m365_brain.extractors._message_renderer import render_channel_body, render_chat_body
+from m365_brain.extractors._message_store import StoredMessage
 
 
 def _msg(

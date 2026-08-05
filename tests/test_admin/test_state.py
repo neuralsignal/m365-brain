@@ -204,7 +204,7 @@ class TestIsAdmin:
     """Test the is_admin logic (trivial email-in-list check)."""
 
     def test_admin_email_is_admin(self):
-        from m365_extract.config.schema import WebConfig
+        from m365_brain.config.schema import WebConfig
 
         wc = WebConfig(
             host="h",

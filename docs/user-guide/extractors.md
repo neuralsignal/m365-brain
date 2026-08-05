@@ -1,6 +1,6 @@
 # Extractors
 
-m365-extract ships with 6 extractors, each targeting a different Microsoft 365 data source. All extractors produce Obsidian-compatible markdown files with YAML frontmatter.
+m365-brain ships with 6 extractors, each targeting a different Microsoft 365 data source. All extractors produce Obsidian-compatible markdown files with YAML frontmatter.
 
 ## Common Behavior
 
@@ -13,7 +13,7 @@ Every extractor follows the same contract:
 
 ## Email
 
-**Module:** `m365_extract.extractors.email`
+**Module:** `m365_brain.extractors.email`
 **Required scope:** `Mail.Read`
 **Sync strategy:** Delta query per folder
 
@@ -45,7 +45,7 @@ Example: `emails/2026/2026-03-15/weekly-standup-notes-a1b2c3/index.md`
 
 ## Calendar
 
-**Module:** `m365_extract.extractors.calendar`
+**Module:** `m365_brain.extractors.calendar`
 **Required scope:** `Calendars.Read`
 **Sync strategy:** Calendar view with date range
 
@@ -73,7 +73,7 @@ Example: `calendar/2026/2026-03/2026-03-15-standup-d4e5f6.md`
 
 ## Teams Chats
 
-**Module:** `m365_extract.extractors.teams_chats`
+**Module:** `m365_brain.extractors.teams_chats`
 **Required scope:** `Chat.Read`
 **Sync strategy:** Filter-based incremental (last modified datetime)
 
@@ -110,7 +110,7 @@ Example: `teams-chats/alice-bob_g7h8i9.md`
 
 ## Teams Channels
 
-**Module:** `m365_extract.extractors.teams_channels`
+**Module:** `m365_brain.extractors.teams_channels`
 **Required scope:** `ChannelMessage.Read.All`
 **Sync strategy:** Delta query per channel
 
@@ -145,7 +145,7 @@ Example: `teams-channels/engineering/general-j0k1l2.md`
 
 ## OneDrive
 
-**Module:** `m365_extract.extractors.onedrive`
+**Module:** `m365_brain.extractors.onedrive`
 **Required scope:** `Files.Read.All`
 **Sync strategy:** Delta query on drive root
 
@@ -185,7 +185,7 @@ When a file matches `eager_convert_patterns` and its extension is in `convertibl
 
 ## SharePoint
 
-**Module:** `m365_extract.extractors.sharepoint`
+**Module:** `m365_brain.extractors.sharepoint`
 **Required scope:** `Sites.Read.All`
 **Sync strategy:** Delta query per drive, site discovery via followed sites
 

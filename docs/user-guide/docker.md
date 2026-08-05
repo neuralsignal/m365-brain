@@ -1,6 +1,6 @@
 # Docker
 
-m365-extract provides a single `Dockerfile` and `docker-compose.yaml` for local development. The sync worker runs as a background thread inside the Reflex web app, or as a separate process via `m365-extract worker`.
+m365-brain provides a single `Dockerfile` and `docker-compose.yaml` for local development. The sync worker runs as a background thread inside the Reflex web app, or as a separate process via `m365-brain worker`.
 
 ## Docker Compose
 

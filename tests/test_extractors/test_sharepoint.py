@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import GraphConfig, SharePointExtractorConfig
-from m365_extract.extractors import sharepoint
-from m365_extract.graph_client import GraphClient
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import GraphConfig, SharePointExtractorConfig
+from m365_brain.extractors import sharepoint
+from m365_brain.graph_client import GraphClient
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 

@@ -6,7 +6,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "m365_extract/**"
+      - "m365_brain/**"
       - "CHANGELOG.md"
       - "README.md"
   pull_request:
@@ -14,7 +14,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "m365_extract/**"
+      - "m365_brain/**"
       - "CHANGELOG.md"
       - "README.md"
 

@@ -13,12 +13,12 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
-from m365_extract.extractors import _teams_attachment_helpers as helpers
-from m365_extract.extractors import _teams_hosted_content as hosted_content
-from m365_extract.extractors._teams_context import TeamsContext
-from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import GraphConfig, TeamsChatsExtractorConfig
+from m365_brain.extractors import _teams_attachment_helpers as helpers
+from m365_brain.extractors import _teams_hosted_content as hosted_content
+from m365_brain.extractors._teams_context import TeamsContext
+from m365_brain.graph_client import GraphApiError, GraphClient
+from m365_brain.storage.local import LocalBackend
 
 
 @pytest.fixture()
@@ -686,7 +686,7 @@ class TestDownloadInlineImages:
     def test_storage_error_on_write_skips_item(self, tmp_path, graph_config) -> None:
         from unittest.mock import MagicMock
 
-        from m365_extract.storage.exceptions import StorageError
+        from m365_brain.storage.exceptions import StorageError
 
         mock_storage = MagicMock(spec=LocalBackend)
         mock_storage.write_bytes.side_effect = StorageError("disk full")

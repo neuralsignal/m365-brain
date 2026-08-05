@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.state import SyncState
+from m365_brain.state import SyncState
 
 
 class TestSyncState:
@@ -82,7 +82,7 @@ class TestSyncState:
         """When os.replace fails, the temp file is cleaned up and the error re-raised."""
         state = SyncState(str(tmp_path / "state.json"))
         with (
-            patch("m365_extract.state.os.replace", side_effect=OSError("disk full")),
+            patch("m365_brain.state.os.replace", side_effect=OSError("disk full")),
             pytest.raises(OSError, match="disk full"),
         ):
             state.save("email", {"delta": "tok"})

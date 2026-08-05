@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.converters.html_to_md import html_to_markdown
+from m365_brain.converters.html_to_md import html_to_markdown
 
 
 @pytest.mark.parametrize(

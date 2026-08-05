@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "m365-extract"
+name = "m365-brain"
 version = "1.1.1"
 description = "Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API"
 readme = "README.md"
@@ -49,22 +49,22 @@ admin = [
     "psycopg2-binary>=2.9,<3",
 ]
 all = [
-    "m365-extract[azure,convert,admin]",
+    "m365-brain[azure,convert,admin]",
 ]
 dev = ["pytest>=9.0.3,<10", "hypothesis>=6.100,<7", "pytest-cov>=5.0,<6", "pytest-httpx>=0.35,<1"]
 
 [project.urls]
-Documentation = "https://neuralsignal.github.io/m365-extract/"
-Repository = "https://github.com/neuralsignal/m365-extract"
+Documentation = "https://neuralsignal.github.io/m365-brain/"
+Repository = "https://github.com/neuralsignal/m365-brain"
 
 [project.scripts]
-m365-extract = "m365_extract.cli:main"
+m365-brain = "m365_brain.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["m365_extract"]
+packages = ["m365_brain"]
 
 [tool.hatch.build.targets.sdist]
-include = ["m365_extract/"]
+include = ["m365_brain/"]
 
 [tool.ruff]
 target-version = "py312"

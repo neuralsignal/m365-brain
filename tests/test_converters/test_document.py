@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from m365_extract.converters.document import DocumentConversionError, convert_document
+from m365_brain.converters.document import DocumentConversionError, convert_document
 
 SAMPLE_CONVERTERS_CONFIG = {
     "backends": {"pdf": "markitdown", "docx": "markitdown", "default": "native"},

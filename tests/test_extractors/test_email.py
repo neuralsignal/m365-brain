@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import EmailExtractorConfig, GraphConfig, MailboxConfig
-from m365_extract.extractors import _attachment_helpers, _folder_helpers, email
-from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import EmailExtractorConfig, GraphConfig, MailboxConfig
+from m365_brain.extractors import _attachment_helpers, _folder_helpers, email
+from m365_brain.graph_client import GraphApiError, GraphClient
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -303,7 +303,7 @@ class TestEmailExtractor:
         files = storage.list_files("emails")
         content = storage.read_file(files[0])
 
-        from m365_extract.markdown_writer import loads_markdown
+        from m365_brain.markdown_writer import loads_markdown
 
         fm, body = loads_markdown(content)
         assert fm["title"] == tricky_subject
@@ -1049,7 +1049,7 @@ class TestSharedMailbox:
 
         # Frontmatter must record the mailbox address
         content = storage.read_file(files[0])
-        from m365_extract.markdown_writer import loads_markdown
+        from m365_brain.markdown_writer import loads_markdown
 
         fm, _ = loads_markdown(content)
         assert fm["mailbox"] == "ai@sanoptis.com"
@@ -1338,7 +1338,7 @@ class TestNarrowedExceptionHandling:
     def test_convert_os_error_caught(self, tmp_path):
         """OSError during attachment conversion is caught (log-and-continue)."""
         storage = LocalBackend(str(tmp_path / "vault"))
-        with patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=OSError("disk full")):
+        with patch("m365_brain.extractors._attachment_helpers.convert_document", side_effect=OSError("disk full")):
             _attachment_helpers.convert_and_store(
                 storage, b"data", "file.pdf", "emails/dir/attachments_converted/file.pdf.md", _NO_CONVERTERS
             )
@@ -1347,7 +1347,7 @@ class TestNarrowedExceptionHandling:
         """AttributeError during conversion propagates (programming error)."""
         storage = LocalBackend(str(tmp_path / "vault"))
         with (
-            patch("m365_extract.extractors._attachment_helpers.convert_document", side_effect=AttributeError("oops")),
+            patch("m365_brain.extractors._attachment_helpers.convert_document", side_effect=AttributeError("oops")),
             pytest.raises(AttributeError),
         ):
             _attachment_helpers.convert_and_store(
@@ -1365,7 +1365,7 @@ class TestConvertAndStore:
 
     def test_conversion_error_returns_false_without_raising(self, tmp_path):
         """An obsidian-import failure (e.g. timeout) must not propagate past convert_and_store."""
-        from m365_extract.converters.document import DocumentConversionError
+        from m365_brain.converters.document import DocumentConversionError
 
         storage = MagicMock()
         with patch.object(

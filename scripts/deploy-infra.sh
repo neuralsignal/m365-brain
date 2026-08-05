@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Idempotent Azure infrastructure deployment for m365-extract.
+# Idempotent Azure infrastructure deployment for m365-brain.
 #
 # What it does:
 #   1. Checks that az CLI is logged in
@@ -44,7 +44,7 @@ if [ -z "$ENV" ]; then
 fi
 
 LOCATION="switzerlandnorth"
-RESOURCE_GROUP="rg-m365-extract-${ENV}"
+RESOURCE_GROUP="rg-m365-brain-${ENV}"
 PARAMS_FILE="infra/params.${ENV}.json"
 TEMPLATE_FILE="infra/main.bicep"
 

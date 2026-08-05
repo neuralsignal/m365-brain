@@ -17,8 +17,8 @@ auth:
 Path values (`base_path`, `state_file_path`, `token_cache_path`) that are relative are resolved against the config file's directory, not the process working directory.
 
 ```yaml
-# If config.yaml is at /home/user/m365-extract/config.yaml
-# then this resolves to /home/user/m365-extract/vault/
+# If config.yaml is at /home/user/m365-brain/config.yaml
+# then this resolves to /home/user/m365-brain/vault/
 storage:
   local:
     base_path: "./vault"

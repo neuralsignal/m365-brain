@@ -1,5 +1,5 @@
 # Graph Client
 
-::: m365_extract.graph_client
+::: m365_brain.graph_client
     options:
       show_root_heading: true

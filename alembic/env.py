@@ -1,4 +1,4 @@
-"""Alembic environment — wired to m365_extract.models via SQLModel.metadata."""
+"""Alembic environment — wired to m365_brain.models via SQLModel.metadata."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 # Import all models so SQLModel.metadata is populated.
-import m365_extract.models  # noqa: F401
+import m365_brain.models  # noqa: F401
 
 config = context.config
 

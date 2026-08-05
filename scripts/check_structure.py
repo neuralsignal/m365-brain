@@ -37,36 +37,66 @@ MAX_MODULE_LINES = 300
 
 # subpackage / top-level-module name -> layer. Higher layers may import lower
 # layers. A same-layer import is allowed only within one subpackage, which is
-# what rejects `index -> m365`: they share layer 2 deliberately, because
+# what rejects `index -> m365`: they share a layer deliberately, because
 # neither may depend on the other.
+#
+# The map is also the allow-list. A module that is not in it is a finding --
+# adding a subpackage should require naming its layer, not just creating a
+# directory.
 LAYERS: dict[str, int] = {
-    # layer 0 -- pure data and configuration, no I/O beyond reading its own input
+    # 0 -- configuration. Nothing sits below it.
     "config": 0,
-    "model": 0,
-    "models": 0,
-    "parsers": 0,
-    "storage": 0,
-    "logging_config": 0,
-    "validation": 0,
-    # layer 1 -- persisted bookkeeping
-    "state": 1,
-    "manifest": 1,
-    # layer 2 -- the two halves that must not know about each other
-    "index": 2,
-    "vault": 2,
-    "outbox": 2,
-    "m365": 2,
-    # layer 3 -- orchestration over layer 2
-    "schedule": 3,
-    "hooks": 3,
-    "dry_run": 3,
-    "sync": 3,
-    "worker": 3,
-    # layer 4 -- the facade
-    "workspace": 4,
-    # layer 5 -- the entry point
-    "cli": 5,
+    # 1 -- pure data and pure functions over it
+    "model": 1,
+    "models": 1,
+    "parsers": 1,
+    "validation": 1,
+    "logging_config": 1,
+    # 2 -- persistence primitives
+    "storage": 2,
+    "state": 2,
+    "manifest": 2,
+    # 3 -- the two halves that must not know about each other
+    "index": 3,
+    "vault": 3,
+    "outbox": 3,
+    "m365": 3,
+    # 4 -- one pass over layer 3
+    "sync": 4,
+    # 5 -- orchestration over passes
+    "schedule": 5,
+    "hooks": 5,
+    "cycle": 5,
+    "worker": 5,
+    "dry_run": 5,
+    # 6 -- the facade
+    "workspace": 6,
+    # 7 -- the entry point
+    "cli": 7,
 }
+
+# Modules that exist today and move under `m365/` during the platform stage.
+# They are exempt from the import-direction rule -- not from the allow-list --
+# because their current layout predates the layering and rewriting their
+# imports twice is churn.
+#
+# This set is stage M's checklist. When it is empty, the relocation is done,
+# and emptying it is a stated acceptance criterion rather than a cleanup
+# somebody may or may not get to.
+PENDING_RELOCATION: frozenset[str] = frozenset(
+    {
+        "auth",
+        "converters",
+        "extractors",
+        "frontmatter",
+        "graph_client",
+        "graph_helpers",
+        "markdown_writer",
+    }
+)
+
+for _name in PENDING_RELOCATION:
+    LAYERS.setdefault(_name, LAYERS["m365"])
 
 ALLOWED_TOP_LEVEL_DIRS = {
     PACKAGE,
@@ -165,6 +195,9 @@ def check_no_sys_path(root: Path) -> list[str]:
     for path in _python_files(root) + sorted((root / "tests").rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
+        if path.name == f"test_{Path(__file__).name}":
+            continue  # its fixtures are, by construction, the violations
+
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             stripped = line.strip()
             if stripped.startswith("#"):
@@ -216,13 +249,15 @@ def check_import_direction(root: Path) -> list[str]:
         source_key = _module_key(path, root)
         if source_key not in LAYERS:
             continue  # already reported by check_subpackages
+        if source_key in PENDING_RELOCATION:
+            continue
         source_layer = LAYERS[source_key]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for target_key in sorted(_imported_keys(tree)):
             if target_key == source_key:
                 continue  # intra-subpackage
-            if target_key not in LAYERS:
-                continue  # already reported
+            if target_key not in LAYERS or target_key in PENDING_RELOCATION:
+                continue  # already reported, or awaiting relocation
             target_layer = LAYERS[target_key]
             if target_layer < source_layer:
                 continue

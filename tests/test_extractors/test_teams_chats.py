@@ -10,12 +10,12 @@ import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import GraphConfig, TeamsChatsExtractorConfig
-from m365_extract.extractors import teams_chats
-from m365_extract.extractors._message_store import load_store
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient
-from m365_extract.markdown_writer import short_hash, slugify
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import GraphConfig, TeamsChatsExtractorConfig
+from m365_brain.extractors import teams_chats
+from m365_brain.extractors._message_store import load_store
+from m365_brain.graph_client import GRAPH_BASE_URL, GraphClient
+from m365_brain.markdown_writer import short_hash, slugify
+from m365_brain.storage.local import LocalBackend
 
 CHAT_ID = "19:chat-1"
 CHAT_DIR = f"teams-chats/alice-bob_{short_hash(CHAT_ID, 6)}"
@@ -807,7 +807,7 @@ class TestConvertedAttachmentRendering:
         )
         httpx_mock.add_response(url=re.compile(r"https://example\.sharepoint\.com/dl.*"), content=b"%PDF fake")
 
-        with patch("m365_extract.extractors._teams_attachment_helpers.convert_and_store", return_value=True):
+        with patch("m365_brain.extractors._teams_attachment_helpers.convert_and_store", return_value=True):
             teams_chats.run(client, storage, {}, config, {})
 
         content = storage.read_file(f"{CHAT_DIR}/messages.md")
@@ -998,7 +998,7 @@ class TestConvertedAttachmentLink:
             content=b"PK\x03\x04fake docx",
         )
 
-        with patch("m365_extract.extractors._attachment_helpers.convert_document", return_value="# Converted"):
+        with patch("m365_brain.extractors._attachment_helpers.convert_document", return_value="# Converted"):
             teams_chats.run(client, storage, {}, config, {})
 
         content = storage.read_file(f"{CHAT_DIR}/messages.md")

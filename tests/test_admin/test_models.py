@@ -9,7 +9,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import (
+from m365_brain.models import (
     ExtractorPreference,
     ExtractorStatus,
     TokenRecord,

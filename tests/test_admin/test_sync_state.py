@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import ExtractorStatus, User
+from m365_brain.models import ExtractorStatus, User
 
 pytestmark = pytest.mark.admin
 

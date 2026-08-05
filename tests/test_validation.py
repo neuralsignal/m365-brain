@@ -6,8 +6,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.config.errors import ConfigError
-from m365_extract.validation import validate_user_id
+from m365_brain.config.errors import ConfigError
+from m365_brain.validation import validate_user_id
 
 
 class TestValidateUserId:

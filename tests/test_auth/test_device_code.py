@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import msal
 import pytest
 
-from m365_extract.auth.device_code import DeviceCodeAuth
-from m365_extract.config import AuthConfig
+from m365_brain.auth.device_code import DeviceCodeAuth
+from m365_brain.config import AuthConfig
 
 
 @pytest.fixture()
@@ -25,7 +25,7 @@ def auth_config(tmp_path):
 
 
 class TestDeviceCodeAuth:
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_get_token_from_cache(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -38,7 +38,7 @@ class TestDeviceCodeAuth:
         assert token == "cached-token"
         mock_app.acquire_token_silent.assert_called_once()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_get_token_device_flow_when_no_cache(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -57,7 +57,7 @@ class TestDeviceCodeAuth:
         assert token == "new-token"
         mock_app.initiate_device_flow.assert_called_once()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_reserved_scopes_excluded(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -73,7 +73,7 @@ class TestDeviceCodeAuth:
         assert "User.Read" in called_scopes
         assert "Mail.Read" in called_scopes
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_failed_device_flow_exits(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -84,7 +84,7 @@ class TestDeviceCodeAuth:
         with pytest.raises(SystemExit):
             auth.get_token()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_token_acquisition_failure_exits(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -102,7 +102,7 @@ class TestDeviceCodeAuth:
         with pytest.raises(SystemExit):
             auth.get_token()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_cache_saved_on_state_change(self, mock_app_cls, auth_config, tmp_path):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -119,7 +119,7 @@ class TestDeviceCodeAuth:
         cache_path = tmp_path / "token_cache.json"
         assert cache_path.exists()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_cache_file_has_restricted_permissions(self, mock_app_cls, auth_config, tmp_path):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -136,7 +136,7 @@ class TestDeviceCodeAuth:
         file_mode = os.stat(cache_path).st_mode
         assert stat.S_IMODE(file_mode) == 0o600
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_login_forces_device_code_flow(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -157,7 +157,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.assert_not_called()
         mock_app.acquire_token_silent.assert_not_called()
 
-    @patch("m365_extract.auth.device_code.msal.PublicClientApplication")
+    @patch("m365_brain.auth.device_code.msal.PublicClientApplication")
     def test_try_silent_returns_none_without_access_token(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -176,7 +176,7 @@ class TestDeviceCodeAuth:
         cache_path = tmp_path / "token_cache.json"
         cache_path.write_text(cache.serialize(), encoding="utf-8")
 
-        with patch("m365_extract.auth.device_code.msal.PublicClientApplication"):
+        with patch("m365_brain.auth.device_code.msal.PublicClientApplication"):
             auth = DeviceCodeAuth(auth_config)
 
         assert not auth._cache.has_state_changed

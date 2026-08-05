@@ -1,11 +1,11 @@
-"""Tests for m365_extract.sync module."""
+"""Tests for m365_brain.sync module."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from m365_extract.extractors.errors import ExtractorError
-from m365_extract.sync import EXTRACTORS, run_extractors
+from m365_brain.extractors.errors import ExtractorError
+from m365_brain.sync import EXTRACTORS, run_extractors
 
 
 def _make_mock_extractor(return_value: tuple = ({}, 0), side_effect: Exception | None = None) -> MagicMock:
@@ -19,7 +19,7 @@ def _make_mock_extractor(return_value: tuple = ({}, 0), side_effect: Exception |
 
 
 def _patch_sync(target: str) -> patch:
-    return patch(f"m365_extract.sync.{target}")
+    return patch(f"m365_brain.sync.{target}")
 
 
 class TestRunExtractors:

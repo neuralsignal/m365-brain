@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 from sqlmodel import Session, SQLModel, create_engine
 
 from m365_admin.services.token_service import TokenService
-from m365_extract.models import TokenRecord, User
+from m365_brain.models import TokenRecord, User
 
 pytestmark = pytest.mark.admin
 

@@ -1,4 +1,4 @@
-"""Tests for m365_extract.auth.token_provider."""
+"""Tests for m365_brain.auth.token_provider."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from m365_extract.auth.token_provider import TokenRefreshError, make_cli_token_provider, make_web_token_provider
-from m365_extract.config import AuthConfig
+from m365_brain.auth.token_provider import TokenRefreshError, make_cli_token_provider, make_web_token_provider
+from m365_brain.config import AuthConfig
 
 
 def _auth_config() -> AuthConfig:
@@ -31,13 +31,13 @@ def _web_auth_config() -> AuthConfig:
     )
 
 
-@patch("m365_extract.auth.token_provider.DeviceCodeAuth")
+@patch("m365_brain.auth.token_provider.DeviceCodeAuth")
 def test_returns_callable(mock_device_code_auth: MagicMock) -> None:
     result = make_cli_token_provider(_auth_config())
     assert callable(result)
 
 
-@patch("m365_extract.auth.token_provider.DeviceCodeAuth")
+@patch("m365_brain.auth.token_provider.DeviceCodeAuth")
 def test_returns_get_token_bound_method(mock_device_code_auth: MagicMock) -> None:
     mock_instance = MagicMock()
     mock_device_code_auth.return_value = mock_instance
@@ -47,7 +47,7 @@ def test_returns_get_token_bound_method(mock_device_code_auth: MagicMock) -> Non
     assert result is mock_instance.get_token
 
 
-@patch("m365_extract.auth.token_provider.DeviceCodeAuth")
+@patch("m365_brain.auth.token_provider.DeviceCodeAuth")
 def test_passes_auth_config_to_device_code_auth(mock_device_code_auth: MagicMock) -> None:
     config = _auth_config()
     make_cli_token_provider(config)
@@ -55,7 +55,7 @@ def test_passes_auth_config_to_device_code_auth(mock_device_code_auth: MagicMock
     mock_device_code_auth.assert_called_once_with(config)
 
 
-@patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+@patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
 class TestWebTokenProvider:
     def test_returns_cached_token_when_valid(self, _mock_msal):
         mock_store = MagicMock()

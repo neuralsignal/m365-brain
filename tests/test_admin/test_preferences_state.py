@@ -7,7 +7,7 @@ import json
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from m365_extract.models import ExtractorPreference, User
+from m365_brain.models import ExtractorPreference, User
 
 pytestmark = pytest.mark.admin
 

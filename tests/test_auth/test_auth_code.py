@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from m365_extract.auth.auth_code import AuthCodeAuth, AuthCodeError
-from m365_extract.config import AuthConfig
+from m365_brain.auth.auth_code import AuthCodeAuth, AuthCodeError
+from m365_brain.config import AuthConfig
 
 
 @pytest.fixture()
@@ -37,7 +37,7 @@ class TestAuthCodeAuth:
         with pytest.raises(AuthCodeError, match="client_secret"):
             AuthCodeAuth(auth_config_without_secret)
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_creates_confidential_application(self, mock_app_cls, auth_config_with_secret):
         AuthCodeAuth(auth_config_with_secret)
 
@@ -47,7 +47,7 @@ class TestAuthCodeAuth:
             client_credential="test-client-secret",
         )
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_reserved_scopes_excluded(self, mock_app_cls, auth_config_with_secret):
         auth = AuthCodeAuth(auth_config_with_secret)
 
@@ -57,7 +57,7 @@ class TestAuthCodeAuth:
         assert "User.Read" in auth._scopes
         assert "Mail.Read" in auth._scopes
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_get_auth_url_returns_url(self, mock_app_cls, auth_config_with_secret):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -73,7 +73,7 @@ class TestAuthCodeAuth:
             state="random-state",
         )
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_acquire_token_success(self, mock_app_cls, auth_config_with_secret):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -96,7 +96,7 @@ class TestAuthCodeAuth:
             redirect_uri="http://localhost:8000/auth/callback",
         )
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_acquire_token_failure_raises(self, mock_app_cls, auth_config_with_secret):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -113,7 +113,7 @@ class TestAuthCodeAuth:
                 redirect_uri="http://localhost:8000/auth/callback",
             )
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_refresh_token_success(self, mock_app_cls, auth_config_with_secret):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
@@ -131,7 +131,7 @@ class TestAuthCodeAuth:
             scopes=auth._scopes,
         )
 
-    @patch("m365_extract.auth.auth_code.msal.ConfidentialClientApplication")
+    @patch("m365_brain.auth.auth_code.msal.ConfidentialClientApplication")
     def test_refresh_token_failure_raises(self, mock_app_cls, auth_config_with_secret):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app

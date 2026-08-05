@@ -10,11 +10,11 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import DirectoryExtractorConfig, GraphConfig
-from m365_extract.extractors import directory
-from m365_extract.graph_client import GraphApiError, GraphClient
-from m365_extract.markdown_writer import loads_markdown
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import DirectoryExtractorConfig, GraphConfig
+from m365_brain.extractors import directory
+from m365_brain.graph_client import GraphApiError, GraphClient
+from m365_brain.markdown_writer import loads_markdown
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -231,7 +231,7 @@ class TestDirectoryExtractor:
 
         assert meta["type"] == "directory_user"
         assert meta["source"]["service"] == "directory"
-        assert meta["source"]["extractor"] == "m365-extract/directory/1.0"
+        assert meta["source"]["extractor"] == "m365-brain/directory/1.0"
         assert "# " in body
         client.close()
 

@@ -9,11 +9,11 @@ from pathlib import Path
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import CalendarExtractorConfig, GraphConfig
-from m365_extract.extractors import calendar
-from m365_extract.extractors.calendar import _normalize_graph_datetime
-from m365_extract.graph_client import GraphClient
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import CalendarExtractorConfig, GraphConfig
+from m365_brain.extractors import calendar
+from m365_brain.extractors.calendar import _normalize_graph_datetime
+from m365_brain.graph_client import GraphClient
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -354,7 +354,7 @@ class TestCalendarExtractor:
         content = storage.read_file(files[0])
 
         # Parse the frontmatter back — must not corrupt the title
-        from m365_extract.markdown_writer import loads_markdown
+        from m365_brain.markdown_writer import loads_markdown
 
         fm, body = loads_markdown(content)
         assert fm["title"] == tricky_subject
@@ -628,7 +628,7 @@ class TestWriteEventPlainAttendees:
     """Test _write_event branch where attendees exist but attendee_details is empty."""
 
     def test_write_event_plain_attendees(self, tmp_path):
-        from m365_extract.frontmatter import CalendarEventData
+        from m365_brain.frontmatter import CalendarEventData
 
         storage = LocalBackend(str(tmp_path / "vault"))
         data = CalendarEventData(

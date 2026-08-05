@@ -1,5 +1,5 @@
 # CLI
 
-::: m365_extract.cli
+::: m365_brain.cli
     options:
       show_root_heading: true

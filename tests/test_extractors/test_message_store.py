@@ -10,13 +10,13 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from m365_extract.extractors._message_store import (
+from m365_brain.extractors._message_store import (
     StoredMessage,
     load_store,
     merge_messages,
     save_store,
 )
-from m365_extract.extractors.errors import MessageStoreError
+from m365_brain.extractors.errors import MessageStoreError
 
 
 class MemoryStorage:

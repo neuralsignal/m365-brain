@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from m365_extract.storage.exceptions import PathTraversalError
-from m365_extract.storage.local import LocalBackend
+from m365_brain.storage.exceptions import PathTraversalError
+from m365_brain.storage.local import LocalBackend
 
 
 class TestLocalBackend:

@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from m365_extract.config import AzureBlobStorageConfig, LocalStorageConfig, StorageConfig
-from m365_extract.config.errors import ConfigError
-from m365_extract.storage import create_storage, create_user_storage
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import AzureBlobStorageConfig, LocalStorageConfig, StorageConfig
+from m365_brain.config.errors import ConfigError
+from m365_brain.storage import create_storage, create_user_storage
+from m365_brain.storage.local import LocalBackend
 
 
 class TestCreateStorage:
@@ -33,7 +33,7 @@ class TestCreateStorage:
             ),
         )
         with patch("azure.storage.blob.ContainerClient"):
-            from m365_extract.storage.azure_blob import AzureBlobBackend
+            from m365_brain.storage.azure_blob import AzureBlobBackend
 
             backend = create_storage(config)
             assert isinstance(backend, AzureBlobBackend)
@@ -90,7 +90,7 @@ class TestCreateUserStorage:
         )
         uid = "a1b2c3d4-0002-4000-8000-000000000002"
         with patch("azure.storage.blob.ContainerClient"):
-            from m365_extract.storage.azure_blob import AzureBlobBackend
+            from m365_brain.storage.azure_blob import AzureBlobBackend
 
             backend = create_user_storage(config, uid)
             assert isinstance(backend, AzureBlobBackend)

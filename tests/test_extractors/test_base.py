@@ -8,15 +8,15 @@ from types import ModuleType
 
 import pytest
 
-from m365_extract.extractors.base import Extractor
+from m365_brain.extractors.base import Extractor
 
 EXTRACTOR_MODULE_PATHS = [
-    "m365_extract.extractors.email",
-    "m365_extract.extractors.calendar",
-    "m365_extract.extractors.onedrive",
-    "m365_extract.extractors.sharepoint",
-    "m365_extract.extractors.teams_chats",
-    "m365_extract.extractors.teams_channels",
+    "m365_brain.extractors.email",
+    "m365_brain.extractors.calendar",
+    "m365_brain.extractors.onedrive",
+    "m365_brain.extractors.sharepoint",
+    "m365_brain.extractors.teams_chats",
+    "m365_brain.extractors.teams_channels",
 ]
 
 

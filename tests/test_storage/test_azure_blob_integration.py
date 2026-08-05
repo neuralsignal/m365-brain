@@ -43,7 +43,7 @@ def azurite_backend():
     if not _azurite_reachable():
         pytest.skip("Azurite not running on localhost:10000")
 
-    from m365_extract.storage.azure_blob import AzureBlobBackend
+    from m365_brain.storage.azure_blob import AzureBlobBackend
 
     container_name = f"test-{uuid.uuid4().hex[:8]}"
     backend = AzureBlobBackend(

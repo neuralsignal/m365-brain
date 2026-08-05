@@ -10,10 +10,10 @@ from unittest.mock import patch
 import pytest
 from pytest_httpx import HTTPXMock
 
-from m365_extract.config import GraphConfig, OneDriveExtractorConfig
-from m365_extract.extractors import onedrive
-from m365_extract.graph_client import GRAPH_BASE_URL, GraphClient
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config import GraphConfig, OneDriveExtractorConfig
+from m365_brain.extractors import onedrive
+from m365_brain.graph_client import GRAPH_BASE_URL, GraphClient
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -200,7 +200,7 @@ class TestOneDriveExtractor:
         client = GraphClient(graph_config, lambda: "test-token")
 
         with patch(
-            "m365_extract.extractors._file_helpers.convert_document",
+            "m365_brain.extractors._file_helpers.convert_document",
             return_value="# Converted Document",
         ):
             state, count = onedrive.run(client, storage, {}, config, converters_config)

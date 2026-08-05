@@ -10,15 +10,15 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.config import TeamsChatsExtractorConfig
-from m365_extract.extractors._message_store import StoredMessage
-from m365_extract.extractors._teams_attachment_helpers import (
+from m365_brain.config import TeamsChatsExtractorConfig
+from m365_brain.extractors._message_store import StoredMessage
+from m365_brain.extractors._teams_attachment_helpers import (
     download_message_attachments,
     downloadable_attachment_names,
 )
-from m365_extract.extractors._teams_context import TeamsContext
-from m365_extract.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
-from m365_extract.storage.local import LocalBackend
+from m365_brain.extractors._teams_context import TeamsContext
+from m365_brain.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
+from m365_brain.storage.local import LocalBackend
 
 
 def _settings(*, download_attachments: bool, download_inline_images: bool) -> TeamsChatsExtractorConfig:

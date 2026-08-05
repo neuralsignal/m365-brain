@@ -138,12 +138,12 @@
   "variables": {
     "storageAccountName": "[format('stm365ext{0}', parameters('environment'))]",
     "acrName": "[format('acrm365ext{0}', parameters('environment'))]",
-    "postgresServerName": "[format('psql-m365-extract-{0}', parameters('environment'))]",
+    "postgresServerName": "[format('psql-m365-brain-{0}', parameters('environment'))]",
     "postgresDbName": "m365extract",
-    "appServicePlanName": "[format('asp-m365-extract-{0}', parameters('environment'))]",
+    "appServicePlanName": "[format('asp-m365-brain-{0}', parameters('environment'))]",
     "webAppName": "[format('app-m365-admin-{0}', parameters('environment'))]",
     "keyVaultName": "[format('kv-m365-ext-{0}', parameters('environment'))]",
-    "logAnalyticsName": "[format('log-m365-extract-{0}', parameters('environment'))]"
+    "logAnalyticsName": "[format('log-m365-brain-{0}', parameters('environment'))]"
   },
   "resources": [
     {

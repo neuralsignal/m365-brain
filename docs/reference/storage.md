@@ -1,5 +1,5 @@
 # Storage
 
-::: m365_extract.storage
+::: m365_brain.storage
     options:
       show_root_heading: true

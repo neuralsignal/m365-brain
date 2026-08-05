@@ -8,8 +8,8 @@ from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
 from m365_admin.config_loader import get_config, get_session
-from m365_extract.models import ExtractorPreference
-from m365_extract.sync import EXTRACTORS
+from m365_brain.models import ExtractorPreference
+from m365_brain.sync import EXTRACTORS
 
 
 def _get_available_extractors() -> list[str]:

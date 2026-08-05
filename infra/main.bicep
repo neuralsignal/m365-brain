@@ -1,4 +1,4 @@
-// m365-extract Azure infrastructure.
+// m365-brain Azure infrastructure.
 //
 // Phase A: Storage + ACR + PostgreSQL + App Service + Key Vault + Log Analytics
 // Phase B (future): VNet + private endpoints + custom domain
@@ -74,12 +74,12 @@ param logRetentionDays int = 30
 // --- Naming ---
 var storageAccountName = 'stm365ext${environment}'
 var acrName = 'acrm365ext${environment}'
-var postgresServerName = 'psql-m365-extract-${environment}'
+var postgresServerName = 'psql-m365-brain-${environment}'
 var postgresDbName = 'm365extract'
-var appServicePlanName = 'asp-m365-extract-${environment}'
+var appServicePlanName = 'asp-m365-brain-${environment}'
 var webAppName = 'app-m365-admin-${environment}'
 var keyVaultName = 'kv-m365-ext-${environment}'
-var logAnalyticsName = 'log-m365-extract-${environment}'
+var logAnalyticsName = 'log-m365-brain-${environment}'
 
 // Derived values
 var databaseUrl = 'postgresql://${postgresAdminUser}:${postgresAdminPassword}@${postgresServer.properties.fullyQualifiedDomainName}:5432/${postgresDbName}?sslmode=require'
@@ -205,7 +205,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 //   az role assignment create \
 //     --assignee <webApp-principalId> \
 //     --role "Key Vault Secrets User" \
-//     --scope /subscriptions/<sub-id>/resourceGroups/rg-m365-extract-<env>/providers/Microsoft.KeyVault/vaults/kv-m365-ext-<env>
+//     --scope /subscriptions/<sub-id>/resourceGroups/rg-m365-brain-<env>/providers/Microsoft.KeyVault/vaults/kv-m365-ext-<env>
 
 // ============================================================================
 // App Service Plan (Linux containers)

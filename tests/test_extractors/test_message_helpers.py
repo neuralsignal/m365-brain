@@ -5,7 +5,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.extractors._message_helpers import extract_content, extract_sender
+from m365_brain.extractors._message_helpers import extract_content, extract_sender
 
 
 class TestExtractSender:
@@ -76,13 +76,13 @@ class TestExtractContent:
 
 class TestRewriteHostedImageSrcs:
     def test_empty_map_returns_html_unchanged(self) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = '<img src="https://example.com/hostedContents/xyz/$value">'
         assert rewrite_hosted_image_srcs(html, {}) == html
 
     def test_unknown_hid_is_left_alone(self) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = '<img src="https://x/hostedContents/UNKNOWN/$value">'
         result = rewrite_hosted_image_srcs(html, {"OTHER": "attachments/m/0.png"})
@@ -90,14 +90,14 @@ class TestRewriteHostedImageSrcs:
         assert "attachments/m/0.png" not in result
 
     def test_single_quote_attribute_rewritten(self) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = "<img src='https://x/hostedContents/HID1/$value'>"
         result = rewrite_hosted_image_srcs(html, {"HID1": "attachments/m/0.png"})
         assert "attachments/m/0.png" in result
 
     def test_multiple_images_rewritten_independently(self) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = '<img src="https://x/hostedContents/A/$value"><img src="https://x/hostedContents/B/$value">'
         result = rewrite_hosted_image_srcs(html, {"A": "a.png", "B": "b.png"})
@@ -105,7 +105,7 @@ class TestRewriteHostedImageSrcs:
         assert 'src="b.png"' in result
 
     def test_non_hosted_src_is_untouched(self) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = '<img src="https://cdn.example.com/logo.png">'
         result = rewrite_hosted_image_srcs(html, {"X": "attachments/m/0.png"})
@@ -113,7 +113,7 @@ class TestRewriteHostedImageSrcs:
 
     @given(hid=st.text(alphabet=st.characters(whitelist_categories=("L", "N")), min_size=1, max_size=20))
     def test_replacement_property_known_hid_always_replaced(self, hid: str) -> None:
-        from m365_extract.extractors._message_helpers import rewrite_hosted_image_srcs
+        from m365_brain.extractors._message_helpers import rewrite_hosted_image_srcs
 
         html = f'<img src="https://x/hostedContents/{hid}/$value">'
         result = rewrite_hosted_image_srcs(html, {hid: "attachments/m/0.png"})

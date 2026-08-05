@@ -1,6 +1,6 @@
 # Config
 
-::: m365_extract.config
+::: m365_brain.config
     options:
       show_root_heading: true
       members:

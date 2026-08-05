@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from m365_extract.extractors._file_helpers import (
+from m365_brain.extractors._file_helpers import (
     FileProcessingConfig,
     FileProcessingContext,
     build_storage_path,
@@ -18,8 +18,8 @@ from m365_extract.extractors._file_helpers import (
     process_drive_item,
     should_eager_convert,
 )
-from m365_extract.graph_client import GraphApiError
-from m365_extract.storage.local import LocalBackend
+from m365_brain.graph_client import GraphApiError
+from m365_brain.storage.local import LocalBackend
 
 SAMPLE_CONVERTERS_CONFIG = {
     "backends": {"pdf": "markitdown", "docx": "markitdown", "default": "native"},
@@ -106,7 +106,7 @@ class TestBuildStoragePathProperty:
         item_id=st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
     )
     def test_output_starts_with_prefix_ends_with_md_contains_hash(self, prefix, file_name, item_id):
-        from m365_extract.markdown_writer import short_hash
+        from m365_brain.markdown_writer import short_hash
 
         path = build_storage_path(prefix, "parent", file_name, item_id)
         assert path.startswith(f"{prefix}/")
@@ -226,7 +226,7 @@ class TestProcessDriveItem:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         with patch(
-            "m365_extract.extractors._file_helpers.convert_document",
+            "m365_brain.extractors._file_helpers.convert_document",
             return_value="# Report Content",
         ):
             result = process_drive_item(
@@ -367,7 +367,7 @@ class TestProcessDriveItemFallbackFetch:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         with patch(
-            "m365_extract.extractors._file_helpers.convert_document",
+            "m365_brain.extractors._file_helpers.convert_document",
             return_value="# Converted",
         ):
             result = process_drive_item(
@@ -448,7 +448,7 @@ class TestProcessDriveItemConversionError:
         fm = {"title": "report.docx", "conversion_status": "pending"}
 
         with patch(
-            "m365_extract.extractors._file_helpers.convert_document",
+            "m365_brain.extractors._file_helpers.convert_document",
             side_effect=ValueError("unsupported format"),
         ):
             result = process_drive_item(

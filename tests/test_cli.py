@@ -1,4 +1,4 @@
-"""Tests for m365_extract.cli module."""
+"""Tests for m365_brain.cli module."""
 
 from __future__ import annotations
 
@@ -25,27 +25,27 @@ def config_file(tmp_path):
 
 
 def _patch_cli(target: str) -> patch:
-    return patch(f"m365_extract.cli.{target}")
+    return patch(f"m365_brain.cli.{target}")
 
 
 def _patch_sync(target: str) -> patch:
-    return patch(f"m365_extract.sync.{target}")
+    return patch(f"m365_brain.sync.{target}")
 
 
 def _patch_dry_run(target: str) -> patch:
-    return patch(f"m365_extract.dry_run.{target}")
+    return patch(f"m365_brain.dry_run.{target}")
 
 
 class TestSyncCommand:
     def test_sync_requires_once_or_dry_run(self, runner, config_file):
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         result = runner.invoke(main, ["--config", config_file, "sync"])
         assert result.exit_code != 0
         assert "Specify --once or --dry-run" in result.output
 
     def test_sync_once_calls_run_extractors(self, runner, config_file, full_config):
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         with (
             _patch_cli("load_config") as mock_load,
@@ -64,7 +64,7 @@ class TestSyncCommand:
             assert mock_run.call_args[0][0] is full_config
 
     def test_sync_once_with_extractor_filter(self, runner, config_file, full_config):
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         with (
             _patch_cli("load_config") as mock_load,
@@ -86,7 +86,7 @@ class TestSyncCommand:
 class TestDryRun:
     def test_dry_run_success(self, runner, config_file, full_config):
         """--dry-run validates auth and probes enabled extractors."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         mock_client = MagicMock()
         mock_client.get.return_value = {
@@ -114,8 +114,8 @@ class TestDryRun:
 
     def test_dry_run_auth_failure(self, runner, config_file, full_config):
         """--dry-run exits 1 when /me call fails."""
-        from m365_extract.cli import main
-        from m365_extract.graph_client import GraphApiError
+        from m365_brain.cli import main
+        from m365_brain.graph_client import GraphApiError
 
         mock_client = MagicMock()
         mock_client.get.side_effect = GraphApiError("HTTP 401 — token expired", 401)
@@ -138,8 +138,8 @@ class TestDryRun:
 
     def test_dry_run_extractor_probe_failure(self, runner, config_file, full_config):
         """--dry-run reports per-extractor failures and exits 1."""
-        from m365_extract.cli import main
-        from m365_extract.graph_client import GraphApiError
+        from m365_brain.cli import main
+        from m365_brain.graph_client import GraphApiError
 
         call_count = 0
 
@@ -175,7 +175,7 @@ class TestDryRun:
 
     def test_dry_run_skips_disabled_extractors(self, runner, config_file, full_config):
         """--dry-run skips disabled extractors."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         mock_client = MagicMock()
         mock_client.get.return_value = {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
@@ -200,7 +200,7 @@ class TestDryRun:
 
     def test_dry_run_unknown_extractor(self, runner, config_file, full_config):
         """--dry-run increments failed and logs warning for unknown extractor names."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         mock_client = MagicMock()
         mock_client.get.return_value = {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
@@ -226,7 +226,7 @@ class TestDryRun:
 
     def test_dry_run_no_probe_configured(self, runner, config_file, full_config):
         """--dry-run skips extractors with no probe URL configured."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         mock_client = MagicMock()
         mock_client.get.return_value = {"displayName": "Test", "userPrincipalName": "t@x.com", "value": []}
@@ -251,7 +251,7 @@ class TestDryRun:
 
     def test_requires_flag(self, runner, config_file):
         """sync without --once or --dry-run errors."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         result = runner.invoke(main, ["--config", config_file, "sync"])
         assert result.exit_code != 0
@@ -260,7 +260,7 @@ class TestDryRun:
 
 class TestAuthLogin:
     def test_echoes_token_length(self, runner, config_file, full_config):
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         with (
             _patch_cli("load_config") as mock_load,
@@ -281,7 +281,7 @@ class TestAuthLogin:
 class TestAuthStatus:
     def test_no_cache_file(self, runner, tmp_path, full_config):
         """auth status exits 1 when no token cache exists."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -295,7 +295,7 @@ class TestAuthStatus:
 
     def test_shows_account_info(self, runner, tmp_path, full_config):
         """auth status displays account username and tenant from cache."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cache_data = {
             "Account": {
@@ -332,7 +332,7 @@ class TestAuthStatus:
 
     def test_shows_expired_token(self, runner, tmp_path, full_config):
         """auth status reports expired token."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cache_data = {
             "Account": {"acc-1": {"username": "user@test.com", "realm": "t-1"}},
@@ -361,7 +361,7 @@ class TestAuthStatus:
 
     def test_empty_accounts(self, runner, tmp_path, full_config):
         """auth status exits 1 when cache has no accounts."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cache_data = {"Account": {}, "AccessToken": {}}
         cache_path = tmp_path / "token_cache.json"
@@ -382,7 +382,7 @@ class TestAuthStatus:
 
     def test_no_access_tokens_branch(self, runner, tmp_path, full_config):
         """auth status echoes 'no access tokens cached' when Account exists but AccessToken is empty."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cache_data = {
             "Account": {"acc-1": {"username": "user@test.com", "realm": "t-1"}},
@@ -408,7 +408,7 @@ class TestAuthStatus:
 class TestDotenvLoading:
     def test_loads_env_from_config_directory(self, runner, tmp_path):
         """main() loads .env from the config file's directory when one exists there."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -426,7 +426,7 @@ class TestDotenvLoading:
 
     def test_skips_env_when_not_present(self, runner, tmp_path):
         """main() does not pass a config-dir .env path to load_dotenv when none exists."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -442,7 +442,7 @@ class TestDotenvLoading:
 class TestWorkerCommand:
     def test_requires_web_config(self, runner, config_file, full_config):
         """worker raises UsageError when config has no web: section."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         with (
             _patch_cli("load_config") as mock_load,
@@ -457,7 +457,7 @@ class TestWorkerCommand:
 
     def test_happy_path_invokes_worker_loop(self, runner, tmp_path, full_web_config):
         """worker constructs engine + token adapter and invokes worker_loop."""
-        from m365_extract.cli import main
+        from m365_brain.cli import main
 
         cfg_file = tmp_path / "config.yaml"
         cfg_file.write_text("dummy: true")
@@ -468,7 +468,7 @@ class TestWorkerCommand:
             patch("sqlmodel.create_engine") as mock_create_engine,
             patch("m365_admin.services.token_service.TokenService") as mock_ts_cls,
             patch("m365_admin.services.token_service.TokenServiceAdapter") as mock_adapter_cls,
-            patch("m365_extract.worker.worker_loop") as mock_worker_loop,
+            patch("m365_brain.worker.worker_loop") as mock_worker_loop,
         ):
             mock_load.return_value = full_web_config
             mock_engine = MagicMock()
