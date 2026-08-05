@@ -10,7 +10,7 @@
 Install the base package:
 
 ```bash
-pip install m365-extract
+pip install m365-brain
 ```
 
 ### Extras
@@ -24,13 +24,13 @@ pip install m365-extract
 
 ```bash
 # Azure Blob Storage support
-pip install "m365-extract[azure]"
+pip install "m365-brain[azure]"
 
 # Document conversion
-pip install "m365-extract[convert]"
+pip install "m365-brain[convert]"
 
 # Everything
-pip install "m365-extract[all]"
+pip install "m365-brain[all]"
 ```
 
 ## Development Setup
@@ -39,8 +39,8 @@ The project uses [pixi](https://pixi.sh/) for development dependency management.
 
 ```bash
 # Clone the repository
-git clone https://github.com/neuralsignal/m365-extract.git
-cd m365-extract
+git clone https://github.com/neuralsignal/m365-brain.git
+cd m365-brain
 
 # Install all dependencies (including dev tools)
 pixi install

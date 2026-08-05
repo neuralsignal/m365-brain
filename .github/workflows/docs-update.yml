@@ -66,7 +66,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: "--model claude-sonnet-4-6 --max-turns 20 --allowedTools Read,Write,Edit,Glob,Grep,Bash"
           prompt: |
-            You are a documentation updater for m365-extract, a Python package that syncs
+            You are a documentation updater for m365-brain, a Python package that syncs
             Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 
             Read CLAUDE.md for project conventions.
@@ -74,7 +74,7 @@ jobs:
             Steps:
             1. Read CLAUDE.md and mkdocs.yml to understand the project and docs structure.
             2. Read all files in docs/ to understand current documentation.
-            3. Read source code in m365_extract/: module docstrings, function signatures,
+            3. Read source code in m365_brain/: module docstrings, function signatures,
                CLI commands (cli.py), config dataclasses (config.py), pipeline stages, exceptions.
             4. Compare docs against code. Look for:
                a. New public functions/classes not in API reference pages

@@ -1,13 +1,13 @@
 # Azure Setup
 
-This guide covers deploying m365-extract with Azure Blob Storage, including local development with Azurite and production deployment with Bicep IaC.
+This guide covers deploying m365-brain with Azure Blob Storage, including local development with Azurite and production deployment with Bicep IaC.
 
 ## Azure Configuration
 
 Use composable config fragments to include the Azure Blob storage backend:
 
 ```bash
-m365-extract --config config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/cli.yaml sync --once
+m365-brain --config config/base.yaml,config/auth.yaml,config/storage/azure_blob.yaml,config/service/cli.yaml sync --once
 ```
 
 The storage fragment (`config/storage/azure_blob.yaml`):
@@ -102,7 +102,7 @@ See `roadmap.md` Phase 5E for the full step-by-step checklist. Summary:
 
 ```bash
 az deployment group create \
-  --resource-group rg-m365-extract-dev \
+  --resource-group rg-m365-brain-dev \
   --template-file infra/main.bicep \
   --parameters infra/params.dev.bicepparam
 ```
@@ -117,7 +117,7 @@ Development parameters (`infra/params.dev.bicepparam`):
 
 ```bash
 az deployment group create \
-  --resource-group rg-m365-extract-prod \
+  --resource-group rg-m365-brain-prod \
   --template-file infra/main.bicep \
   --parameters infra/params.prod.bicepparam
 ```
@@ -134,7 +134,7 @@ After deployment, retrieve the connection string:
 
 ```bash
 az storage account show-connection-string \
-  --resource-group rg-m365-extract-prod \
+  --resource-group rg-m365-brain-prod \
   --name stm365extprod \
   --output tsv
 ```

@@ -13,7 +13,7 @@ import structlog
 from cryptography.fernet import Fernet
 from sqlmodel import Session, select
 
-from m365_extract.models import TokenRecord
+from m365_brain.models import TokenRecord
 
 log = structlog.get_logger()
 

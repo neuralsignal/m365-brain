@@ -1,4 +1,4 @@
-"""Config loader — loads m365-extract Config from YAML.
+"""Config loader — loads m365-brain Config from YAML.
 
 Default config path: composable fragments in config/ directory. Override via M365_ADMIN_CONFIG env var.
 Loads .env from repo root before first config load to ensure env vars are available.
@@ -12,7 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlmodel import Session, create_engine
 
-from m365_extract.config import Config, load_config
+from m365_brain.config import Config, load_config
 
 _repo_root = Path(__file__).resolve().parent.parent
 _cached_config: Config | None = None
@@ -21,7 +21,7 @@ _engine = None
 
 
 def get_config() -> Config:
-    """Load and return the m365-extract Config singleton.
+    """Load and return the m365-brain Config singleton.
 
     Config path defaults to composable fragments in config/ directory.
     Override via M365_ADMIN_CONFIG env var (comma-separated paths).

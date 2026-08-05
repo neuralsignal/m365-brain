@@ -1,12 +1,12 @@
 # Reflex admin UI + sync worker — single-port production deployment.
 # The sync worker runs as a background thread inside the Reflex process (single-container)
-# or as a separate process via `m365-extract worker` (docker-compose / Container Apps).
+# or as a separate process via `m365-brain worker` (docker-compose / Container Apps).
 # Caddy serves static frontend and reverse-proxies to Reflex backend, all on one port.
 #
 # Build:   docker build -t m365-admin:latest .
 # Run web: docker run -p 8000:8000 --env-file .env m365-admin:latest
 # Run worker (separate): docker run --env-file .env m365-admin:latest \
-#            m365-extract --config ${M365_ADMIN_CONFIG} worker
+#            m365-brain --config ${M365_ADMIN_CONFIG} worker
 
 # --- Build stage: compile frontend ---
 FROM python:3.12 AS builder
@@ -18,7 +18,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
-COPY m365_extract/ m365_extract/
+COPY m365_brain/ m365_brain/
 COPY m365_admin/ m365_admin/
 RUN pip install --no-cache-dir ".[admin,azure]"
 
@@ -50,7 +50,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # App source
-COPY m365_extract/ m365_extract/
+COPY m365_brain/ m365_brain/
 COPY m365_admin/ m365_admin/
 COPY rxconfig.py .
 COPY config/ config/

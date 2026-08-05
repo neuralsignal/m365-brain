@@ -1,4 +1,4 @@
-# m365-extract Deployment Guide
+# m365-brain Deployment Guide
 
 Tracks Azure infrastructure setup, deployment steps, gotchas, and current state. This document captures every manual step needed to reproduce the deployment from scratch.
 
@@ -23,7 +23,7 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 ### Phase 2: Identity Setup
 
 4. **Create the Entra app registration** (user auth -- `workflow-read`) with redirect URIs and Graph API permissions (see [Entra App Registration](#entra-app-registration-user-auth) section)
-5. **Create the deploy service principal** (`sp-m365-extract-deploy`) with Contributor role (see [Service Principal](#service-principal-cicd-deploy) section)
+5. **Create the deploy service principal** (`sp-m365-brain-deploy`) with Contributor role (see [Service Principal](#service-principal-cicd-deploy) section)
 6. **Add OIDC federated credentials** on the app registration object (not the SP) for GitHub Actions (see [OIDC Federated Credentials](#oidc-federated-credentials) section)
 
 ### Phase 3: GitHub Configuration
@@ -37,8 +37,8 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 
 9. **Create resource group and ACR manually** (first time only):
    ```bash
-   az group create --name rg-m365-extract-dev --location switzerlandnorth
-   az acr create --name acrm365extdev --resource-group rg-m365-extract-dev \
+   az group create --name rg-m365-brain-dev --location switzerlandnorth
+   az acr create --name acrm365extdev --resource-group rg-m365-brain-dev \
      --sku Basic --admin-enabled true
    ```
 10. **Build and push Docker images** with a unique tag (never rely on `:latest` for ACI):
@@ -59,9 +59,9 @@ This is the end-to-end sequence. Each step depends on previous steps completing 
 13. **Update App Service container image** (if Bicep used a stale image reference):
     ```bash
     az webapp config container set --name app-m365-admin-dev \
-      --resource-group rg-m365-extract-dev \
+      --resource-group rg-m365-brain-dev \
       --container-image-name acrm365extdev.azurecr.io/m365-admin:<your-tag>
-    az webapp restart --name app-m365-admin-dev --resource-group rg-m365-extract-dev
+    az webapp restart --name app-m365-admin-dev --resource-group rg-m365-brain-dev
     ```
 14. **Smoke test**:
     - `https://app-m365-admin-dev.azurewebsites.net/ping` returns 200
@@ -131,7 +131,7 @@ Separate from the Entra app above. Used only by GitHub Actions for OIDC login + 
 
 | Item | Value |
 |------|-------|
-| Display name | `sp-m365-extract-deploy` |
+| Display name | `sp-m365-brain-deploy` |
 | App ID (client ID) | `e31a8416-7cd9-4b71-9d7e-7f89cbd7631a` |
 | Object ID (SP) | `0c9fe08b-b292-4954-920d-5a7bdeeb7a06` |
 | Object ID (App reg) | `d471c1e7-77bc-4b2b-a58c-e42ab4546bf9` |
@@ -144,7 +144,7 @@ Separate from the Entra app above. Used only by GitHub Actions for OIDC login + 
 # Step 1: Create SP (this also creates the app registration)
 # Note: --role + --scopes requires User Access Administrator or Owner.
 # If you only have Contributor, the SP is created but the role assignment fails.
-az ad sp create-for-rbac --name "sp-m365-extract-deploy" \
+az ad sp create-for-rbac --name "sp-m365-brain-deploy" \
   --role Contributor \
   --scopes /subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5
 
@@ -155,7 +155,7 @@ az role assignment create \
   --scope /subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5
 ```
 
-**Gotcha:** `az ad sp create-for-rbac` creates the SP and app reg even if the role assignment fails (exits non-zero). Check `az ad sp list --display-name "sp-m365-extract-deploy"` to confirm.
+**Gotcha:** `az ad sp create-for-rbac` creates the SP and app reg even if the role assignment fails (exits non-zero). Check `az ad sp list --display-name "sp-m365-brain-deploy"` to confirm.
 
 ### OIDC Federated Credentials
 
@@ -163,9 +163,9 @@ GitHub Actions authenticates to Azure via OIDC (no stored client secrets). Three
 
 | Name | Subject | Purpose |
 |------|---------|---------|
-| `github-main` | `repo:neuralsignal/m365-extract:ref:refs/heads/main` | Dev deploys on merge |
-| `github-env-dev` | `repo:neuralsignal/m365-extract:environment:dev` | Dev environment deployments |
-| `github-env-prod` | `repo:neuralsignal/m365-extract:environment:prod` | Prod environment deployments |
+| `github-main` | `repo:neuralsignal/m365-brain:ref:refs/heads/main` | Dev deploys on merge |
+| `github-env-dev` | `repo:neuralsignal/m365-brain:environment:dev` | Dev environment deployments |
+| `github-env-prod` | `repo:neuralsignal/m365-brain:environment:prod` | Prod environment deployments |
 
 **How they were created:**
 ```bash
@@ -175,7 +175,7 @@ APP_OBJECT_ID="d471c1e7-77bc-4b2b-a58c-e42ab4546bf9"
 az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
   "name": "github-main",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:neuralsignal/m365-extract:ref:refs/heads/main",
+  "subject": "repo:neuralsignal/m365-brain:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"],
   "description": "Dev deploys on merge to main"
 }'
@@ -183,7 +183,7 @@ az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
 az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
   "name": "github-env-dev",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:neuralsignal/m365-extract:environment:dev",
+  "subject": "repo:neuralsignal/m365-brain:environment:dev",
   "audiences": ["api://AzureADTokenExchange"],
   "description": "Dev environment"
 }'
@@ -191,13 +191,13 @@ az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
 az ad app federated-credential create --id "$APP_OBJECT_ID" --parameters '{
   "name": "github-env-prod",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:neuralsignal/m365-extract:environment:prod",
+  "subject": "repo:neuralsignal/m365-brain:environment:prod",
   "audiences": ["api://AzureADTokenExchange"],
   "description": "Prod environment"
 }'
 ```
 
-**Gotcha:** The `--id` parameter takes the **app registration object ID** (not the SP object ID, not the app/client ID). Find it via `az ad app list --display-name "sp-m365-extract-deploy" --query '[].id' -o tsv`.
+**Gotcha:** The `--id` parameter takes the **app registration object ID** (not the SP object ID, not the app/client ID). Find it via `az ad app list --display-name "sp-m365-brain-deploy" --query '[].id' -o tsv`.
 
 ## Resource Provider Registration
 
@@ -245,17 +245,17 @@ az provider show --namespace Microsoft.ContainerInstance --query registrationSta
 
 **How to set/update a secret:**
 ```bash
-gh secret set SECRET_NAME --repo neuralsignal/m365-extract --body "value"
+gh secret set SECRET_NAME --repo neuralsignal/m365-brain --body "value"
 # Or interactively (for sensitive values):
-gh secret set SECRET_NAME --repo neuralsignal/m365-extract
+gh secret set SECRET_NAME --repo neuralsignal/m365-brain
 ```
 
 ### Environments (configured 2026-03-25)
 
 | Environment | Protection rules | Created via |
 |-------------|-----------------|-------------|
-| `dev` | None (auto-deploy on merge to main) | `gh api repos/neuralsignal/m365-extract/environments/dev -X PUT --input /dev/null` |
-| `prod` | None yet (add manual approval later) | `gh api repos/neuralsignal/m365-extract/environments/prod -X PUT --input /dev/null` |
+| `dev` | None (auto-deploy on merge to main) | `gh api repos/neuralsignal/m365-brain/environments/dev -X PUT --input /dev/null` |
+| `prod` | None yet (add manual approval later) | `gh api repos/neuralsignal/m365-brain/environments/prod -X PUT --input /dev/null` |
 
 **Gotcha:** `gh api ... -X PUT -f wait_timer=0` fails with a type error -- the API expects an integer but `-f` sends strings. Use `--input /dev/null` for default settings, or `--input <(echo '{"wait_timer":0}')` for explicit values.
 
@@ -291,7 +291,7 @@ Caddy routes `/_event/*`, `/ping`, `/_upload/*` to the Python backend. Everythin
 ### Build commands (local)
 
 ```bash
-cd <path-to>/m365-extract
+cd <path-to>/m365-brain
 
 # Build image
 docker build -t m365-admin:local .
@@ -309,13 +309,13 @@ docker build -t m365-admin:local .
 
 ```bash
 # Terminal 1 -- Reflex admin UI
-cd <path-to>/m365-extract
+cd <path-to>/m365-brain
 pixi run -e admin dev
 # -> http://localhost:3000
 
 # Terminal 2 -- Sync worker (optional, runs as thread in Reflex by default)
-cd <path-to>/m365-extract
-pixi run -e admin m365-extract --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml worker
+cd <path-to>/m365-brain
+pixi run -e admin m365-brain --config config/base.yaml,config/auth.yaml,config/storage/local.yaml,config/service/web.yaml worker
 ```
 
 ### Docker Compose (PostgreSQL, matching production)
@@ -351,7 +351,7 @@ docker compose down -v
 
 ## Azure Infrastructure (Bicep)
 
-Resource group: `rg-m365-extract-{env}`
+Resource group: `rg-m365-brain-{env}`
 
 ### Resources defined in `infra/main.bicep`
 
@@ -360,9 +360,9 @@ Resource group: `rg-m365-extract-{env}`
 | Storage Account | `storageAccounts` | `stm365ext{env}` | Blob storage for vault output |
 | Blob Container | `blobServices/containers` | `m365-vaults[-dev]` | Vault files |
 | Container Registry | `registries` | `acrm365ext{env}` | Docker images for web + daemon |
-| PostgreSQL Flexible | `flexibleServers` | `psql-m365-extract-{env}` | Shared DB (UI + daemon) |
+| PostgreSQL Flexible | `flexibleServers` | `psql-m365-brain-{env}` | Shared DB (UI + daemon) |
 | PostgreSQL Database | `databases` | `m365extract` | App database |
-| App Service Plan | `serverfarms` | `asp-m365-extract-{env}` | Linux container hosting |
+| App Service Plan | `serverfarms` | `asp-m365-brain-{env}` | Linux container hosting |
 | App Service | `sites` | `app-m365-admin-{env}` | Reflex admin UI (system-assigned managed identity) |
 | Key Vault | `vaults` | `kv-m365-ext-{env}` | Secrets (FERNET_KEY, SECRET_KEY, client_secret) |
 
@@ -415,7 +415,7 @@ bash scripts/deploy-infra.sh dev --dry-run
 
 The deploy script:
 1. Validates `az` login and all required env vars
-2. Creates resource group `rg-m365-extract-{env}`
+2. Creates resource group `rg-m365-brain-{env}`
 3. Deploys all Bicep resources (idempotent)
 4. Retrieves storage connection string
 5. Writes `.env.{env}` with all connection details
@@ -437,12 +437,12 @@ The Bicep template no longer assigns Key Vault roles (role assignment in Bicep r
 # Get the App Service managed identity principal ID from deployment output
 # (printed by deploy-infra.sh, or query it):
 PRINCIPAL_ID=$(az webapp identity show --name app-m365-admin-dev \
-  --resource-group rg-m365-extract-dev --query principalId -o tsv)
+  --resource-group rg-m365-brain-dev --query principalId -o tsv)
 
 az role assignment create \
   --assignee "$PRINCIPAL_ID" \
   --role "Key Vault Secrets User" \
-  --scope "/subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5/resourceGroups/rg-m365-extract-dev/providers/Microsoft.KeyVault/vaults/kv-m365-ext-dev"
+  --scope "/subscriptions/9f079696-135d-4d18-a208-3e2e55fca2f5/resourceGroups/rg-m365-brain-dev/providers/Microsoft.KeyVault/vaults/kv-m365-ext-dev"
 ```
 
 ## CI/CD
@@ -515,7 +515,7 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 17. **`az ad sp create-for-rbac` creates the SP even when role assignment fails** -- The command exits non-zero if role assignment fails (e.g., caller is only Contributor, not Owner), but the SP and app registration are still created. Always check with `az ad sp list --display-name "..."` after a failure.
 
-18. **Federated credentials go on the app registration object ID** -- Not the SP object ID, not the client ID. The `--id` parameter in `az ad app federated-credential create` must be the app registration's object ID. Find it via: `az ad app list --display-name "sp-m365-extract-deploy" --query '[].id' -o tsv`.
+18. **Federated credentials go on the app registration object ID** -- Not the SP object ID, not the client ID. The `--id` parameter in `az ad app federated-credential create` must be the app registration's object ID. Find it via: `az ad app list --display-name "sp-m365-brain-deploy" --query '[].id' -o tsv`.
 
 19. **`az ad app update --web-redirect-uris` is a REPLACE operation** -- Not append. Omitting an existing URI from the command removes it. Always include all URIs (old and new) in every call.
 
@@ -553,7 +553,7 @@ Comprehensive list of gotchas discovered during the 2026-03-25 deployment sessio
 
 30. **Config split: web config vs deploy config** -- The config loader eagerly expands ALL `${VAR}` references at load time — even sections the caller doesn't use. The **web app** (App Service) runs with a config that uses `storage.backend: "local"` or omits storage env vars if the worker thread uses a separate config. If the worker runs as a thread inside the Reflex app (single-container deployment), the App Service container may also need storage env vars (e.g., `AZURE_STORAGE_CONNECTION_STRING`) since the worker thread shares the same process and config. Set `M365_ADMIN_CONFIG` appropriately and ensure all env vars referenced in the active config are injected by Bicep.
 
-31. **Daemon replaced by independent worker** -- The monolithic daemon thread (running all extractors sequentially for all users) was replaced by a worker with per-(user, extractor) jobs. The worker runs as a thread inside the Reflex app (single-container deployment) or as a separate process (`m365-extract worker`). Per-extractor state files (`state/{user_id}/{extractor_name}.json`) eliminate concurrent write races. PostgreSQL advisory locks prevent duplicate runs. `SyncRecord` (full history) replaced by `ExtractorStatus` (single row per user+extractor).
+31. **Daemon replaced by independent worker** -- The monolithic daemon thread (running all extractors sequentially for all users) was replaced by a worker with per-(user, extractor) jobs. The worker runs as a thread inside the Reflex app (single-container deployment) or as a separate process (`m365-brain worker`). Per-extractor state files (`state/{user_id}/{extractor_name}.json`) eliminate concurrent write races. PostgreSQL advisory locks prevent duplicate runs. `SyncRecord` (full history) replaced by `ExtractorStatus` (single row per user+extractor).
 
 ---
 
@@ -563,7 +563,7 @@ App Service and PostgreSQL logs are sent to Log Analytics via diagnostic setting
 
 ### Access via Azure Portal
 
-1. Go to `rg-m365-extract-{env}` → `log-m365-extract-{env}` (Log Analytics workspace)
+1. Go to `rg-m365-brain-{env}` → `log-m365-brain-{env}` (Log Analytics workspace)
 2. Click **Logs** in the left nav
 3. Use KQL queries below
 
@@ -606,8 +606,8 @@ AppServiceHTTPLogs
 ```bash
 # Query via CLI (requires workspace ID)
 WORKSPACE_ID=$(az monitor log-analytics workspace show \
-  --name log-m365-extract-dev \
-  --resource-group rg-m365-extract-dev \
+  --name log-m365-brain-dev \
+  --resource-group rg-m365-brain-dev \
   --query customerId -o tsv)
 
 az monitor log-analytics query \
@@ -625,14 +625,14 @@ az monitor log-analytics query \
 - [x] `docker-compose.yaml` for full-stack local testing with PostgreSQL
 - [x] Bicep template compiles with all env vars (App Service settings)
 - [x] `deploy.yml` triggers on push to main (-> dev) and tag push (-> prod)
-- [x] Service principal `sp-m365-extract-deploy` created (`e31a8416-...`)
+- [x] Service principal `sp-m365-brain-deploy` created (`e31a8416-...`)
 - [x] SP Contributor role assigned on subscription
 - [x] 3 OIDC federated credentials (main, dev env, prod env)
 - [x] All 9 GitHub secrets configured
 - [x] GitHub environments created (dev, prod)
 - [x] Production redirect URI added to Entra app
 - [x] 386 tests pass
-- [x] First deployment: Bicep deployed all resources to `rg-m365-extract-dev`
+- [x] First deployment: Bicep deployed all resources to `rg-m365-brain-dev`
 - [x] Images pushed to ACR (`acrm365extdev.azurecr.io`)
 - [x] Smoke test: `https://app-m365-admin-dev.azurewebsites.net/ping` returns 200
 - [x] Frontend: `https://app-m365-admin-dev.azurewebsites.net/` returns 200

@@ -18,6 +18,19 @@ jobs:
       - run: pixi run lint
       - run: pixi run format-check
 
+  structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # Stdlib-only by design, so they run on stock python3 with no environment
+      # to set up -- a broken pixi env cannot make a guardrail silently pass.
+      - name: Repository structure
+        run: python3 scripts/check_structure.py
+      - name: No consuming-workspace references
+        run: python3 scripts/check_no_workspace.py
+      - name: Trellis templates carry no bilingual Chinese
+        run: python3 scripts/check_trellis_cjk.py
+
   test:
     runs-on: ubuntu-latest
     steps:

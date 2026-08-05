@@ -13,7 +13,9 @@ build/
 .coverage
 site/
 state/
-vault/
+# the runtime vault at the repo root only -- anchored so it cannot swallow
+# m365_brain/vault/ (the path resolver) or tests/unit/vault/
+/vault/
 *.db
 .env
 .env.*

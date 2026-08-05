@@ -34,7 +34,7 @@ app = rx.App()
 if os.environ.get("M365_ADMIN_CONFIG"):
     from m365_admin.config_loader import get_config, get_config_path, get_engine
     from m365_admin.services.token_service import TokenService, TokenServiceAdapter
-    from m365_extract.worker import start_worker_thread
+    from m365_brain.worker import start_worker_thread
 
     _config = get_config()
     _engine = get_engine()

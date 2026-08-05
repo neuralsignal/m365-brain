@@ -1,4 +1,4 @@
-"""Shared test fixtures for m365-extract."""
+"""Shared test fixtures for m365-brain."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import pytest
 try:
     import reflex  # noqa: F401
 except ImportError:
-    collect_ignore_glob = ["test_admin/test_*.py"]
+    collect_ignore_glob = ["unit/test_admin/test_*.py"]
 
-from m365_extract.config import (
+from m365_brain.config import (
     AuthConfig,
     CalendarExtractorConfig,
     Config,
@@ -29,14 +29,16 @@ from m365_extract.config import (
     OneDriveExtractorConfig,
     ServiceConfig,
     SharePointExtractorConfig,
-    StateConfig,
     StorageConfig,
     TeamsChannelsExtractorConfig,
     TeamsChatsExtractorConfig,
     WebConfig,
     WorkerConfig,
 )
-from m365_extract.storage.local import LocalBackend
+from m365_brain.config.index import IndexConfig
+from m365_brain.config.runtime import HooksConfig, ManifestConfig
+from m365_brain.config.vault import VaultConfig, VaultFilenames, VaultLayout
+from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -44,6 +46,78 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 @pytest.fixture()
 def fixtures_dir():
     return FIXTURES_DIR
+
+
+# ---------------------------------------------------------------------------
+# Runtime sections
+#
+# `full_config` is the Microsoft 365 half only. The runtime -- cycle, schedule,
+# manifest, hooks -- needs a vault to write into and an index to feed, so the
+# fixtures below add them. They are here rather than in one suite's file
+# because the schedule, cycle and CLI suites all build on the same shape, and
+# three copies is how they drift.
+# ---------------------------------------------------------------------------
+
+
+def vault_section(root: Path) -> VaultConfig:
+    """The conventional layout, rooted anywhere the caller likes."""
+    return VaultConfig(
+        root=str(root),
+        layout=VaultLayout(
+            inbox="inbox",
+            annotations="annotations",
+            outbox="outbox",
+            meta="_meta",
+            processed="_processed",
+            rejected="_rejected",
+            inflight="_inflight",
+            state="state",
+            manifests="manifests",
+        ),
+        extractor_dirs={
+            "email": "emails",
+            "calendar": "calendar",
+            "contacts": "contacts",
+            "directory": "directory",
+            "onedrive": "onedrive",
+            "sharepoint": "sharepoint",
+            "teams_chats": "teams-chats",
+            "teams_channels": "teams-channels",
+        },
+        filenames=VaultFilenames(
+            entry="index.md",
+            conversation="messages.md",
+            conversation_store="messages.jsonl",
+            attachments="attachments",
+            attachments_converted="attachments_converted",
+        ),
+    )
+
+
+@pytest.fixture()
+def vaulted_config(full_config, tmp_path) -> Config:
+    """`full_config` plus a vault. What an extractor run needs at minimum."""
+    return full_config.model_copy(update={"vault": vault_section(tmp_path / "vault")})
+
+
+@pytest.fixture()
+def runtime_config(vaulted_config, tmp_path) -> Config:
+    """A complete cycle config: vault, index, manifest, and empty hook lists."""
+    from tests.unit.conftest import index_payload_for
+
+    index = IndexConfig.model_validate(
+        index_payload_for(
+            tmp_path / "index.db",
+            [{"name": "vault", "path": str(tmp_path / "vault"), "recursive": True}],
+        )
+    )
+    return vaulted_config.model_copy(
+        update={
+            "index": index,
+            "manifest": ManifestConfig(retain_cycles=3, latest_filename="latest.json"),
+            "hooks": HooksConfig(post_cycle=[], post_reconcile=[]),
+        }
+    )
 
 
 def load_fixture(name: str) -> dict:
@@ -173,9 +247,6 @@ def full_config(tmp_path):
             max_retry_after_seconds=300.0,
             error_message_max_length=200,
         ),
-        state=StateConfig(
-            state_file_path=str(tmp_path / "sync_state.json"),
-        ),
         extractors=ExtractorsConfig(
             email=EmailExtractorConfig(
                 enabled=True,
@@ -303,7 +374,6 @@ def full_web_config(tmp_path, web_config):
             max_retry_after_seconds=300.0,
             error_message_max_length=200,
         ),
-        state=StateConfig(state_file_path=str(tmp_path / "sync_state.json")),
         extractors=ExtractorsConfig(
             email=EmailExtractorConfig(
                 enabled=True,

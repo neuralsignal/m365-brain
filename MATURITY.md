@@ -1,4 +1,4 @@
-# m365-extract Maturity Assessment
+# m365-brain Maturity Assessment
 
 _2026-03-26 — v0.2.2+ (Phases 1-6 complete, Phase 5A-5C+5G done, 5E dev deployed, prod pending)_
 
@@ -110,9 +110,9 @@ The codebase follows the workspace engineering principles well:
 - **Path traversal protection**: LocalBackend validates paths to prevent directory escape
 - **Restrictive permissions**: MSAL token cache set to 0600
 
-## Where m365-extract is Ahead of Reference Repos
+## Where m365-brain is Ahead of Reference Repos
 
-| Dimension | m365-extract | Reference repos |
+| Dimension | m365-brain | Reference repos |
 |-----------|-------------|-----------------|
 | Docker | Dockerfile + docker-compose.yaml (with azurite profile) | None |
 | IaC (Bicep) | Storage Account + params per env | None |

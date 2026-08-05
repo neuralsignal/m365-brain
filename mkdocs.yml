@@ -1,8 +1,8 @@
-site_name: m365-extract
-site_url: https://neuralsignal.github.io/m365-extract/
+site_name: m365-brain
+site_url: https://neuralsignal.github.io/m365-brain/
 site_description: Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API
-repo_url: https://github.com/neuralsignal/m365-extract
-repo_name: neuralsignal/m365-extract
+repo_url: https://github.com/neuralsignal/m365-brain
+repo_name: neuralsignal/m365-brain
 
 theme:
   name: material
@@ -74,6 +74,9 @@ nav:
     - Storage Backends: user-guide/storage.md
     - Azure Setup: user-guide/azure.md
     - Docker: user-guide/docker.md
+  - Development:
+    - Quickstart: dev/quickstart.md
+    - Trellis: dev/trellis.md
   - API Reference:
     - Config: reference/config.md
     - Graph Client: reference/graph_client.md
@@ -84,4 +87,4 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/neuralsignal/m365-extract
+      link: https://github.com/neuralsignal/m365-brain

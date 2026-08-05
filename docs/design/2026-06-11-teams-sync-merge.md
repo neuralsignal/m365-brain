@@ -54,7 +54,7 @@ fetch (Graph) ──► merge into per-conversation JSONL store ──► render
 
 Two new shared modules (DRY between chats and channels):
 
-### `m365_extract/extractors/_message_store.py`
+### `m365_brain/extractors/_message_store.py`
 
 Per-conversation message store, one JSON object per line at
 `<conv_dir>/messages.jsonl`. Indexers in the consuming workspace scan `*.md`
@@ -93,7 +93,7 @@ API (no default arguments anywhere):
   `(new_store, changed)`. Pure function; property-tested (idempotent:
   merging the same batch twice == once; merge never drops existing ids).
 
-### `m365_extract/extractors/_message_renderer.py`
+### `m365_brain/extractors/_message_renderer.py`
 
 Renders a store into the standardized markdown body. Pure functions,
 property-tested for determinism (same store → identical output).
@@ -280,7 +280,7 @@ attachment_convert_extensions: list[str]
 ### Shared ingest module: `_teams_ingest.py`
 
 The Graph-payload→StoredMessage conversion lives once, in
-`m365_extract/extractors/_teams_ingest.py`, used by both extractors:
+`m365_brain/extractors/_teams_ingest.py`, used by both extractors:
 
 - `GRAPH_PAGE_SIZE = 50` — the documented Graph `$top` maximum for Teams
   message endpoints (an API protocol limit, not a config value); drives the
@@ -351,13 +351,15 @@ New/changed tests, written before implementation:
 Done = full suite green, `pixi run lint` + `pixi run format-check` clean,
 coverage ≥ 80%, no file > 300 lines.
 
-## Consuming-workspace rollout (separate commit in the consuming repo)
+## Downstream rollout (a separate commit wherever this package is consumed)
 
-1. `m365-data-sync/config/m365-extract.yaml`: add `ChannelMessage.Read.All`
-   scope (admin consent already granted); enable `teams_channels` with the
-   new fields; raise `max_messages_per_chat` to 10000 (backfill headroom).
-2. `.gitignore`: add `knowledge/teams-channels/`.
-3. `rules/knowledge-folder-structure.md`: add the teams-channels row.
+1. Config: add the `ChannelMessage.Read.All` scope — it needs tenant admin
+   consent; enable the `teams_channels` extractor with the new fields; raise
+   `max_messages_per_chat` to 10000 for backfill headroom.
+2. Ignore the new output directory in version control — the extracted tree is
+   machine-synced and regenerable.
+3. Update whatever documents the consumer's folder layout so it lists the new
+   `teams-channels` output.
 4. First run after deploy: every chat backfills (no watermarks yet) and all
    `messages.md` files are rewritten in the new format → one-time full FTS
    + vector re-embed. Subsequent cycles touch only changed conversations,

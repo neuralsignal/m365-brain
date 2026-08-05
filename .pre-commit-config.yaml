@@ -13,3 +13,18 @@ repos:
         language: system
         files: pixi\.toml$
         pass_filenames: false
+      - id: check-structure
+        name: repository structure
+        entry: python3 scripts/check_structure.py
+        language: system
+        pass_filenames: false
+      - id: check-no-workspace
+        name: no consuming-workspace references
+        entry: python3 scripts/check_no_workspace.py
+        language: system
+        pass_filenames: false
+      - id: check-trellis-cjk
+        name: trellis templates carry no bilingual Chinese
+        entry: python3 scripts/check_trellis_cjk.py --quiet
+        language: system
+        pass_filenames: false

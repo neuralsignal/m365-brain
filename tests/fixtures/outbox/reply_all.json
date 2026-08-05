@@ -1,0 +1,49 @@
+[
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/AAMkAGE-ORIGINAL/createReplyAll",
+    "headers": {},
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/NEW-1",
+    "headers": {},
+    "body": null
+  },
+  {
+    "method": "PATCH",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/NEW-1",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "body": {
+        "contentType": "html",
+        "content": "<h1 style=\"font-size:20px;font-weight:bold;margin:16px 0 8px 0;Margin:16px 0 8px 0;\">Heading</h1>\n<p>Hello <strong>there</strong>.</p>\n<ul style=\"margin:10px 0 10px 25px;Margin:10px 0 10px 25px;padding:0;\">\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">one</li>\n<li style=\"margin:0 0 4px 0;Margin:0 0 4px 0;mso-special-format:bullet;\">two</li>\n</ul><br><br><p>--<br>Test Sender</p><img src='cid:brand_logo'><br><br><html><body><div>From: sender@example.com<br>original body</div></body></html>"
+      },
+      "ccRecipients": [
+        {
+          "emailAddress": {
+            "address": "existing@example.com"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "url": "https://graph.microsoft.com/v1.0/me/messages/NEW-1/attachments",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      "name": "logo.png",
+      "contentType": "image/png",
+      "contentBytes": "iVBORw0KGgpMT0dP",
+      "isInline": true,
+      "contentId": "brand_logo"
+    }
+  }
+]

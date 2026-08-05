@@ -1,0 +1,386 @@
+# m365-brain — complete example configuration.
+#
+# This file is the documentation. Every value the library uses at runtime is a
+# key below; nothing is inferred from the environment, from the package's own
+# location, or from a directory being named the way the author named it.
+#
+# Rules that apply throughout:
+#   * Relative paths resolve against THIS FILE's directory, never the process
+#     working directory. A daemon started from / and a shell started from the
+#     repo root therefore read the same database.
+#   * ${VAR} expands from the environment at load. A referenced variable that
+#     is not set is a load failure, not an empty string.
+#   * Unknown keys inside the new sections are a load failure. A typo does not
+#     get silently ignored.
+#   * Sections may be omitted only as a whole, and omitting one means "this
+#     subsystem is not in use". Using it anyway raises naming the section.
+#     Inside a section, every key is required.
+#   * Several files may be merged: `--config base.yaml,prod.yaml`. Later files
+#     win for scalars and lists; mappings merge recursively.
+
+# ---------------------------------------------------------------------------
+# auth — Entra app registrations
+# ---------------------------------------------------------------------------
+auth:
+  # The app the extractor path authenticates with when `extractors.auth_profile`
+  # is null. Delegated permissions, device-code flow.
+  client_id: "${MSAL_CLIENT_ID}"
+  tenant_id: "${MSAL_TENANT_ID}"
+  scopes:
+    - "User.Read"
+    - "Mail.Read"
+    - "Calendars.Read"
+    - "Chat.Read"
+    - "ChannelMessage.Read.All"
+    - "Files.Read.All"
+    - "Sites.Read.All"
+    - "Contacts.Read"
+    - "offline_access"
+  token_cache_path: "../state/token-cache.json"
+  client_secret: null # null = public client (device code); a string = confidential client
+
+  # Named apps. Scopes are not pooled: the app that may post to a channel is not
+  # the app that reads mail, so a bug in one cannot use the other's permission.
+  profiles:
+    mail:
+      client_id: "${M365_MAIL_CLIENT_ID}"
+      tenant_id: "${MSAL_TENANT_ID}"
+      scopes: ["Mail.Read", "Mail.ReadWrite", "Mail.ReadWrite.Shared", "offline_access"]
+      token_cache_path: "../state/mail-token-cache.json"
+      client_secret: null
+    files:
+      client_id: "${M365_FILES_CLIENT_ID}"
+      tenant_id: "${MSAL_TENANT_ID}"
+      scopes: ["Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"]
+      token_cache_path: "../state/files-token-cache.json"
+      client_secret: null
+    chat:
+      client_id: "${M365_CHAT_CLIENT_ID}"
+      tenant_id: "${MSAL_TENANT_ID}"
+      scopes: ["ChannelMessage.Send", "offline_access"]
+      token_cache_path: "../state/chat-token-cache.json"
+      client_secret: null
+
+# ---------------------------------------------------------------------------
+# service — process behaviour and logging
+# ---------------------------------------------------------------------------
+service:
+  mode: "cli"
+  log_level: "INFO" # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  json_logs: false # true renders structured JSON; false is the console renderer
+  continuous_poll_seconds: 30 # upper bound on a sleep slice, so SIGTERM is answered promptly
+  max_consecutive_auth_failures: 5
+
+# ---------------------------------------------------------------------------
+# storage — where extracted files are written
+# ---------------------------------------------------------------------------
+storage:
+  backend: "local" # local | azure_blob
+  local:
+    base_path: "../vault"
+  azure_blob: null
+
+# ---------------------------------------------------------------------------
+# graph — HTTP transport policy. No retry constant lives in code.
+# ---------------------------------------------------------------------------
+graph:
+  max_retries: 3
+  backoff_base_ms: 2000
+  timeout_seconds: 30
+  max_pages: 100
+  max_retry_after_seconds: 300.0 # clamp on a server-supplied Retry-After
+  error_message_max_length: 200
+
+
+# ---------------------------------------------------------------------------
+# extractors — one block each, all eight required
+# ---------------------------------------------------------------------------
+extractors:
+  auth_profile: "mail" # a name under auth.profiles, or null to use the auth: section itself
+  email:
+    enabled: true
+    poll_interval_minutes: 3
+    mailboxes:
+      - address: "me" # "me" or a UPN for a shared mailbox
+        folders: ["Inbox", "SentItems", "Archive"]
+        output_subdir: ""
+    lookback_days: 365
+    max_items_per_sync: 500
+    download_attachments: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
+  calendar:
+    enabled: true
+    poll_interval_minutes: 60
+    lookback_days: 365
+    forward_days: 90
+  teams_chats:
+    enabled: true
+    poll_interval_minutes: 5
+    max_messages_per_chat: 200
+    download_attachments: false
+    download_inline_images: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
+  teams_channels:
+    enabled: false
+    poll_interval_minutes: 5
+    max_messages_per_channel: 200
+    channels: null # null = discover; a list = explicit, and needs no directory scopes
+    download_attachments: false
+    download_inline_images: false
+    max_attachment_size_mb: 25
+    attachment_convert_extensions: []
+  onedrive:
+    enabled: true
+    poll_interval_minutes: 120
+    eager_convert_patterns: []
+    convertible_extensions: [".docx", ".pptx", ".xlsx", ".pdf", ".csv", ".txt", ".md", ".html"]
+    max_file_size_mb: 100
+  sharepoint:
+    enabled: false
+    poll_interval_minutes: 240
+    eager_convert_patterns: []
+    convertible_extensions: [".docx", ".pptx", ".xlsx", ".pdf", ".csv", ".txt", ".md", ".html"]
+    max_file_size_mb: 100
+  contacts:
+    enabled: true
+    poll_interval_minutes: 1440
+    max_items_per_sync: 500
+    include_contact_folders: false
+  directory:
+    enabled: false
+    poll_interval_minutes: 10080
+    include_manager_chain: true
+    include_direct_reports: true
+    only_active_users: true
+
+# ---------------------------------------------------------------------------
+# converters — binary file -> markdown
+# ---------------------------------------------------------------------------
+converters:
+  backends:
+    pdf: "markitdown"
+    docx: "markitdown"
+    pptx: "markitdown"
+    xlsx: "markitdown"
+    csv: "markitdown"
+    json: "native"
+    yaml: "native"
+    image: "native"
+    default: "native"
+  extraction:
+    isolation: "process" # process = true kill on timeout; thread = lowest latency
+    timeout_seconds: 30
+    max_file_size_mb: 100
+    xlsx_max_rows_per_sheet: 500
+  media:
+    extract_images: false
+    image_format: "png"
+    image_max_dimension: 0
+  slug_max_length: 80
+  hash_length: 6
+
+# ---------------------------------------------------------------------------
+# vault — every directory and filename, named here and nowhere else
+# ---------------------------------------------------------------------------
+vault:
+  root: "../vault"
+  layout:
+    inbox: "inbox" # upstream truth, rewritten by extractors
+    annotations: "annotations" # anything a consumer writes about that truth
+    outbox: "outbox" # intents waiting to be dispatched
+    meta: "_meta" # sync state, delta tokens, manifests
+    processed: "_processed" # dispatched intents + receipt sidecars
+    rejected: "_rejected" # blocked or failed intents + receipt sidecars
+    inflight: "_inflight" # claimed but not yet archived; never auto-retried
+    state: "state" # under meta/
+    manifests: "manifests" # under meta/
+  extractor_dirs: # all eight names required; an unknown name is an error
+    email: "emails"
+    calendar: "calendar"
+    contacts: "contacts"
+    directory: "directory"
+    onedrive: "onedrive"
+    sharepoint: "sharepoint"
+    teams_chats: "teams-chats"
+    teams_channels: "teams-channels"
+  filenames:
+    entry: "index.md" # the file inside a per-item directory
+    conversation: "messages.md" # rendered conversation
+    conversation_store: "messages.jsonl" # merge store; not indexed
+    attachments: "attachments"
+    attachments_converted: "attachments_converted"
+
+# ---------------------------------------------------------------------------
+# index — the markdown index. Independent of everything above: an index-only
+# deployment omits auth/extractors entirely and points roots at any folders.
+# ---------------------------------------------------------------------------
+index:
+  backend: "sqlite" # sqlite | memory (memory is the in-process fake)
+  sqlite:
+    path: "../state/index.db"
+    busy_timeout_ms: 30000
+    journal_mode: "WAL" # WAL | DELETE
+  roots: # explicit, never discovered. Names must be unique.
+    - name: "vault" # entity keys are "{name}/{relative path}", so two roots
+      path: "../vault" # may both contain projects/x.md without colliding
+      recursive: true
+    - name: "notes"
+      path: "../notes"
+      recursive: true
+  file_extensions: [".md"]
+  exclude: ["**/_meta/**", "**/.git/**"] # globs against the root-relative posix path
+  sync:
+    batch_size: 200 # entities per write transaction; short locks, not one long one
+    interval_minutes: 60 # the index is a scheduled unit in its own right
+  frontmatter:
+    title_key: "title"
+    type_key: "type"
+    permalink_key: "permalink"
+    tags_key: "tags"
+    aliases_key: "aliases"       # lifted into a typed column: every backend must
+                                # answer "find by alias", and only some can query
+                                # inside a JSON blob
+    default_type: "note"
+    # Frontmatter keys that are structure rather than content. Anything NOT
+    # listed becomes a synthetic observation, so this list is the contract
+    # between whatever writes your notes and what the index makes searchable.
+    # The four universal keys are the starting point; add the keys your own
+    # emitters produce.
+    structural_keys: ["title", "type", "permalink", "tags"]
+  observations:
+    default_category: "Note" # category for an observation line that names none
+  relations:
+    explicit_default_type: "relates_to" # `- [[target]]` with no verb
+    inline_type: "links_to" # a [[wikilink]] found in prose
+  search:
+    page_size: 20
+    bm25_weights: # column weights for full-text ranking
+      title: 10.0
+      content: 1.0
+      tags: 5.0
+    snippet:
+      column: "content"
+      start_marker: ">>>"
+      end_marker: "<<<"
+      ellipsis: "..."
+      max_tokens: 40
+    rrf_k: 60 # reciprocal-rank-fusion constant
+    rrf_min_weight: 0.1 # floor on a normalized per-list weight
+    vector_candidates: 100 # depth of each candidate list before fusion
+    min_similarity: 0.55 # 1/(1+distance) below this is discarded
+  catalog:
+    conversion_states: ["pending", "eager", "converted", "failed", "skipped"]
+    initial_state: "pending" # must be one of conversion_states
+  vector:
+    enabled: true # false makes vector/hybrid search raise, never silently fall back
+    provider: "fastembed" # fastembed | hash (hash is the offline fake)
+    store: "sqlite_vec" # sqlite_vec | memory
+    model: "BAAI/bge-small-en-v1.5"
+    dimensions: 384 # must match the model, checked at construction
+    threads: 4
+    chunk_size: 900
+    chunk_overlap: 120 # must be smaller than chunk_size
+    embed_batch_size: 32
+    write_batch_size: 50
+
+# ---------------------------------------------------------------------------
+# outboxes — dispatch policy. A tier is policy, so it is config.
+# ---------------------------------------------------------------------------
+outboxes:
+  attachment_root: "../attachments" # attachment paths in an intent resolve against this
+  # A draft-only outbox whose auth profile carries one of these scopes fails at
+  # startup. This catches the real failure: someone widens an app's scopes for
+  # an unrelated reason and a later bug then sends mail.
+  forbidden_send_scopes: ["Mail.Send", "Mail.Send.Shared"]
+  definitions:
+    # tier: never_auto | human_approval | draft_only | auto_send
+    "email.draft": { tier: "draft_only", auth_profile: "mail" }
+    "email.reply": { tier: "draft_only", auth_profile: "mail" }
+    "email.forward": { tier: "draft_only", auth_profile: "mail" }
+    "teams.post_message": { tier: "auto_send", auth_profile: "chat" }
+    "file.update": { tier: "auto_send", auth_profile: "files" }
+  email:
+    signature:
+      html_path: null # a path to signature HTML, or null for no signature
+      logo_path: null # an inline image referenced by logo_content_id, or null
+      logo_content_id: "signature-logo"
+  reconcile:
+    # Where a quoted original begins. Locale- and sign-off-specific, which is
+    # exactly why it is not a regex table inside a module.
+    quote_markers:
+      - "^\\s*From:\\s"
+      - "^\\s*On .+ wrote:\\s*$"
+      - "^\\s*-{2,}\\s*Original Message\\s*-{2,}"
+      - "^\\s*Von:\\s"
+      - "^\\s*Am .+ schrieb .+:\\s*$"
+      - "^\\s*Mit freundlichen Gr[uü]ss?en"
+
+# ---------------------------------------------------------------------------
+# hooks — the extension point. `module.path:callable`, one argument.
+# Validated for shape at load; imported at startup, never during parsing.
+# ---------------------------------------------------------------------------
+hooks:
+  post_cycle: [] # e.g. ["my_package.hooks:on_cycle"]
+  post_reconcile: [] # e.g. ["my_package.hooks:on_reconcile"]
+
+# ---------------------------------------------------------------------------
+# manifest — the record of what each cycle wrote
+# ---------------------------------------------------------------------------
+manifest:
+  retain_cycles: 50
+  latest_filename: "latest.json" # a copy, not a symlink
+
+# ---------------------------------------------------------------------------
+# m365 — upload thresholds. Graph's, not ours, but still config.
+# ---------------------------------------------------------------------------
+m365:
+  upload:
+    inline_attachment_max_bytes: 2250000 # raw side of Graph's ~3 MB base64 cap
+    simple_upload_max_bytes: 4194304 # above this, an upload session is required
+    chunk_bytes: 4259840 # 13 x 320 KiB. Graph rejects a fragment size that is
+      # not a multiple of 320 KiB, and 4 MiB is not one.
+
+# ---------------------------------------------------------------------------
+# ops — the operational commands. Every threshold is here or does not exist.
+# ---------------------------------------------------------------------------
+ops:
+  link_resolution:
+    unresolved_prefix: "contact-" # slug prefix marking a link that never resolved
+    target_type: "person" # entity type such links should resolve to
+  tiers:
+    lookback_days: 90
+    # An ordered ladder, not three numbered tiers with a special case. The last
+    # rung says stale_after_days: null and means "never stale".
+    ladder:
+      - { name: "close", min_per_month: 4.0, stale_after_days: 14 }
+      - { name: "regular", min_per_month: 1.0, stale_after_days: 30 }
+      - { name: "occasional", min_per_month: 0.0, stale_after_days: null }
+    # Where interaction counts come from. Three declarative fields over one
+    # fixed join shape — if a fourth source needs a different shape, cut the
+    # source rather than widening this into a query language.
+    interaction_sources:
+      - entity_type: "email"
+        party_from: { observation: "from", relation: null }
+        timestamp: { observation: "received_at" }
+        exclude_future: true
+      - entity_type: "event"
+        party_from: { observation: null, relation: "attended_by" }
+        timestamp: { observation: "start_time" }
+        exclude_future: true
+    write_back:
+      enabled: false
+      fields: # computed value -> the frontmatter key it is written to
+        tier: "tier"
+        last_interaction: "last_interaction"
+      create_missing: false
+  triage:
+    own_email: "${M365_OWN_EMAIL}"
+    inbox_folder: "Inbox"
+    sent_folders: ["SentItems", "Gesendete Elemente"]
+    forward_prefixes: ["fw:", "fwd:", "wg:"]
+# ---------------------------------------------------------------------------
+# web: / worker: — only for the multi-user admin deployment. Omitted here;
+# see config/service/web.yaml for the shape.
+# ---------------------------------------------------------------------------

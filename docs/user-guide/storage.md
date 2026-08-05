@@ -1,6 +1,6 @@
 # Storage Backends
 
-m365-extract supports two storage backends: local filesystem and Azure Blob Storage. Both implement the `StorageBackend` protocol and are interchangeable -- switching backends requires only a config change.
+m365-brain supports two storage backends: local filesystem and Azure Blob Storage. Both implement the `StorageBackend` protocol and are interchangeable -- switching backends requires only a config change.
 
 ## StorageBackend Protocol
 

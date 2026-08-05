@@ -1,6 +1,6 @@
-# m365-extract
+# m365-brain
 
-[![CI](https://github.com/neuralsignal/m365-extract/actions/workflows/ci.yml/badge.svg)](https://github.com/neuralsignal/m365-extract/actions/workflows/ci.yml)
+[![CI](https://github.com/neuralsignal/m365-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/neuralsignal/m365-brain/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -21,16 +21,16 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 ## Installation
 
 ```bash
-pip install m365-extract
+pip install m365-brain
 ```
 
 Optional extras:
 
 ```bash
-pip install m365-extract[azure]    # Azure Blob Storage backend
-pip install m365-extract[convert]  # Document conversion (obsidian-import)
-pip install m365-extract[admin]    # Reflex admin dashboard
-pip install m365-extract[all]      # Everything
+pip install m365-brain[azure]    # Azure Blob Storage backend
+pip install m365-brain[convert]  # Document conversion (obsidian-import)
+pip install m365-brain[admin]    # Reflex admin dashboard
+pip install m365-brain[all]      # Everything
 ```
 
 ## Quick Start
@@ -38,7 +38,7 @@ pip install m365-extract[all]      # Everything
 ### Authenticate
 
 ```bash
-m365-extract --config config.yaml auth login
+m365-brain --config config.yaml auth login
 ```
 
 This opens a device code flow in your browser. The token is cached at `state/token_cache.json` (configurable).
@@ -46,13 +46,13 @@ This opens a device code flow in your browser. The token is cached at `state/tok
 ### Sync once
 
 ```bash
-m365-extract --config config.yaml sync --once
+m365-brain --config config.yaml sync --once
 ```
 
 ### Sync continuously
 
 ```bash
-m365-extract --config config.yaml sync --continuous
+m365-brain --config config.yaml sync --continuous
 ```
 
 Each extractor runs on its own `poll_interval_minutes`. The scheduler checks every 30 seconds.
@@ -60,7 +60,7 @@ Each extractor runs on its own `poll_interval_minutes`. The scheduler checks eve
 ### Filter extractors
 
 ```bash
-m365-extract --config config.yaml sync --once --extractors email,calendar
+m365-brain --config config.yaml sync --once --extractors email,calendar
 ```
 
 ## Configuration
@@ -274,8 +274,8 @@ docker compose --profile azurite up  # include Azurite blob emulator
 ## Development
 
 ```bash
-git clone https://github.com/neuralsignal/m365-extract.git
-cd m365-extract
+git clone https://github.com/neuralsignal/m365-brain.git
+cd m365-brain
 pixi install
 pixi run test        # unit tests (excludes integration + azurite markers)
 pixi run test-cov    # unit tests with coverage
@@ -289,8 +289,8 @@ pixi run docs-serve  # local MkDocs dev server
 ### Project structure
 
 ```
-m365-extract/
-  m365_extract/
+m365-brain/
+  m365_brain/
     auth/              # MSAL device code + token provider
     converters/        # Document conversion (obsidian-import bridge, HTML-to-markdown)
     extractors/        # One module per M365 data source
