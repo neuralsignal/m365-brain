@@ -15,7 +15,7 @@ from m365_brain.extractors import onedrive
 from m365_brain.graph_client import GRAPH_BASE_URL, GraphClient
 from m365_brain.storage.local import LocalBackend
 
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
 SAMPLE_CONVERTERS_CONFIG = {
     "backends": {"pdf": "markitdown", "docx": "markitdown", "default": "native"},

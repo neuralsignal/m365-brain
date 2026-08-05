@@ -16,7 +16,7 @@ from m365_brain.graph_client import GraphApiError, GraphClient
 from m365_brain.markdown_writer import loads_markdown
 from m365_brain.storage.local import LocalBackend
 
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
 
 @pytest.fixture()

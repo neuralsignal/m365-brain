@@ -15,7 +15,7 @@ from m365_brain.extractors.calendar import _normalize_graph_datetime
 from m365_brain.graph_client import GraphClient
 from m365_brain.storage.local import LocalBackend
 
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
 
 @pytest.fixture()
