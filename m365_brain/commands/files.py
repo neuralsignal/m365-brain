@@ -74,8 +74,10 @@ def pull(
     content, etag = found
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(content, encoding="utf-8")
-    payload = {"path": str(out_path), "bytes": len(content.encode("utf-8")), "etag": etag}
-    emit(as_json, payload, [f"{payload['bytes']} bytes -> {out_path}", f"etag: {etag}"])
+    # Absolute, because `--out report.md` otherwise prints a path only the
+    # caller's CWD explains -- and `emit` would then read it as a vault key.
+    payload = {"path": str(out_path.resolve()), "bytes": len(content.encode("utf-8")), "etag": etag}
+    emit(as_json, payload, [f"{payload['bytes']} bytes -> {payload['path']}", f"etag: {etag}"])
 
 
 @files_group.command("push")

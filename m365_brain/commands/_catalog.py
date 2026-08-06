@@ -26,7 +26,7 @@ from m365_brain.config import ConfigError, StorageConfig, require_section
 from m365_brain.config.vault import VaultConfig
 from m365_brain.index.catalog_extract import CatalogConversionError, converted_output_path, extract_pending
 from m365_brain.model import CatalogEntry, CatalogQuery
-from m365_brain.storage import create_storage
+from m365_brain.storage import create_storage, local_base_path, resolve_key, storage_key
 from m365_brain.storage.base import StorageBackend
 from m365_brain.storage.exceptions import StorageError
 
@@ -85,14 +85,15 @@ def list_entries(
         # answer a question nobody asked and look like an answer to the one
         # they did -- which is only detectable once the table has rows.
         raise click.UsageError("--stats counts the whole catalog; it cannot be combined with a filter")
-    with open_workspace(require_config(ctx)) as workspace:
+    config = require_config(ctx)
+    with open_workspace(config) as workspace:
         store = workspace.catalog()
         if stats:
             counts = store.stats()
             emit(as_json, counts, [f"{state}\t{count}" for state, count in sorted(counts.items())])
             return
         entries = store.search(_query(extension, source, status, modified_after, None, limit))
-    _emit_entries(entries, as_json)
+    _emit_entries(entries, config.storage, as_json)
 
 
 @catalog.command("search")
@@ -103,9 +104,10 @@ def list_entries(
 @click.pass_context
 def search(ctx: click.Context, query: str, status: str | None, limit: int, as_json: bool) -> None:
     """Catalogued files whose name contains QUERY."""
-    with open_workspace(require_config(ctx)) as workspace:
+    config = require_config(ctx)
+    with open_workspace(config) as workspace:
         entries = workspace.catalog().search(_query(None, None, status, None, query, limit))
-    _emit_entries(entries, as_json)
+    _emit_entries(entries, config.storage, as_json)
 
 
 @catalog.command("resolve")
@@ -113,9 +115,30 @@ def search(ctx: click.Context, query: str, status: str | None, limit: int, as_js
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
 def resolve(ctx: click.Context, query: str, as_json: bool) -> None:
-    """The source path of exactly one catalogued file. Ambiguity is an error."""
-    with open_workspace(require_config(ctx)) as workspace:
-        entries = workspace.catalog().search(_query(None, None, None, None, query, RESOLVE_SAMPLE))
+    """The source path of exactly one catalogued file. Ambiguity is an error.
+
+    QUERY is a file name, or a path this command family printed. Matching on
+    `file_name` alone meant `resolve` and `search` printed a path that neither
+    would then accept, so feeding either its own output found nothing.
+    """
+    config = require_config(ctx)
+    storage = config.storage
+    with open_workspace(config) as workspace:
+        store = workspace.catalog()
+        # The exact `original_path` lookup the backend has always had, and no
+        # verb exposed. It is tried first so a printed path resolves to its own
+        # row rather than falling through to a substring match on the filename.
+        entry = store.get(storage_key(storage, query))
+        entries = [] if entry is not None else store.search(_query(None, None, None, None, query, RESOLVE_SAMPLE))
+
+    if entry is None:
+        entry = _one_of(entries, query, storage)
+    address = resolve_key(storage, entry.original_path)
+    emit(as_json, {"original_path": address}, [address])
+
+
+def _one_of(entries: list[CatalogEntry], query: str, storage: StorageConfig) -> CatalogEntry:
+    """The single entry `query` names, or an error saying why there is not one."""
     if not entries:
         raise NotFound(f"no catalogued file matches {query!r}")
     exact = [entry for entry in entries if entry.file_name == query]
@@ -123,17 +146,16 @@ def resolve(ctx: click.Context, query: str, as_json: bool) -> None:
         # An exact filename is not ambiguous just because it is also a
         # substring of longer names: `report.pdf` should resolve even when
         # `report.pdf.backup` sits beside it in the same vault.
-        emit(as_json, {"original_path": exact[0].original_path}, [exact[0].original_path])
-        return
+        return exact[0]
     if len(entries) > 1:
         # The search is capped, so the count is a floor, not a total. Reporting
         # it as a total told a caller with 200 matches that it had 10.
         count = f"at least {len(entries)}" if len(entries) == RESOLVE_SAMPLE else str(len(entries))
         raise ConfigError(
-            f"{query!r} matches {count} files: {[e.original_path for e in entries]}. "
+            f"{query!r} matches {count} files: {[resolve_key(storage, e.original_path) for e in entries]}. "
             "Narrow the query -- resolving to the first would be a coin flip."
         )
-    emit(as_json, {"original_path": entries[0].original_path}, [entries[0].original_path])
+    return entries[0]
 
 
 @catalog.command("extract")
@@ -151,7 +173,7 @@ def extract(ctx: click.Context, limit: int, retry_failed: bool, as_json: bool) -
     vault = require_section(config.vault, "vault")
     # Before anything is opened: a backend this verb cannot read from should
     # say so, not fail later inside a storage client's constructor.
-    source_root = _local_source_root(config.storage)
+    source_root = local_base_path(config.storage)
     storage = create_storage(config.storage)
     with open_workspace(config) as workspace:
         store = workspace.catalog()
@@ -193,51 +215,58 @@ def _converter(
     return convert
 
 
-def _local_source_root(storage_config: StorageConfig) -> Path:
-    """Where the catalogued binaries can be read back from.
-
-    `StorageBackend` can write bytes but not read them, so there is no
-    backend-agnostic way to hand a blob back to a converter that wants a
-    filesystem path. Rather than pretend, this says so: a blob-backed vault
-    runs `extract` where the vault is local, or `StorageBackend` grows the
-    missing half of `write_bytes` first.
-    """
-    if storage_config.backend != "local" or storage_config.local is None:
-        raise ConfigError(
-            f"index catalog extract reads each catalogued binary back off disk, and storage.backend "
-            f"is {storage_config.backend!r}. StorageBackend has write_bytes but no read_bytes, so "
-            f"there is nothing to convert from -- run extract against a local vault."
-        )
-    return Path(storage_config.local.base_path)
-
-
 @catalog.command("read")
-@click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("path", type=str)
 @click.pass_context
-def read(ctx: click.Context, path: Path) -> None:
-    """Convert a source file to markdown and print it. Writes nothing."""
+def read(ctx: click.Context, path: str) -> None:
+    """Convert a source file to markdown and print it. Writes nothing.
+
+    PATH is absolute, or vault-relative -- either form this command family
+    prints. It is never resolved against the process CWD: `click.Path` did
+    that, so the identical argument named a different file from a different
+    directory, and the one string `catalog resolve` exists to produce failed
+    from anywhere but the vault root.
+    """
     from m365_brain.m365.converters.document import convert_document
 
     config = require_config(ctx)
-    click.echo(convert_document(file_path=path, converters_config=config.converters.model_dump()))
+    source = _source_file(config.storage, path)
+    click.echo(convert_document(file_path=source, converters_config=config.converters.model_dump()))
 
 
-def _emit_entries(entries: list[CatalogEntry], as_json: bool) -> None:
-    payload = {
-        "entries": [
-            {
-                "id": entry.entry_id,
-                "file_name": entry.file_name,
-                "original_path": entry.original_path,
-                "extension": entry.extension,
-                "source": entry.source,
-                "size_bytes": entry.size_bytes,
-                "modified_at": entry.modified_at,
-                "conversion_status": entry.conversion_status,
-                "output_path": entry.output_path,
-                "error": entry.error,
-            }
-            for entry in entries
-        ]
-    }
-    emit(as_json, payload, [f"{e.conversion_status}\t{e.extension}\t{e.original_path}" for e in entries])
+def _source_file(storage_config: StorageConfig, path: str) -> Path:
+    """One PATH argument as a file on disk. Absolute as given, else vault-relative."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = local_base_path(storage_config) / path
+    if not candidate.is_file():
+        raise click.UsageError(
+            f"no readable file at {candidate}. PATH is an absolute path, or one relative to the "
+            f"vault root -- the form `index catalog resolve` and `index catalog search` print. It "
+            f"is never resolved against the current directory."
+        )
+    return candidate
+
+
+def _emit_entries(entries: list[CatalogEntry], storage: StorageConfig, as_json: bool) -> None:
+    """Rows, with both printed paths resolved before either output shape sees them."""
+    rows = [
+        {
+            "id": entry.entry_id,
+            "file_name": entry.file_name,
+            "original_path": resolve_key(storage, entry.original_path),
+            "extension": entry.extension,
+            "source": entry.source,
+            "size_bytes": entry.size_bytes,
+            "modified_at": entry.modified_at,
+            "conversion_status": entry.conversion_status,
+            "output_path": None if entry.output_path is None else resolve_key(storage, entry.output_path),
+            "error": entry.error,
+        }
+        for entry in entries
+    ]
+    emit(
+        as_json,
+        {"entries": rows},
+        [f"{row['conversion_status']}\t{row['extension']}\t{row['original_path']}" for row in rows],
+    )

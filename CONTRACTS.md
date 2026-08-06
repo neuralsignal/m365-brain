@@ -164,7 +164,10 @@ builds one; a hardcoded directory or filename anywhere under `m365_brain/vault/`
 `m365_brain/m365/` defeats the contract and is grep-checked.
 
 Paths are **storage-relative POSIX keys**, never filesystem paths — `<vault.root>` above is the
-storage backend's own `base_path`/`prefix` and is not repeated inside the key.
+storage backend's own `base_path`/`prefix` and is not repeated inside the key. That holds inside
+the library and on disk. It stops at the **process boundary**: `m365_brain/storage/__init__.py`
+carries `resolve_key` / `storage_key`, the one pair that adds the base and takes it away again,
+and the CLI's `emit` applies it to everything it prints. See the output contract under CLI.
 
 ### Markdown files
 
@@ -348,6 +351,13 @@ right.
 verb takes `--json`. A caller therefore never parses human text and never has to separate log noise
 from data.
 
+**Every path printed is fully resolved** — an absolute filesystem path under `storage.backend:
+local`, a blob URL under `azure_blob`. It needs no base the caller has to know, so what one verb
+prints the next verb takes and `pwd` decides nothing. The join happens once, in `emit`, which is
+why a verb added later gets it without asking. Two payload fields stay relative and say so in the
+same object: `vault path --json` `.relative` and `index paths --json` `.inbox.*` are printed beside
+the root they hang off, so nothing is missing.
+
 | Verb | Options | Prints | Exit |
 |---|---|---|---|
 | `init PATH` | `--vault DIR` (required) | every path created | 0 / 3 if PATH exists |
@@ -366,8 +376,8 @@ from data.
 | `index paths` | `--json` | configured roots, database, and each extractor's inbox | 0 / 3 |
 | `index catalog list` | `--ext` · `--source` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows or per-state counts | 0 / 3 |
 | `index catalog search` | `QUERY` · `--status` · `--limit` · `--json` | matching rows | 0 / 3 |
-| `index catalog resolve` | `QUERY` · `--json` | one source path; ambiguity is an error | 0 / 3 |
-| `index catalog read` | `PATH` | the converted markdown on stdout; writes nothing | 0 / 3 |
+| `index catalog resolve` | `QUERY` — a file name, or a path this family printed · `--json` | one source path, resolved; ambiguity is an error | 0 / 3 / 5 |
+| `index catalog read` | `PATH` — absolute, or relative to the vault root; never to the CWD | the converted markdown on stdout; writes nothing | 0 / 2 / 3 |
 | `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, tier, status | 0 / 3 |
 | `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / rejected / replayed / contended / inflight | 0 / 1 / 3 / 4 |
 | `outbox reconcile` | `--outbox NAME` · `--json` | per-intent verdict | 0 / 1 / 3 / 4 |

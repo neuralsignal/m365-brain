@@ -9,6 +9,14 @@ slightly different one.
 to stdout, logs go to stderr through structlog. Every read verb takes `--json`.
 A caller therefore never parses human text and never has to separate log noise
 from data.
+
+**Every path printed is fully resolved.** A storage key is relative by
+contract, and `emit` is the one place all of them cross the process boundary,
+so the base is joined on here rather than at each call site -- a verb added
+tomorrow cannot forget. `catalog resolve` printed a key that `catalog read`
+then resolved against the *process CWD*, so the same string named different
+files from different directories and "does not exist" was the diagnosis for
+both. Nothing the CLI prints should need a base the caller has to know.
 """
 
 from __future__ import annotations
@@ -19,13 +27,13 @@ from typing import Any
 
 import click
 
-from m365_brain.config import Config, ConfigError, load_config, require_section
+from m365_brain.config import Config, ConfigError, StorageConfig, load_config, require_section
 from m365_brain.cycle import Runtime, open_runtime
 from m365_brain.logging_config import configure_logging
 from m365_brain.m365.auth.profiles import AuthProfiles
 from m365_brain.m365.auth.token_provider import make_cli_token_provider
 from m365_brain.state import JsonStateStore, StateStore
-from m365_brain.storage import create_storage
+from m365_brain.storage import create_storage, resolve_key
 from m365_brain.vault.paths import state_directory
 from m365_brain.workspace import Workspace
 
@@ -58,6 +66,20 @@ class NotFound(Exception):
 
 
 CONFIG_KEY = "config_path"
+LOADED_CONFIG = "config"
+"""Where `require_config` parks what it loaded, so `emit` can reach the same
+object without every verb threading it through a third argument."""
+
+STORAGE_PATH_KEYS = frozenset({"path", "original_path", "output_path"})
+"""Payload keys whose value is a storage-relative key.
+
+Deliberately not "every key ending in `_path`". `file_path` is relative to an
+*index root*, which is a different base and one the payload does not name;
+joining the storage base onto it would produce a confident wrong answer where
+today there is an obvious missing one. `base_path`, `db_path` and
+`token_cache_path` are already absolute -- the config loader resolves them --
+so they need no entry and would be no-ops if they had one.
+"""
 
 
 def config_path(ctx: click.Context) -> str:
@@ -80,10 +102,31 @@ def require_config(ctx: click.Context) -> Config:
     `configure_logging`, so every other verb ran at structlog's default level
     and renderer. Doing it at the one funnel means a verb added tomorrow is
     covered without remembering to.
+
+    The result is parked on the context because `emit` needs the same object to
+    resolve the paths it prints. Re-reading the file there could resolve a path
+    against a config the verb never validated.
     """
+    if ctx.obj is not None and LOADED_CONFIG in ctx.obj:
+        return ctx.obj[LOADED_CONFIG]
     config = load_config(config_path(ctx))
     configure_logging(config.service.log_level, config.service.json_logs)
+    if ctx.obj is not None:
+        ctx.obj[LOADED_CONFIG] = config
     return config
+
+
+def loaded_config() -> Config | None:
+    """The config this invocation loaded, if it loaded one.
+
+    `None` only for a verb that never called `require_config` -- today that is
+    `init` alone, which creates the config file and prints nothing but the
+    absolute paths it just made.
+    """
+    ctx = click.get_current_context(silent=True)
+    if ctx is None or not ctx.obj:
+        return None
+    return ctx.obj.get(LOADED_CONFIG)
 
 
 def token_provider(config: Config) -> Callable[[], str]:
@@ -130,8 +173,32 @@ def open_workspace(config: Config) -> Workspace:
     return workspace
 
 
+def resolve_payload_paths(payload: Any, storage: StorageConfig) -> Any:
+    """Every `STORAGE_PATH_KEYS` value in `payload`, resolved. Recurses."""
+    if isinstance(payload, dict):
+        return {
+            key: resolve_key(storage, value)
+            if key in STORAGE_PATH_KEYS and isinstance(value, str)
+            else resolve_payload_paths(value, storage)
+            for key, value in payload.items()
+        }
+    if isinstance(payload, list):
+        return [resolve_payload_paths(item, storage) for item in payload]
+    return payload
+
+
 def emit(as_json: bool, payload: Any, lines: Sequence[str]) -> None:
-    """One result, either as JSON or as the given human lines. Always stdout."""
+    """One result, either as JSON or as the given human lines. Always stdout.
+
+    Storage keys in `payload` are resolved on the way out. Human `lines` are
+    already-formatted strings and cannot be walked, so a verb that prints a
+    path in human mode resolves it itself and builds the line from the same
+    value it puts in the payload -- `resolve_key` is idempotent, so the two
+    agree by construction rather than by discipline.
+    """
+    config = loaded_config()
+    if config is not None:
+        payload = resolve_payload_paths(payload, config.storage)
     if as_json:
         click.echo(json.dumps(payload, indent=2, default=str, sort_keys=True))
         return

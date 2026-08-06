@@ -21,6 +21,7 @@ Each of those has a test below named after the symptom.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 import yaml
@@ -151,16 +152,25 @@ class TestSearch:
 
 
 class TestResolve:
-    def test_a_unique_match_resolves_to_its_path(self, runner, populated):
+    def test_a_unique_match_resolves_to_the_file_on_disk(self, runner, populated, tmp_path):
+        """Asserted against the real file, not against the stored key.
+
+        The stored key is what `resolve` used to print, and it named a file
+        only from inside the vault root -- so asserting on it could not tell a
+        usable answer from an unusable one.
+        """
         result = _run(runner, populated, "index", "catalog", "resolve", "notes", "--json")
         assert result.exit_code == EXIT_OK, result.output
-        assert json.loads(result.stdout)["original_path"] == f"{ATTACHMENTS}/notes.txt"
+        printed = Path(json.loads(result.stdout)["original_path"])
+        assert printed == tmp_path / "vault" / ATTACHMENTS / "notes.txt"
+        assert printed.is_file()
 
-    def test_an_exact_filename_wins_over_the_longer_names_containing_it(self, runner, populated):
+    def test_an_exact_filename_wins_over_the_longer_names_containing_it(self, runner, populated, tmp_path):
         """`annual_report.pdf` is not ambiguous just because it is a substring."""
         result = _run(runner, populated, "index", "catalog", "resolve", "annual_report.pdf", "--json")
         assert result.exit_code == EXIT_OK, result.output
-        assert json.loads(result.stdout)["original_path"] == f"{ATTACHMENTS}/annual_report.pdf"
+        printed = Path(json.loads(result.stdout)["original_path"])
+        assert printed == tmp_path / "vault" / ATTACHMENTS / "annual_report.pdf"
 
     def test_a_genuinely_ambiguous_query_is_an_error_naming_the_paths(self, runner, populated):
         result = _run(runner, populated, "index", "catalog", "resolve", "report")
@@ -261,3 +271,142 @@ class TestExtract:
         result = _run(runner, config_file, "index", "catalog", "extract")
         assert result.exit_code == EXIT_CONFIG
         assert "read_bytes" in result.output
+
+
+@pytest.fixture(params=["vault", "elsewhere"])
+def anywhere(request, tmp_path, monkeypatch) -> str:
+    """Run the command from the vault root, and from a directory outside it.
+
+    Both, because `catalog read` resolved its PATH against the process CWD. A
+    test standing in the vault root passed against the broken code -- the
+    relative key happened to name the right file from there -- so a single
+    working directory could not tell the two behaviours apart. `pwd` deciding
+    which file an argument names is the whole defect.
+    """
+    cwd = tmp_path / request.param
+    cwd.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(cwd)
+    return request.param
+
+
+@pytest.fixture()
+def echoing_converter(monkeypatch):
+    """`read`'s converter, stubbed to name the file it was handed.
+
+    The conversion is not what is under test; which file the argument named
+    is, and a converter that echoes the name answers that directly.
+    """
+    monkeypatch.setattr(
+        "m365_brain.m365.converters.document.convert_document",
+        lambda file_path, converters_config: f"# {file_path.name}",
+    )
+
+
+class TestPrintedPathsCompose:
+    """What one verb prints, the next verb takes -- from any working directory.
+
+    `resolve` printed a storage-relative key, `read` resolved PATH against the
+    CWD, and `resolve` matched `file_name` only. So the one string `resolve`
+    exists to produce was rejected by `read` from anywhere but the vault root,
+    and was not even accepted by `resolve` itself. "does not exist" was the
+    diagnosis in every case, which sends the reader hunting for a lost file
+    rather than at the missing base.
+
+    Driven end to end over the real producers rather than a hand-written path:
+    a fixture path could be written in whichever vocabulary happened to pass.
+    """
+
+    def _addresses(self, runner, populated) -> list[str]:
+        """Every path `catalog search` prints, human form, exactly as a shell reads it."""
+        result = _run(runner, populated, "index", "catalog", "search", ".")
+        assert result.exit_code == EXIT_OK, result.output
+        printed = [line.split("\t")[-1] for line in result.stdout.splitlines()]
+        assert len(printed) == len(CORPUS), printed
+        return printed
+
+    def test_search_resolve_read_compose(self, runner, populated, anywhere, echoing_converter):
+        for address in self._addresses(runner, populated):
+            resolved = _run(runner, populated, "index", "catalog", "resolve", address)
+            assert resolved.exit_code == EXIT_OK, resolved.output
+
+            read = _run(runner, populated, "index", "catalog", "read", resolved.stdout.strip())
+            assert read.exit_code == EXIT_OK, read.output
+            assert read.stdout.strip() == f"# {Path(address).name}"
+
+    def test_every_printed_path_names_a_file_that_exists(self, runner, populated, anywhere):
+        """The property that makes the pipeline work: no base is left to supply."""
+        for address in self._addresses(runner, populated):
+            assert Path(address).is_absolute(), address
+            assert Path(address).is_file(), address
+
+    def test_resolve_takes_a_vault_relative_key(self, runner, populated, anywhere, tmp_path):
+        """The form the catalog stores, and the one `index paths` still speaks."""
+        result = _run(runner, populated, "index", "catalog", "resolve", f"{ATTACHMENTS}/notes.txt", "--json")
+        assert result.exit_code == EXIT_OK, result.output
+        assert json.loads(result.stdout)["original_path"] == str(tmp_path / "vault" / ATTACHMENTS / "notes.txt")
+
+    def test_read_takes_a_vault_relative_key(self, runner, populated, anywhere, echoing_converter):
+        result = _run(runner, populated, "index", "catalog", "read", f"{ATTACHMENTS}/notes.txt")
+        assert result.exit_code == EXIT_OK, result.output
+        assert result.stdout.strip() == "# notes.txt"
+
+    def test_read_still_takes_an_absolute_path(self, runner, populated, anywhere, echoing_converter, tmp_path):
+        """Every invocation written before this change passed one of these."""
+        result = _run(
+            runner, populated, "index", "catalog", "read", str(tmp_path / "vault" / ATTACHMENTS / "notes.txt")
+        )
+        assert result.exit_code == EXIT_OK, result.output
+        assert result.stdout.strip() == "# notes.txt"
+
+    def test_a_file_that_is_not_there_names_the_form_it_wanted(self, runner, populated, anywhere):
+        """Not "does not exist" -- that reads as a lost file, not as a wrong base."""
+        result = _run(runner, populated, "index", "catalog", "read", "no/such/file.docx")
+        assert result.exit_code == EXIT_USAGE
+        assert "relative to the vault root" in result.output
+        assert "never resolved against the current directory" in result.output
+
+    def test_a_file_beside_the_caller_is_not_picked_up(self, runner, populated, anywhere, tmp_path):
+        """The silent half of the bug: a same-named tree under the CWD won.
+
+        `read` would have converted the decoy and exited 0, reporting a file
+        the catalog never mentioned.
+        """
+        decoy = Path.cwd() / ATTACHMENTS / "notes.txt"
+        decoy.parent.mkdir(parents=True, exist_ok=True)
+        decoy.write_bytes(b"decoy")
+        if decoy == tmp_path / "vault" / ATTACHMENTS / "notes.txt":
+            pytest.skip("standing in the vault root, where the decoy is the real file")
+
+        result = _run(runner, populated, "index", "catalog", "resolve", f"{ATTACHMENTS}/notes.txt")
+        assert result.exit_code == EXIT_OK, result.output
+        assert Path(result.stdout.strip()).read_bytes() != b"decoy"
+
+    def test_the_ambiguity_error_lists_paths_a_caller_can_act_on(self, runner, populated, anywhere, tmp_path):
+        result = _run(runner, populated, "index", "catalog", "resolve", "report")
+        assert result.exit_code == EXIT_CONFIG
+        assert str(tmp_path / "vault" / ATTACHMENTS / "annual_report.pdf") in result.output
+
+    def test_the_catalog_still_stores_relative_keys(self, runner, populated, runtime_config):
+        """Resolution happens at the boundary, not in the database.
+
+        21k vault files carry the relative form. If this row had been rewritten
+        the change would have needed a migration, and it does not.
+        """
+        from m365_brain.index.backends import create_index_backend
+
+        backend = create_index_backend(runtime_config.index)
+        backend.initialize()
+        try:
+            stored = [entry.original_path for entry in backend.search_catalog(_all_rows())]
+        finally:
+            backend.close()
+        assert stored
+        assert not any(Path(path).is_absolute() for path in stored), stored
+
+
+def _all_rows():
+    from m365_brain.model import CatalogQuery
+
+    return CatalogQuery(
+        extension=None, source=None, status=None, modified_after=None, name_contains=None, limit=len(CORPUS)
+    )

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 import structlog
@@ -493,6 +494,46 @@ class TestOutputContract:
         result = _run(runner, config_file, "vault", "path", "meta", "--json")
         assert json.loads(result.stdout)["path"]
         assert result.stderr == ""
+
+
+class TestEveryPrintedPathIsResolved:
+    """A path on stdout carries its own base. `emit` is where that happens.
+
+    Doing it at the funnel rather than at each call site is the point: the
+    manifest below is dumped straight out of its pydantic model and no line in
+    `cli.py` touches its paths, so if what a caller reads is usable it is
+    because `emit` made it so -- and a verb added tomorrow gets the same
+    treatment without anyone remembering to ask for it.
+    """
+
+    def _cycle(self, runner, config_file, httpx_mock: HTTPXMock) -> dict:
+        _wire_graph(httpx_mock)
+        result = _run(runner, config_file, "run", "--once", "--json")
+        assert result.exit_code == EXIT_OK, result.output
+        return json.loads(result.stdout)
+
+    def test_the_manifest_a_cycle_prints_names_files_that_exist(self, runner, config_file, httpx_mock: HTTPXMock):
+        written = [
+            change["path"]
+            for entry in self._cycle(runner, config_file, httpx_mock)["extractors"]
+            for change in entry["changes"]
+            if change["kind"] != "removed"
+        ]
+        assert written
+        assert all(Path(path).is_file() for path in written), written
+
+    def test_the_manifest_on_disk_keeps_the_storage_keys(self, runner, config_file, tmp_path, httpx_mock: HTTPXMock):
+        """Resolution is a boundary concern, not a stored one.
+
+        A vault holds tens of thousands of files addressed by relative key.
+        Rewriting what is *written* would be a migration; this change is not
+        one, and this is the assertion that says so.
+        """
+        self._cycle(runner, config_file, httpx_mock)
+        latest = json.loads((tmp_path / "vault" / "_meta" / "manifests" / "latest.json").read_text(encoding="utf-8"))
+        stored = [change["path"] for entry in latest["extractors"] for change in entry["changes"]]
+        assert stored
+        assert not any(Path(path).is_absolute() for path in stored), stored
 
 
 def _wire_graph(httpx_mock: HTTPXMock) -> None:

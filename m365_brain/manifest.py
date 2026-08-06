@@ -56,7 +56,11 @@ class FileChange(BaseModel):
 
     model_config = MANIFEST_MODEL_CONFIG
     path: str
-    """Vault-relative, POSIX separators -- the same key the storage backend took."""
+    """Vault-relative, POSIX separators -- the same key the storage backend took.
+
+    That is the stored form, here and in the manifest file on disk. The CLI
+    resolves it against the storage base on its way to stdout (`commands/_context.emit`);
+    nothing rewrites the model or the file."""
     kind: ChangeKind
     record_ids: list[str]
     """Ids merged into this file in this pass. Empty unless the file holds many

@@ -21,7 +21,7 @@ import yaml
 
 from m365_brain.commands._context import emit, require_config
 from m365_brain.config import ConfigError, require_section
-from m365_brain.storage import create_storage
+from m365_brain.storage import create_storage, resolve_key
 from m365_brain.vault.paths import VaultPaths
 
 CHANNEL_OUTBOX = "teams.post_message"
@@ -87,4 +87,5 @@ def post(ctx: click.Context, channel_url: str, body_file: Path, created_by: str,
     path = VaultPaths(vault).outbox_intent(CHANNEL_OUTBOX, intent_uuid)
     create_storage(config.storage).write_file(path, document)
 
-    emit(as_json, {"path": path, "uuid": intent_uuid, "team_id": team_id, "channel_id": channel_id}, [path])
+    address = resolve_key(config.storage, path)
+    emit(as_json, {"path": address, "uuid": intent_uuid, "team_id": team_id, "channel_id": channel_id}, [address])
