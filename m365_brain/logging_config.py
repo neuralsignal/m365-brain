@@ -26,6 +26,25 @@ def _stderr_logger(*args: object) -> structlog.PrintLogger:
     return structlog.PrintLogger(file=sys.stderr)
 
 
+def route_logs_to_stderr() -> None:
+    """Point structlog at stderr before anything can log.
+
+    The invariant at the top of this module was true of `configure_logging`
+    and false of the process, because only two verbs called it. Every other
+    command ran on structlog's default factory, which writes to **stdout** --
+    so `outbox list --json` emitted 54 warning lines ahead of its JSON and
+    `json.load` raised. The output was documented as machine-readable and was
+    not parseable at all.
+
+    This sets the destination only. Level and renderer still come from config
+    via `configure_logging`, which cannot happen this early: `--config` is
+    optional at the group level so that `init` can create the file it names.
+    The gap between process start and that call is exactly where the stray
+    lines came from, so the floor is set here and refined later.
+    """
+    structlog.configure(logger_factory=_stderr_logger)
+
+
 def configure_logging(log_level: str, json_output: bool) -> None:
     """Configure structlog processors and renderer for the entire application.
 

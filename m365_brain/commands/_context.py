@@ -21,6 +21,7 @@ import click
 
 from m365_brain.config import Config, ConfigError, load_config, require_section
 from m365_brain.cycle import Runtime, open_runtime
+from m365_brain.logging_config import configure_logging
 from m365_brain.m365.auth.profiles import AuthProfiles
 from m365_brain.m365.auth.token_provider import make_cli_token_provider
 from m365_brain.state import JsonStateStore, StateStore
@@ -56,8 +57,17 @@ def config_path(ctx: click.Context) -> str:
 
 
 def require_config(ctx: click.Context) -> Config:
-    """Load and validate the config named on the command line."""
-    return load_config(config_path(ctx))
+    """Load and validate the config named on the command line.
+
+    Every config-taking verb funnels through here, which is why the logging
+    setup lives here too: `run` and `extract` used to be the only callers of
+    `configure_logging`, so every other verb ran at structlog's default level
+    and renderer. Doing it at the one funnel means a verb added tomorrow is
+    covered without remembering to.
+    """
+    config = load_config(config_path(ctx))
+    configure_logging(config.service.log_level, config.service.json_logs)
+    return config
 
 
 def token_provider(config: Config) -> Callable[[], str]:

@@ -11,6 +11,7 @@ import json
 import re
 
 import pytest
+import structlog
 import yaml
 from click.testing import CliRunner
 from pytest_httpx import HTTPXMock
@@ -19,6 +20,7 @@ from m365_brain.cli import main
 from m365_brain.commands._context import EXIT_AUTH, EXIT_CONFIG, EXIT_FAILURE, EXIT_OK, EXIT_USAGE
 from m365_brain.commands.teams import parse_channel_url
 from m365_brain.config import ConfigError
+from m365_brain.logging_config import _stderr_logger
 from tests.conftest import load_fixture
 
 SECRET = "s3cr3t-value-do-not-print"
@@ -493,3 +495,36 @@ def _wire_graph(httpx_mock: HTTPXMock) -> None:
         is_optional=True,
     )
     httpx_mock.add_response(url=re.compile(r".*/me/chats\?.*"), json={"value": []}, is_reusable=True, is_optional=True)
+
+
+class TestLogsNeverReachStdout:
+    """stdout is data, stderr is logs -- the two must not mix.
+
+    `logging_config`'s docstring has always stated this, and `configure_logging`
+    has always honoured it. The process did not: only `run` and `extract` called
+    it, so every other verb ran on structlog's default factory, which writes to
+    **stdout**. `outbox list --json` emitted 54 warning lines ahead of its JSON
+    and `json.load` raised on output documented as machine-readable.
+
+    Parametrised over the registered verbs rather than a hand-listed few, so a
+    verb added tomorrow is covered without anyone remembering to add it.
+    """
+
+    @pytest.mark.parametrize("verb", ALL_VERBS, ids=lambda v: " ".join(v))
+    def test_any_verb_leaves_structlog_pointed_at_stderr(self, runner, config_file, verb):
+        """The group callback sets the floor before a command can emit anything.
+
+        Starts from structlog's stdout-writing default so the assertion fails
+        against the pre-fix code rather than passing on a leftover config from
+        an earlier test in the same process.
+        """
+        structlog.configure(logger_factory=structlog.PrintLoggerFactory())
+        runner.invoke(main, ["--config", str(config_file), *verb, "--help"])
+        assert structlog.get_config()["logger_factory"] is _stderr_logger
+
+    def test_a_json_verb_emits_only_json_on_stdout(self, runner, config_file):
+        """The end-to-end shape of the bug: a log line ahead of JSON on one stream."""
+        structlog.configure(logger_factory=structlog.PrintLoggerFactory())
+        result = runner.invoke(main, ["--config", str(config_file), "index", "paths", "--json"])
+        assert result.exit_code == EXIT_OK, result.output
+        json.loads(result.stdout)  # raises if anything got in front of the payload

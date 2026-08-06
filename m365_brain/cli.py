@@ -55,7 +55,7 @@ from m365_brain.commands._context import (
 from m365_brain.config import ConfigError, require_section
 from m365_brain.cycle import Selection, run_forever, run_once, select_units
 from m365_brain.hooks import HookResolutionError
-from m365_brain.logging_config import configure_logging
+from m365_brain.logging_config import route_logs_to_stderr
 from m365_brain.m365.auth.profiles import AuthProfileError
 from m365_brain.m365.auth.token_provider import TokenRefreshError
 from m365_brain.schedule import read_cursor
@@ -87,6 +87,7 @@ class ExitCodeGroup(click.Group):
 @click.pass_context
 def main(ctx: click.Context, config_path: str | None) -> None:
     """Sync Microsoft 365 into a markdown vault, index it, and write back."""
+    route_logs_to_stderr()
     ctx.ensure_object(dict)
     ctx.obj[CONFIG_KEY] = config_path
     if config_path:
@@ -169,7 +170,6 @@ def init(path: Path, vault_dir: Path) -> None:
 def run(ctx: click.Context, once: bool, only: str | None, resync: bool, delay_start: int, as_json: bool) -> None:
     """Run cycles: extract, index, then dispatch the post-cycle hooks."""
     config = require_config(ctx)
-    configure_logging(config.service.log_level, config.service.json_logs)
     selection = Selection(names=comma_list(only), resync=resync, ignore_schedule=once)
     select_units(config, selection.names)  # exit 3 before anything is built
     runtime = build_runtime(config)
@@ -206,7 +206,6 @@ def extract(ctx: click.Context, only: str | None, resync: bool, dry: bool, as_js
     from m365_brain.dry_run import dry_run
 
     config = require_config(ctx)
-    configure_logging(config.service.log_level, config.service.json_logs)
     names = comma_list(only)
 
     if dry:
