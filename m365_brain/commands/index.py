@@ -152,7 +152,14 @@ def _emit_page(results: SearchPage, as_json: bool) -> None:
 @click.argument("entity", required=False)
 @click.option("--permalink", type=str, default=None, help="Look the entity up by permalink")
 @click.option("--depth", type=int, default=1, help="How many hops to traverse")
-@click.option("--format", "shape", type=click.Choice(["text", "json"]), default="text")
+@click.option(
+    "--format",
+    "shape",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output shape. Elsewhere in the CLI this is the `--json` flag.",
+)
 @click.pass_context
 def context(ctx: click.Context, entity: str | None, permalink: str | None, depth: int, shape: str) -> None:
     """One entity, its observations, and everything within `--depth` hops."""
@@ -218,7 +225,14 @@ def recent(ctx: click.Context, timeframe: str, entity_type: str | None, limit: i
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
 def paths(ctx: click.Context, as_json: bool) -> None:
-    """Where the index reads from, and where the vault writes to."""
+    """Where the index reads from, and where the vault writes to.
+
+    Both halves, in both output shapes. The human lines used to carry the roots
+    alone while `database`, `vault_root` and the per-extractor inbox map were
+    `--json`-only -- the help promised two things and printed one, which is the
+    reverse of every other verb here, where the human lines are a projection of
+    the same payload.
+    """
     config = require_config(ctx)
     index = require_section(config.index, "index")
     vault = require_section(config.vault, "vault")
@@ -229,4 +243,7 @@ def paths(ctx: click.Context, as_json: bool) -> None:
         "vault_root": vault.root,
         "inbox": {name: resolver.inbox_root(name) for name in sorted(vault.extractor_dirs)},
     }
-    emit(as_json, payload, [f"{name}\t{path}" for name, path in sorted(payload["roots"].items())])
+    lines = [f"root.{name}\t{path}" for name, path in sorted(payload["roots"].items())]
+    lines += [f"database\t{payload['database']}", f"vault_root\t{payload['vault_root']}"]
+    lines += [f"inbox.{name}\t{path}" for name, path in sorted(payload["inbox"].items())]
+    emit(as_json, payload, lines)

@@ -171,6 +171,14 @@ Bicep were present before staging began.
   0022), validated against the agentskills.io specification's own tool.
 
 Deferred, deliberately, and named here rather than left as a gap: no deployed service, no
-multi-writer locking, no hook timeouts or subprocess isolation, no `index validate|delete|move`
-(the index has no such operation to expose), and no catalog `extract` verb (nothing populates the
-catalog yet). Static type checking is filed in the backlog and runs after the port settles.
+multi-writer locking, no hook timeouts or subprocess isolation, and no `index validate|delete|move`
+(the index has no such operation to expose). Static type checking is filed in the backlog and runs
+after the port settles.
+
+`index catalog extract` was in that list — held back because nothing wrote a *pending* catalog row,
+and a verb whose whole job is to advance a state machine no producer feeds is a facade over an
+empty table. Registration at the storage boundary (`index/catalog_storage.py`) is that producer, so
+the verb is real and the sentence was not.
+
+`m365-brain worker` is **not** a verb, though `docker-compose.yaml` and this repo's `CLAUDE.md`
+have both said it is. `worker.py` is a library module the admin app runs as a thread.

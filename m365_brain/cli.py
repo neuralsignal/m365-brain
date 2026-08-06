@@ -10,26 +10,12 @@ every other verb calls `require_config`, which fails with exit 3. Making it
 optional at the group and enforcing it per-verb is the only arrangement in
 which both are true.
 
-**Exit codes** (`CONTRACTS.md` has the table):
-
-| 0 | success                                                                  |
-| 1 | an extractor, the index step, a hook, a push or a reconcile failed       |
-| 2 | usage -- Click's own                                                     |
-| 3 | configuration invalid or unresolvable                                    |
-| 4 | authentication required or expired beyond refresh                        |
-| 5 | the corpus holds nothing matching the query                              |
-
-3 and 4 exist so a supervisor can tell "you typed it wrong" and "go re-login"
-apart from "Graph is down" without scraping a message. They are mapped in one
-place -- the group's `invoke` -- rather than in fifteen `try` blocks.
-
-5 exists because 3 was answering two questions. `index context nope` and
-`catalog resolve nope` raised `ConfigError`, so a query that matched nothing
-reported "your configuration is invalid" and sent the reader to edit a file
-that was fine -- while `catalog search nope` exited 0 for the same situation.
-Only the verbs promising exactly one answer raise it; the list-shaped verbs
-still exit 0 with an empty result, because "no rows" is an ordinary answer to
-a search.
+**Exit codes** are defined once, as the `EXIT_*` constants in
+`commands/_context.py`, each carrying the reasoning for its own existence.
+`ExitCodeGroup` below maps the exception families onto them in one place rather
+than in fifteen `try` blocks. `CONTRACTS.md` § Exit codes is the same table for
+a reader who is not in the source; a third copy here was one more thing to keep
+in step, and this file is where it would have been noticed last.
 """
 
 from __future__ import annotations
@@ -181,14 +167,20 @@ def init(path: Path, vault_dir: Path) -> None:
 
 
 @main.command("run")
-@click.option("--once", "once", is_flag=True, help="One cycle, then exit")
+@click.option("--once", "once", is_flag=True, help="One cycle, then exit -- every selected unit, due or not")
 @click.option("--only", type=str, default=None, help="Comma-separated unit names")
 @click.option("--resync", is_flag=True, help="Forget the selected extractors' delta tokens first")
-@click.option("--delay-start", type=int, default=0, help="Minutes to wait before the first cycle")
+@click.option("--delay-start", type=int, default=0, help="Minutes to wait before the first cycle", show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Emit the manifest as JSON")
 @click.pass_context
 def run(ctx: click.Context, once: bool, only: str | None, resync: bool, delay_start: int, as_json: bool) -> None:
-    """Run cycles: extract, index, then dispatch the post-cycle hooks."""
+    """Run cycles: extract, index, then dispatch the post-cycle hooks.
+
+    `--once` changes two things, not one: a single cycle, and that cycle
+    ignoring `poll_interval_minutes`. Its help said "One cycle, then exit", so
+    the operator moving from a supervisor to cron -- the migration the flag
+    reads as supporting -- silently got every unit on every invocation.
+    """
     config = require_config(ctx)
     selection = Selection(names=comma_list(only), resync=resync, ignore_schedule=once)
     select_units(config, selection.names)  # exit 3 before anything is built
@@ -216,11 +208,15 @@ def _cycle_lines(manifest) -> list[str]:
 @main.command("extract")
 @click.option("--only", type=str, default=None, help="Comma-separated extractor names")
 @click.option("--resync", is_flag=True, help="Forget the selected extractors' delta tokens first")
-@click.option("--dry-run", "dry", is_flag=True, help="Probe each extractor's endpoint, write nothing")
-@click.option("--json", "as_json", is_flag=True, help="Emit the manifest as JSON")
+@click.option("--dry-run", "dry", is_flag=True, help="Probe each endpoint, write nothing. Reports on stderr")
+@click.option("--json", "as_json", is_flag=True, help="Emit the manifest as JSON. Not honoured under --dry-run")
 @click.pass_context
 def extract(ctx: click.Context, only: str | None, resync: bool, dry: bool, as_json: bool) -> None:
-    """Run the extractors once, without the index step or the hooks."""
+    """Run the extractors once, without the index step or the hooks.
+
+    A dry run has no manifest to emit, so `--json` beside it leaves stdout
+    empty. The two flags were advertised side by side with nothing saying so.
+    """
     from m365_brain.commands._context import token_provider
     from m365_brain.config import EXTRACTOR_NAMES
     from m365_brain.dry_run import dry_run

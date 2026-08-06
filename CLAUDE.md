@@ -7,28 +7,32 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 | Path | Purpose |
 |------|---------|
 | `m365_brain/` | Source package |
-| `m365_brain/auth/` | MSAL device code + auth code flow, token provider |
-| `m365_brain/models.py` | SQLModel tables shared between admin UI and worker |
-| `m365_brain/cli.py` | Click CLI (`auth login`, `sync --once`, `worker`) |
+| `m365_brain/cli.py` | Click CLI. Top-level: `init`, `run`, `extract`, `status`. Groups: `auth`, `config`, `index`, `outbox`, `files`, `teams`, `vault`, `ops`. **There is no `sync` verb and no `worker` verb.** |
+| `m365_brain/commands/` | One module per command group; `_context.py` holds the shared wiring, exit codes and `emit` |
+| `m365_brain/config/` | Strict Pydantic config: loading, comma-separated merge, env expansion |
+| `m365_brain/model.py` | Entity / Observation / Relation, search page, catalog row and query |
+| `m365_brain/parsers/` | Markdown and frontmatter into the model |
+| `m365_brain/index/` | The knowledge half: backends (SQLite/FTS5 + in-memory), search, vectors, file catalog |
+| `m365_brain/m365/` | The Microsoft half: Graph client, auth profiles, 8 extractors, frontmatter builders, converters, outbox handlers |
+| `m365_brain/vault/` | Every path in the vault, plus the intent envelope and payload schemas |
+| `m365_brain/outbox/` | Vendor-agnostic write-back: authorities, registry, runner, reconcile |
+| `m365_brain/cycle.py` | One cycle — extract, index, hooks — and the loop around it |
+| `m365_brain/workspace.py` | Library facade: a config in, a working handle out |
 | `m365_brain/sync.py` | Public sync API (extractor runner, used by CLI + worker) |
-| `m365_brain/worker.py` | Sync worker — per-(user, extractor) jobs via ThreadPoolExecutor |
-| `m365_brain/config/` | Frozen dataclass config loader with env var expansion |
-| `m365_brain/converters/` | Document conversion (obsidian-import wrapper, html_to_md) |
-| `m365_brain/extractors/` | 8 extractors: email, calendar, teams_chats, teams_channels, onedrive, sharepoint, contacts, directory |
-| `m365_brain/graph_client.py` | Microsoft Graph API client (httpx, pagination, retry, rate limiting) |
-| `m365_brain/markdown_writer.py` | Markdown frontmatter builders + slugify |
-| `m365_brain/logging_config.py` | Central structlog configuration (`configure_logging()`) |
-| `m365_brain/state.py` | Sync state persistence (delta tokens, atomic writes) |
+| `m365_brain/worker.py` | Multi-user per-(user, extractor) job loop. A **library module**, not a CLI verb — the admin app runs it as a thread |
+| `m365_brain/models.py` | SQLModel tables shared between admin UI and worker |
+| `m365_brain/logging_config.py` | Central structlog configuration (`configure_logging()`, `route_logs_to_stderr()`) |
+| `m365_brain/state.py` | StateStore protocol; delta tokens, cursors, cycle history, atomic writes |
 | `m365_brain/storage/` | StorageBackend protocol, local filesystem, Azure Blob Storage |
+| `skills/` | Three bundled agent skills, thin wrappers over the console script |
 | `m365_admin/` | Reflex admin dashboard (OAuth, preferences, admin, sync status) |
 | `m365_admin/auth_state.py` | Entra OAuth2 flow via Reflex state |
 | `m365_admin/services/` | TokenService (Fernet), AdminService (config CRUD) |
 | `m365_admin/pages/` | Login, callback, dashboard, settings, admin pages |
 | `m365_admin/components/` | Sidebar, layout wrapper |
-| `tests/` | 386 tests (pytest + hypothesis) |
+| `tests/` | pytest + hypothesis, mirroring the source layout |
 | `infra/` | Bicep IaC (main.bicep, params.dev.bicepparam, params.prod.bicepparam) |
 | `scripts/` | Dev setup, deploy, teardown scripts |
-| `vault/` | Local sync output directory (emails, calendar, onedrive, sharepoint, teams-chats) |
 | `pixi.toml` | pixi package manager config |
 | `pyproject.toml` | Python package metadata |
 
@@ -37,7 +41,7 @@ Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API.
 structlog is the only logging mechanism. No `click.echo`, `print`, or stdlib `logging` for operational output.
 
 - **Central config**: `m365_brain/logging_config.py` — call `configure_logging(log_level, json_output)` once at startup
-- **Entry points**: `cli.py:sync()` and `web/app.py:create_app()` call `configure_logging()` before any log output
+- **Entry points**: the root group calls `route_logs_to_stderr()` before dispatch, and `require_config()` calls `configure_logging()` at the one funnel every config-taking verb passes through. It used to be called by `run` and `extract` alone, so every other verb ran on structlog's stdout-writing default and `outbox list --json` emitted 54 log lines ahead of its JSON
 - **Event naming**: `module.action` (e.g., `email.sync_complete`, `graph.retryable_error`, `cli.dry_run_auth_ok`)
 - **Renderer**: JSON when `service.json_logs: true` (daemon/production), ConsoleRenderer when false (dev/interactive)
 - **Log levels**: debug (pagination, internal state), info (sync lifecycle), warning (skipped items, truncation), error (failures that continue), critical (daemon exit)

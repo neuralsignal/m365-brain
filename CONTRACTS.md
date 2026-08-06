@@ -13,11 +13,14 @@ tags:
 > the surface; in Python, Pydantic models are the executable expression of these contracts.
 > Freely overhaul-able while `production_gate: false` in `INTENT.md`.
 
-**Present vs pending.** This package is mid-consolidation. Every surface below is marked
-**Present** (implemented and tested today) or **Pending → \<stage\>** (specified, not yet
-implemented, with the stage that delivers it). A contract stated as fact when it is aspiration is
-worse than an admitted gap, so the distinction is carried on every clause rather than in a
-preamble. Stages are the ones listed in `INTENT.md` § Status and tracked in `.trellis/`.
+**Present vs pending.** Every surface below is marked **Present** (implemented and tested
+today) or **Pending → \<stage\>** (specified, not yet implemented, with the stage that delivers
+it). A contract stated as fact when it is aspiration is worse than an admitted gap — and the
+converse rots the same way: the index, the hooks, the change manifest, the `StateStore` and the
+`workspace.py` facade all stayed marked **Pending** here for a stage after they shipped, so this
+document was understating a package it was supposed to describe. A reader deciding whether to
+depend on the index was told it did not exist yet while it was answering queries in production.
+Stages are the ones listed in `INTENT.md` § Status and tracked in `.trellis/`.
 
 ## Inbound contracts
 
@@ -38,12 +41,11 @@ Sections present today:
 | Section | Carries |
 |---|---|
 | `auth` | `client_id`, `tenant_id`, `scopes`, `token_cache_path`, optional `client_secret` |
-| `service` | `mode`, `log_level`, `json_logs`, `continuous_poll_seconds`, `max_consecutive_auth_failures` |
+| `service` | `log_level`, `json_logs`, `continuous_poll_seconds`, `max_consecutive_auth_failures` |
 | `storage` | `backend` (`local` \| `azure_blob`) plus the matching sub-block |
 | `graph` | `max_retries`, `backoff_base_ms`, `timeout_seconds`, `max_pages`, `max_retry_after_seconds`, `error_message_max_length` |
-| `state` | `state_file_path` |
 | `extractors` | one required block per extractor: `enabled`, `poll_interval_minutes`, and per-extractor options |
-| `converters` | conversion backends per file type, extraction limits, media options, slug/hash lengths |
+| `converters` | conversion backends per file type, extraction limits, media options |
 | `web`, `worker` | optional; required only by the admin UI and the multi-user worker |
 
 Also **Present**: `vault` (layout, per-extractor directory names, filenames); `auth.profiles`
@@ -72,8 +74,13 @@ a source naming something no producer writes reports zero counterparties, which 
 quarter rather than as a fault. The shipped sources are checked against the bundled builders' real
 output, per source, in `tests/unit/test_ops.py`.
 
-Sections **Pending**: `index` (backend selection, roots, exclusions, vector settings) →
-knowledge-layer stage; `hooks.post_cycle` → runtime stage.
+Also **Present**: `index` (backend selection, roots, exclusions, search and vector settings, the
+catalog vocabulary) and `hooks.post_cycle` / `hooks.post_reconcile`. Both were listed here as
+pending for a stage after they shipped.
+
+**There is no `state:` section.** It was documented above for two stages after the key was gone.
+State lives under the vault's meta directory, addressed through `vault.layout.state`, so the store
+moves with the vault it belongs to instead of being a second root to keep in step.
 
 ### Microsoft Graph
 
@@ -89,8 +96,8 @@ Upstream shape the extractors depend on: delta endpoints and `@odata.nextLink` /
 
 ### Configured index roots
 
-**Pending → knowledge-layer stage.** An explicit list of directories in config, each with a
-recursion flag, plus exclusion globs. Roots are arbitrary markdown trees; there is **no
+**Present.** An explicit list of directories in config, each with a recursion flag, plus
+exclusion globs. Roots are arbitrary markdown trees; there is **no
 auto-discovery and no convention-based scanning**, because implicitness is the failure mode this
 package exists to avoid. Indexing markdown the package did not produce is a first-class case, not
 a side effect.
@@ -143,9 +150,8 @@ Hard parse errors, each of which was a real defect in the ported schema:
 
 ### The vault tree
 
-**Present** for the directory contract, the path builder, and the per-extractor markdown output
-underneath it. The outbox subtree is **Pending → outbox stage**; its path methods exist and are
-tested, but nothing writes intents yet.
+**Present**, the outbox subtree included: `teams post` writes an intent, `outbox push` claims and
+dispatches, and `outbox reconcile` records what became of it.
 
 ```
 <vault.root>/
@@ -237,8 +243,9 @@ yields an empty report, which reads as a clean corpus rather than as a defect.
 
 ### Sync state
 
-**Present.** JSON at `state.state_file_path` (per-`(user, extractor)` files under the multi-user
-worker). Holds delta tokens and last-run timestamps. It is bookkeeping, not data: deleting it
+**Present.** JSON under `<vault.root>/<layout.meta>/<layout.state>/`, one file per namespace
+(per-`(user, extractor)` files under the multi-user worker). Holds delta tokens and last-run
+timestamps. It is bookkeeping, not data: deleting it
 forces a full re-pull, never a data loss.
 
 Every extractor's state carries **`path_map`** (`{upstream id: storage path}`), the key defined by
@@ -272,7 +279,7 @@ markdown would leave attachment blobs orphaned under an unreferenced directory.
 
 ### Change manifest
 
-**Pending → runtime stage.** A typed record per cycle of what was created, updated, and deleted,
+**Present.** A typed record per cycle of what was created, updated, and deleted,
 per extractor, with errors, persisted under the configured meta directory. It is the contract
 hooks consume, and it replaces filesystem re-scanning — the manifest *is* the watermark, so a
 consumer keeping its own seen-set file is doing work the manifest already did.
@@ -333,7 +340,7 @@ the sequence drops the quote silently.
 
 ### The index
 
-**Pending → knowledge-layer stage.** A SQLite database at the configured path (FTS5, WAL,
+**Present.** A SQLite database at the configured path (FTS5, WAL,
 busy-timeout, readonly mode available). **Derived and disposable**: it is not a system of record,
 carries nothing that cannot be recomputed from the markdown, and is safe to delete.
 
@@ -399,7 +406,13 @@ the root they hang off, so nothing is missing.
 | `ops resolve-links` | `--json` | unresolved links and their candidates | 0 / 3 |
 | `ops tiers` | `--json` | per-counterparty tier and staleness; reports only, there is no write-back to configure | 0 / 3 |
 | `ops triage` | `--timeframe` · seven optional `--*-category` overrides of `ops.triage.fields` · `--json` | messages awaiting a reply | 0 / 3 |
-| `worker` | — | multi-user per-`(user, extractor)` job loop (requires the `web` section) | 0 / 1 / 3 |
+
+**`worker` is not a verb.** It was tabulated here as one. `m365_brain/worker.py` is a library
+module — the multi-user per-`(user, extractor)` job loop — and it carries no Click decorator,
+`pyproject.toml` exposes one console script, and nothing registers it. It runs as a thread inside
+the admin app (`worker.start_worker_thread`). **`docker-compose.yaml`'s `worker` service still
+invokes `m365-brain … worker` and would fail on start**; whether that becomes a registered verb or
+the service goes is a deployment-shape decision, not a documentation one.
 
 **Not present, and deliberately.** There is no `outbox new` — an intent *is* a markdown file in the
 outbox directory, and a verb writing the same bytes would be a second way to do one thing.
@@ -520,12 +533,12 @@ The seam set. One implementation each today, each shipping an in-memory fake (AD
 | Protocol | Module | State | First implementation |
 |---|---|---|---|
 | `StorageBackend` | `m365_brain/storage/base.py` | **Present** | local filesystem, Azure Blob |
-| `IndexBackend` | `m365_brain/index/backends/base.py` | Pending → knowledge-layer | SQLite + FTS5 |
-| `EmbeddingProvider` | `m365_brain/index/vector/base.py` | Pending → knowledge-layer | fastembed |
-| `VectorStore` | `m365_brain/index/vector/base.py` | Pending → knowledge-layer | sqlite-vec |
+| `IndexBackend` | `m365_brain/index/backends/base.py` | **Present** | SQLite + FTS5, plus `InMemoryIndexBackend` |
+| `EmbeddingProvider` | `m365_brain/index/vector/base.py` | **Present** | fastembed |
+| `VectorStore` | `m365_brain/index/vector/base.py` | **Present** | sqlite-vec |
 | `IntentStore` | `m365_brain/outbox/stores.py` | **Present** | `FilesystemIntentStore` + `InMemoryIntentStore` |
 | `OutboxHandler` | `m365_brain/vault/dispatch.py` | **Present** | `EmailOutbox`, `TeamsPostOutbox`, `FileUpdateOutbox` |
-| `StateStore` | `m365_brain/state.py` | Pending → M365-platform | JSON under the meta directory |
+| `StateStore` | `m365_brain/state.py` | **Present** | `JsonStateStore` under the meta directory, plus `InMemoryStateStore` |
 
 `StorageBackend` today: `write_file(path, content)`, `read_file(path)`, `file_exists(path)`,
 `list_files(prefix)`, `delete_file(path)`, `write_bytes(path, content)`. All paths are relative to
@@ -570,9 +583,12 @@ carries a `needs_converters` flag, because there is no longer a second call shap
 and the original body travel **by value**, so no knowledge-base path crosses the boundary in either
 direction; `post_reconcile` hooks do the projection.
 
-**Pending → knowledge-layer stage.** `m365_brain/workspace.py` — the facade that opens a config
-and returns a working handle. It is the API the bundled skills, the CLI, and migrating call sites
-target, and it is the intended entry point once it exists.
+**Present.** `m365_brain/workspace.py` — the facade that opens a config and returns a working
+handle: `sync`, `sync_vectors`, `search`, `find`, `observations`, `context`, `recent`,
+`recent_total`, `catalog`. It is the API the bundled skills and the CLI target, and every method is
+one call to the module that owns the behaviour. No method takes a default argument: `full_rebuild`,
+`mode`, `page`, `page_size`, `entity_type` and `max_depth` each change what the call does, and a
+call site that does not say which it wants has not decided.
 
 ### Bundled skills
 
@@ -606,18 +622,21 @@ apply is traceable to a named config key, tabulated in
 4. **A missing required value crashes, naming the key.** Nothing is silently substituted, and a
    missing `${VAR}` is an error rather than an empty string. *(Present.)*
 5. **Files are the source of truth; the index is derived.** Deleting the index and rebuilding
-   reproduces it; the index never holds the only copy of anything. *(Pending → knowledge-layer.)*
+   reproduces it; the index never holds the only copy of anything. *(Present — `index rebuild
+   --yes` is the operation, and `--root` scopes the prune to the roots it walked.)*
 6. **Re-running is safe.** Extraction, indexing, intent push, and reconciliation are idempotent:
    a second run over unchanged input produces no additional side effect. Intents carry a
-   client-supplied idempotency key so a retried push does not duplicate a draft. *(Present for
-   extraction and the outbox; pending for indexing.)*
+   client-supplied idempotency key so a retried push does not duplicate a draft. *(Present —
+   indexing included: the sync is checksum-driven, so a second pass over unchanged files skips
+   them.)*
 
    Corollary, also **Present**: an intent claimed with no recorded outcome is **never
    auto-retried**. Repeating a send whose result is unknown duplicates mail, which is the failure
    an outbox exists to prevent. See ADR 0017, including the named non-atomicity of the claim.
 7. **Upstream deletion propagates exactly once.** One canonical removal handler maps an upstream
    id to its written path, hard-deletes, and drops the state-map entry, so a repeated `@removed`
-   does not re-404. *(Pending → M365-platform.)*
+   does not re-404. *(Present for the six extractors with an upstream removal signal; the two
+   Teams extractors have none, per the table above.)*
 8. **Email outboxes are `draft_only`.** They create drafts for human review; `Mail.Send` is not
    requested, so auto-send is impossible by permission, not merely by policy — and a config that
    grants it anyway fails at process start rather than at dispatch. *(Present — ADR 0013.)*
@@ -658,13 +677,12 @@ Authoritative for field-level detail; this document summarises.
 | CLI verbs and exit codes | `m365_brain/cli.py` and `m365_brain/commands/` |
 | Markdown frontmatter per entity type | `m365_brain/m365/frontmatter/` |
 | Admin/worker database tables | `m365_brain/models.py` (SQLModel), migrated by `alembic/` |
-| Knowledge model — `Entity`, `Observation`, `Relation` | `m365_brain/model.py` — *pending → knowledge-layer stage* |
-| Index, vector, and embedding seams | `m365_brain/index/backends/base.py`, `m365_brain/index/vector/base.py` — *pending → knowledge-layer stage* |
+| Knowledge model — `Entity`, `Observation`, `Relation`, `SearchPage`, `CatalogEntry`, `CatalogQuery` | `m365_brain/model.py` |
+| Index, vector, and embedding seams | `m365_brain/index/backends/base.py`, `m365_brain/index/vector/base.py` |
 | Intent envelope and per-outbox payload schemas | `m365_brain/vault/intent.py` and `m365_brain/vault/payloads.py` (ADR 0014) |
 | Dispatch vocabulary — `GraphOp`, `DispatchResult`, `DispatchReceipt`, `OutboxHandler` | `m365_brain/vault/dispatch.py` |
-| Tier state machine | `m365_brain/outbox/tiers.py`; guards in `m365_brain/outbox/registry.py` |
+| Authority state machine | `m365_brain/outbox/authority.py`; guards in `m365_brain/outbox/registry.py` |
 | Reconciliation outcome | `m365_brain/outbox/reconcile.py` |
-| Change manifest | `m365_brain/manifest.py` — *pending → runtime stage* |
 
 Structural contracts that are not Pydantic — allowed directories, import direction, module size,
 test presence — live in `scripts/check_structure.py`, which is the executable statement of the

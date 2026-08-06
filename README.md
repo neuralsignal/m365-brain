@@ -12,9 +12,11 @@ Sync Microsoft 365 data to Obsidian-compatible markdown via the Graph API.
 - **Delta sync** with pagination, exponential backoff retry, and rate limiting
 - **2 storage backends**: local filesystem and Azure Blob Storage
 - **Document conversion** via [obsidian-import](https://pypi.org/project/obsidian-import/) (PDF, DOCX, PPTX, XLSX to markdown)
-- **MSAL device code authentication** with persistent token caching
-- **Frozen dataclass config** with strict validation and environment variable expansion
-- **CLI**: `auth login`, `sync --once`, `sync --continuous`
+- **MSAL device code authentication** with persistent token caching, and named auth profiles so several Entra apps coexist
+- **Markdown index** — FTS5 full-text, vector and hybrid search, entity/relation traversal, and a catalog of the binary files it found
+- **Write-back outbox** — typed intents gated by a per-outbox authority, dispatched and then reconciled against what Graph actually did
+- **Strict Pydantic config** with no defaults, and environment variable expansion
+- **CLI**: `init`, `auth login`, `run`, `extract`, `index`, `outbox`, `files`, `teams`, `vault`, `ops`, `status`
 - **Bicep IaC** for Azure Storage (dev/prod parameter files)
 - **Docker** + Docker Compose with Azurite profile for local development
 
@@ -35,163 +37,68 @@ pip install m365-brain[all]      # Everything
 
 ## Quick Start
 
+### Write a config file and create the vault
+
+```bash
+m365-brain init config.yaml --vault ./vault
+```
+
+`init` writes the complete, commented configuration file and creates the vault directories. It refuses to overwrite an existing file. Every path it writes is absolute.
+
 ### Authenticate
 
 ```bash
-m365-brain --config config.yaml auth login
+m365-brain --config config.yaml auth login --profile mail
+m365-brain --config config.yaml auth status --json
 ```
 
-This opens a device code flow in your browser. The token is cached at `state/token_cache.json` (configurable).
+`--profile` names one of `auth.profiles` in the config; the shipped template defines `mail`, `chat` and `files`. Login opens a device code flow in your browser, and each profile caches its own token at the `token_cache_path` it names.
 
-### Sync once
+### Run one cycle
 
 ```bash
-m365-brain --config config.yaml sync --once
+m365-brain --config config.yaml run --once
 ```
 
-### Sync continuously
+A cycle is extract → index → post-cycle hooks. `--once` runs every enabled unit whether or not its `poll_interval_minutes` says it is due; without it, `run` loops and honours the schedule.
+
+### Run continuously
 
 ```bash
-m365-brain --config config.yaml sync --continuous
+m365-brain --config config.yaml run
 ```
 
-Each extractor runs on its own `poll_interval_minutes`. The scheduler checks every 30 seconds.
+Each unit runs on its own `poll_interval_minutes`; the loop wakes every `service.continuous_poll_seconds`.
 
-### Filter extractors
+### Filter to some units
 
 ```bash
-m365-brain --config config.yaml sync --once --extractors email,calendar
+m365-brain --config config.yaml run --once --only email,calendar
 ```
+
+### Search what was synced
+
+```bash
+m365-brain --config config.yaml index search "quarterly review" --json
+m365-brain --config config.yaml index recent --timeframe 7d --json
+```
+
+Results go to **stdout**, logs to **stderr**, so `--json` output parses without being separated from log noise first. Any verb taking a `--limit` reports `total`, `returned` and `limit`, so a truncated answer is visible as one.
 
 ## Configuration
 
-All configuration lives in a single YAML file. Environment variables are expanded at load time using `${VAR_NAME}` syntax.
+All configuration lives in one YAML file — or several, comma-separated and deep-merged left to right. Environment variables are expanded at load time using `${VAR_NAME}` syntax, and **a missing variable raises** rather than expanding to an empty string.
 
-```yaml
-auth:
-  client_id: "${MSAL_CLIENT_ID}"
-  tenant_id: "${MSAL_TENANT_ID}"
-  scopes:
-    - "User.Read"
-    - "Mail.Read"
-    - "Calendars.Read"
-    - "Chat.Read"
-    - "ChannelMessage.Read.All"
-    - "Files.Read.All"
-    - "Sites.Read.All"
-    - "offline_access"
-  token_cache_path: "./state/token_cache.json"
-  client_secret: null  # Required for web mode; null for CLI device code flow
+`m365-brain init` writes the reference configuration, whose comments *are* the documentation for every key. It is packaged at `m365_brain/templates/m365-brain.yaml`; the `config/` directory in this repo holds the split fragments the Docker images merge. Rather than restate it here — a copy that rots the first time a key moves — read the file `init` produced:
 
-service:
-  log_level: "INFO"
-
-storage:
-  backend: "local"      # "local" or "azure_blob"
-  local:
-    base_path: "./vault"
-
-graph:
-  max_retries: 3
-  backoff_base_ms: 2000
-  timeout_seconds: 30
-  max_pages: 100
-
-state:
-  state_file_path: "./state/sync_state.json"
-
-extractors:
-  email:
-    enabled: true
-    poll_interval_minutes: 3
-    folders: ["Inbox", "SentItems", "Archive"]
-    max_items_per_sync: 500
-  calendar:
-    enabled: true
-    poll_interval_minutes: 60
-    lookback_days: 365
-  teams_chats:
-    enabled: true
-    poll_interval_minutes: 5
-    max_messages_per_chat: 200
-  teams_channels:
-    enabled: false
-    poll_interval_minutes: 5
-    max_messages_per_channel: 200
-    download_attachments: false
-    download_inline_images: false
-    max_attachment_size_mb: 25
-    attachment_convert_extensions: []
-    # Discovery mode: list all channels of all joined teams. Additionally
-    # requires the Team.ReadBasic.All + Channel.ReadBasic.All scopes.
-    channels: null
-    # Explicit mode: sync only the listed channels — works with
-    # ChannelMessage.Read.All alone (no discovery calls). Names must be
-    # configured because fetching displayNames needs the ReadBasic scopes.
-    # To get the IDs, use Teams "Get link to channel" on the channel:
-    #   https://teams.microsoft.com/l/channel/19%3Aabc...%40thread.tacv2/General?groupId=<team-id>&...
-    #   channel_id = the URL-decoded path segment after /channel/ ("19:abc...@thread.tacv2")
-    #   team_id    = the groupId query parameter
-    # channels:
-    #   - team_id: "00000000-0000-0000-0000-000000000000"
-    #     channel_id: "19:abc123def456@thread.tacv2"
-    #     team_name: "Engineering"
-    #     channel_name: "General"
-  onedrive:
-    enabled: false
-    poll_interval_minutes: 120
-    eager_convert_patterns: []
-    convertible_extensions:
-      - ".docx"
-      - ".pptx"
-      - ".xlsx"
-      - ".pdf"
-      - ".csv"
-      - ".txt"
-      - ".md"
-      - ".html"
-    max_file_size_mb: 100
-  sharepoint:
-    enabled: false
-    poll_interval_minutes: 240
-    eager_convert_patterns: []
-    convertible_extensions:
-      - ".docx"
-      - ".pptx"
-      - ".xlsx"
-      - ".pdf"
-      - ".csv"
-      - ".txt"
-      - ".md"
-      - ".html"
-    max_file_size_mb: 100
-  contacts:
-    enabled: false
-    poll_interval_minutes: 1440
-  directory:
-    enabled: false
-    poll_interval_minutes: 10080
-
-converters:
-  backends:
-    pdf: "markitdown"
-    docx: "markitdown"
-    pptx: "markitdown"
-    xlsx: "markitdown"
-    csv: "markitdown"
-    json: "native"
-    yaml: "native"
-    image: "native"
-    default: "native"
-  extraction:
-    timeout_seconds: 30
-    max_file_size_mb: 100
-    xlsx_max_rows_per_sheet: 500
-  media:
-    extract_images: false
-    image_format: "png"
-    image_max_dimension: 0
+```bash
+m365-brain --config config.yaml config validate
+m365-brain --config config.yaml config show --json
 ```
+
+`config validate` also resolves the configured hooks, which makes it a preflight rather than a syntax check. `config show` prints the effective merged config with secrets redacted.
+
+Every section is strict: an unknown key is rejected, and no field anywhere has a default. A value the package needs is a value the config states.
 
 ### Environment variables
 
@@ -207,7 +114,7 @@ The config loader expands `${VAR_NAME}` references at load time. Required variab
 
 ## Azure Blob Storage
 
-To use Azure Blob Storage instead of local filesystem, set `storage.backend: "azure_blob"` in your config. See `config.azure.yaml` for a complete example:
+To use Azure Blob Storage instead of local filesystem, set `storage.backend: "azure_blob"` in your config. See `config/storage/azure_blob.yaml` for a complete example:
 
 ```yaml
 storage:
@@ -289,22 +196,27 @@ pixi run docs-serve  # local MkDocs dev server
 ```
 m365-brain/
   m365_brain/
-    auth/              # MSAL device code + token provider
-    converters/        # Document conversion (obsidian-import bridge, HTML-to-markdown)
-    extractors/        # One module per M365 data source
-    storage/           # Storage backend interface + implementations
-    daemon.py          # Multi-user daemon sync runner
-    cli.py             # Click CLI entry point
-    sync.py            # Public sync API (extractors runner, used by CLI + daemon)
-    config/            # Frozen dataclass config loader with env var expansion
-    graph_client.py    # httpx-based Graph API client with retry + pagination
-    markdown_writer.py # Markdown + YAML frontmatter serialization
-    state.py           # JSON-backed sync state (delta tokens, timestamps)
-  tests/               # pytest test suite (mirrors source layout)
+    config/            # Strict Pydantic config: loading, merge, env expansion
+    model.py           # Entity / Observation / Relation and the query types
+    parsers/           # Markdown and frontmatter into the model
+    storage/           # StorageBackend protocol, local filesystem, Azure Blob
+    state.py           # StateStore protocol; delta tokens, cursors, cycle history
+    vault/             # Every path in the vault, plus the intent envelope
+    outbox/            # Vendor-agnostic write-back: authorities, runner, reconcile
+    index/             # The knowledge half -- backends, search, vectors, catalog
+    m365/              # The Microsoft half -- Graph client, auth, extractors, outboxes
+    cycle.py           # One cycle: extract, index, hooks
+    cli.py             # Click CLI -- the whole operating surface
+    commands/          # One module per command group
+    workspace.py       # The library facade: a config path in, a working handle out
+  m365_admin/          # Reflex admin dashboard (optional extra)
+  skills/              # Bundled agent skills, thin wrappers over the CLI
+  config/              # Config fragments the Docker images merge
+  tests/               # pytest + hypothesis, mirroring the source layout
   infra/               # Bicep IaC for Azure Storage
-  config.yaml          # Local filesystem config (reference)
-  config.azure.yaml    # Azure Blob Storage config (reference)
 ```
+
+`index/` never imports `m365/` and the two are peers by construction, so the knowledge layer works end to end on ordinary markdown with no Microsoft 365 present. That rule, the allowed directory list, the 300-line module cap, and the test-presence map are enforced by `scripts/check_structure.py` rather than by review.
 
 ## Architecture
 
@@ -321,9 +233,9 @@ graph LR
     G --> I[Azure Blob]
 ```
 
-**Graph Client** wraps `httpx` with automatic token refresh, exponential backoff on 429/5xx, and paginated response iteration. Each **extractor** module calls Graph endpoints for its data source, transforms the response into markdown with YAML frontmatter via the **Markdown Writer**, and persists through the **Storage Backend** interface. OneDrive and SharePoint extractors optionally route binary files through **obsidian-import** for document-to-markdown conversion.
+**Graph Client** (`m365_brain/m365/client.py`) wraps `httpx` with automatic token refresh, exponential backoff on 429/5xx, and paginated response iteration. Each **extractor** under `m365_brain/m365/extractors/` calls Graph endpoints for its data source, renders markdown with YAML frontmatter through the builders in `m365_brain/m365/frontmatter/`, and persists through the **Storage Backend** interface. OneDrive and SharePoint extractors optionally route binary files through **obsidian-import** for document-to-markdown conversion.
 
-**Sync state** tracks delta links and timestamps per extractor in a JSON file, enabling incremental sync across runs.
+**Sync state** tracks delta links and timestamps per unit through the `StateStore` protocol, written as JSON under the vault's meta directory. It is bookkeeping, not data: deleting it forces a full re-pull, never a data loss.
 
 ## Graph API Scopes
 
