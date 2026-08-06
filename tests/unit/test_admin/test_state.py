@@ -207,12 +207,8 @@ class TestIsAdmin:
         from m365_brain.config.schema import WebConfig
 
         wc = WebConfig(
-            host="h",
-            port=0,
-            secret_key="s",
             fernet_key="f",
             db_path="d",
-            session_timeout_minutes=0,
             db_url="sqlite://",
             admin_emails=["admin@test.com"],
         )
