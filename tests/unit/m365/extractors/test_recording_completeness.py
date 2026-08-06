@@ -157,9 +157,7 @@ CASES = {
     ),
     "contacts": (
         contacts,
-        ContactsExtractorConfig(
-            enabled=True, poll_interval_minutes=1440, max_items_per_sync=500, include_contact_folders=False
-        ),
+        ContactsExtractorConfig(enabled=True, poll_interval_minutes=1440, include_contact_folders=False),
         _contacts,
     ),
     "directory": (

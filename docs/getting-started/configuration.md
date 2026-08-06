@@ -59,12 +59,13 @@ Service-level settings.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `mode` | `str` | Execution mode. Currently only `"cli"` is supported. |
 | `log_level` | `str` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+
+There is no `mode`. It was a required string documented as accepting only `"cli"`, validated by
+nothing and read by nothing, so `mode: "banana"` loaded cleanly and changed nothing.
 
 ```yaml
 service:
-  mode: "cli"
   log_level: "INFO"
 ```
 
@@ -158,11 +159,27 @@ Per-extractor configuration. Each extractor has an `enabled` flag and extractor-
 | `max_items_per_sync` | `int` | Item budget per folder per cycle, sent verbatim as `$top` on the delta query. On a delta query `$top` caps the **whole enumeration**, not the page size: Graph returns at most this many messages and then reports the folder complete with a delta link, so an initial sync never picks up the remainder. Set it above the number of messages the folder holds. |
 
 **There is no time window on email.** An initial sync (before any delta link exists) enumerates
-the **entire folder**, however old. A message *delta* query does not support `$filter`, and Graph
-**ignores** the parameter rather than rejecting it — so a `receivedDateTime` cutoff looks applied,
-returns 200 OK, and does nothing. `max_items_per_sync` is the only real bound; size it against the
-whole folder, not against a window. (`extractors.calendar.lookback_days` is unrelated and does
-work: `calendarView` takes a genuine date range.)
+the **entire folder**, however old. A `receivedDateTime` cutoff was tried and provably did nothing:
+a fresh sync with state cleared wrote 1,062 messages older than its own cutoff across all seven
+folders. *Why* it did nothing is unresolved — Microsoft documents
+`$filter=receivedDateTime ge|gt {value}` as supported on a message delta, so "Graph does not
+support it" is not the explanation, and our filter string or param plumbing may have been at fault.
+The knob is gone rather than restored on the strength of a doc page; bringing it back needs one
+measured round. Size `max_items_per_sync` against the whole folder, not against a window.
+(`extractors.calendar.lookback_days` is unrelated and does work: `calendarView` takes a genuine
+date range.)
+
+`max_items_per_sync` is also not the only bound in force. `graph.max_pages` caps the same round in
+a different unit — pages, not items — and typically reaches its limit first, because a delta round
+pages at roughly ten items whatever `$top` says. The round resumes from its `nextLink` next cycle,
+so this costs throughput rather than data, and `graph.delta_max_pages_reached` reports the item
+count it stopped at so the two are comparable.
+
+**Delta parameters freeze after the first request.** Graph encodes `$select` and `$top` into the
+state token it returns, and the library deliberately does not resend them on a resume. So editing
+`max_items_per_sync` — or picking up a `$select` widened in a library release — changes nothing for
+a folder that already has a delta link. The values in force are the ones configured the day the
+chain was created; `--resync` is what adopts new ones.
 
 ```yaml
 extractors:

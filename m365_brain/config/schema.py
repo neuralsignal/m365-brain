@@ -77,8 +77,11 @@ class AuthConfig(AuthProfileConfig):
 
 
 class ServiceConfig(BaseModel):
+    """No `mode`. It was a required free-text field read by nothing, validated
+    by nothing, and documented as accepting only `"cli"` -- so `mode: banana`
+    loaded cleanly under `extra="forbid"` and changed nothing."""
+
     model_config = SECTION_MODEL_CONFIG
-    mode: str
     log_level: str
     json_logs: bool
     continuous_poll_seconds: int
@@ -134,20 +137,28 @@ class ConvertersConfig(BaseModel):
     backends: dict[str, str]
     extraction: ExtractionConfig
     media: MediaConfig | None = None
-    slug_max_length: int
-    hash_length: int
+    """No `slug_max_length` / `hash_length`. All fifteen slug and hash call
+    sites pass the literals 80 and 6, and this section is handed on to
+    `obsidian_import`, which reads only `input`/`output`/`backends`/
+    `extraction`/`passthrough`/`media` and drops the rest silently. The two
+    values travelled the whole way and landed nowhere -- and the case for
+    touching `slug_max_length`, a path-length limit on a synced tree, is
+    exactly the case where nothing happened."""
 
 
 class WebConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
-    host: str
-    port: int
-    secret_key: SecretStr
     fernet_key: SecretStr
     db_path: str
-    session_timeout_minutes: int
     db_url: str
     admin_emails: list[str]
+    """`host`, `port`, `secret_key` and `session_timeout_minutes` are gone.
+
+    Nothing read any of them -- the admin app takes its bind address from
+    Reflex and its session lifetime from its own state. `secret_key` was the
+    expensive one: a **required** `SecretStr` sourced from `${SECRET_KEY}`, so
+    every adopter had to mint and store a secret for a consumer that did not
+    exist."""
 
 
 class WorkerConfig(BaseModel):

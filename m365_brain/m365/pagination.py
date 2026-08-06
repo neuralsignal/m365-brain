@@ -45,7 +45,13 @@ def fetch_pages(fetch: Fetch, path: str, params: dict[str, Any] | None, max_page
 
     truncated = bool(url)
     if url:
-        log.warning("graph.max_pages_reached", max_pages=max_pages, path=path, next_link=_sanitize_log_url(url))
+        log.warning(
+            "graph.max_pages_reached",
+            max_pages=max_pages,
+            items_fetched=len(items),
+            path=path,
+            next_link=_sanitize_log_url(url),
+        )
     return items, truncated
 
 
@@ -60,6 +66,26 @@ def fetch_delta(
 
     Uses delta_link instead of path when provided. When the page cap
     interrupts the round, the pending @odata.nextLink is the resume link.
+
+    **`params` are sent on the first request of a new chain and never again**,
+    which is correct and has a consequence worth stating where it happens.
+    Microsoft encodes the initial query parameters *into* the state token --
+    "don't modify subsequent delta query requests to repeat these query
+    parameters" -- so `$select` and `$top` are frozen at the moment the chain
+    was minted. Editing either in config changes nothing for an existing chain:
+    the values in force are whatever was configured the day the token was
+    created, and a `$select` widened in a library release reaches an existing
+    deployment only after `--resync`.
+
+    **Which bound governs.** `$top` is an item budget the *server* enforces;
+    `max_pages` is a page budget this loop enforces. They are in different
+    units, and the page cap usually reaches its limit first -- a message delta
+    round pages at roughly ten items whatever `$top` says, so 300 pages is
+    about 3,000 items however high the item budget is set. That is throughput
+    rather than loss, because the pending nextLink is returned as the resume
+    link -- but it is the reason `graph.max_pages_reached` reports the item
+    count it stopped at: an operator comparing that number against their
+    configured item budget is the only way to tell which of the two bound.
     """
     url = delta_link if delta_link else path
     page = 0
@@ -75,7 +101,17 @@ def fetch_delta(
         page += 1
 
     if url:
-        log.warning("graph.delta_max_pages_reached", max_pages=max_pages, path=path, next_link=_sanitize_log_url(url))
+        # `items_fetched` is what makes the two bounds comparable: `$top` is an
+        # item budget the server enforces and this is a page budget, so the only
+        # way to see that the page cap pre-empted a configured item budget is
+        # the count it stopped at.
+        log.warning(
+            "graph.delta_max_pages_reached",
+            max_pages=max_pages,
+            items_fetched=len(items),
+            path=path,
+            next_link=_sanitize_log_url(url),
+        )
         new_delta_link = url
 
     log.info(

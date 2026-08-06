@@ -29,7 +29,6 @@ def _write_config_yaml(tmp_path, full_web_config):
             "client_secret": "test-secret",
         },
         "service": {
-            "mode": "web",
             "log_level": "INFO",
             "json_logs": False,
             "continuous_poll_seconds": 30,
@@ -101,7 +100,6 @@ def _write_config_yaml(tmp_path, full_web_config):
             "contacts": {
                 "enabled": False,
                 "poll_interval_minutes": 1440,
-                "max_items_per_sync": 500,
                 "include_contact_folders": False,
             },
             "directory": {
@@ -120,16 +118,10 @@ def _write_config_yaml(tmp_path, full_web_config):
                 "xlsx_max_rows_per_sheet": 500,
                 "isolation": "thread",
             },
-            "slug_max_length": 80,
-            "hash_length": 6,
         },
         "web": {
-            "host": "127.0.0.1",
-            "port": 8000,
-            "secret_key": "test-secret",
             "fernet_key": full_web_config.web.fernet_key.get_secret_value(),
             "db_path": str(tmp_path / "web.db"),
-            "session_timeout_minutes": 60,
             "db_url": "sqlite://",
             "admin_emails": ["admin@example.com"],
         },
@@ -174,7 +166,7 @@ class TestGetConfig:
 
         assert config.auth.client_id == "test-id"
         assert config.web is not None
-        assert config.web.port == 8000
+        assert config.web.db_url == "sqlite://"
 
     def test_caches_result(self, tmp_path, monkeypatch, full_web_config):
         """get_config() returns the same object on second call."""
@@ -213,7 +205,6 @@ class TestGetConfig:
                 "token_cache_path": str(tmp_path / "cache.json"),
             },
             "service": {
-                "mode": "cli",
                 "log_level": "INFO",
                 "json_logs": False,
                 "continuous_poll_seconds": 30,
@@ -285,7 +276,6 @@ class TestGetConfig:
                 "contacts": {
                     "enabled": False,
                     "poll_interval_minutes": 1440,
-                    "max_items_per_sync": 500,
                     "include_contact_folders": False,
                 },
                 "directory": {
@@ -304,8 +294,6 @@ class TestGetConfig:
                     "xlsx_max_rows_per_sheet": 500,
                     "isolation": "thread",
                 },
-                "slug_max_length": 80,
-                "hash_length": 6,
             },
             # No 'web' section — should raise
         }

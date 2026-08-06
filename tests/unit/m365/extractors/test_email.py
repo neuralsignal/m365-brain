@@ -1798,18 +1798,26 @@ class TestAttachmentEmptyPathName:
 # ---------------------------------------------------------------------------
 
 
+def _folder_pages(*folders: dict) -> MagicMock:
+    """A client whose paged `mailFolders` walk serves one page of `folders`."""
+    client = MagicMock(spec=GraphClient)
+    client.max_pages = 10
+    client.get_pages.side_effect = lambda path, params, cap: (
+        list(folders) if path.endswith("mailFolders") else [],
+        False,
+    )
+    return client
+
+
 class TestListAllFoldersGuardBranches:
     """list_all_folders skips folder entries with missing displayName or id."""
 
     def test_skips_missing_display_name(self):
         """Folder with displayName=None is excluded from the result."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {
-            "value": [
-                {"id": "id-valid", "displayName": "Projects", "isHidden": False},
-                {"id": "id-no-name", "displayName": None, "isHidden": False},
-            ]
-        }
+        client = _folder_pages(
+            {"id": "id-valid", "displayName": "Projects", "isHidden": False},
+            {"id": "id-no-name", "displayName": None, "isHidden": False},
+        )
 
         result = _folder_helpers.list_all_folders(client, "/me", "me")
 
@@ -1817,13 +1825,10 @@ class TestListAllFoldersGuardBranches:
 
     def test_skips_absent_display_name(self):
         """Folder with no displayName key at all is excluded from the result."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {
-            "value": [
-                {"id": "id-valid", "displayName": "Inbox", "isHidden": False},
-                {"id": "id-missing-key", "isHidden": False},
-            ]
-        }
+        client = _folder_pages(
+            {"id": "id-valid", "displayName": "Inbox", "isHidden": False},
+            {"id": "id-missing-key", "isHidden": False},
+        )
 
         result = _folder_helpers.list_all_folders(client, "/me", "me")
 
@@ -1831,13 +1836,10 @@ class TestListAllFoldersGuardBranches:
 
     def test_skips_missing_id(self):
         """Folder with id=None is excluded from the result."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {
-            "value": [
-                {"id": "id-good", "displayName": "Archive", "isHidden": False},
-                {"id": None, "displayName": "Broken", "isHidden": False},
-            ]
-        }
+        client = _folder_pages(
+            {"id": "id-good", "displayName": "Archive", "isHidden": False},
+            {"id": None, "displayName": "Broken", "isHidden": False},
+        )
 
         result = _folder_helpers.list_all_folders(client, "/me", "me")
 
@@ -1845,13 +1847,10 @@ class TestListAllFoldersGuardBranches:
 
     def test_skips_absent_id(self):
         """Folder with no id key at all is excluded from the result."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {
-            "value": [
-                {"id": "id-good", "displayName": "Sent", "isHidden": False},
-                {"displayName": "NoId", "isHidden": False},
-            ]
-        }
+        client = _folder_pages(
+            {"id": "id-good", "displayName": "Sent", "isHidden": False},
+            {"displayName": "NoId", "isHidden": False},
+        )
 
         result = _folder_helpers.list_all_folders(client, "/me", "me")
 

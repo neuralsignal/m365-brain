@@ -2,11 +2,27 @@
 
 Reads from /me/contacts/delta (and optionally /me/contactFolders).
 Writes Obsidian-compatible markdown files with YAML frontmatter.
+
+**There is no item budget here, and there is nowhere to put one.** This module
+used to carry `ceil(max_items_per_sync / 10)` as its page budget, where the 10
+was a module constant guessing Graph's server-side page size for a personal
+contacts collection. Nothing measured it, and the derivation was load-bearing:
+a real page size of 5 halved the budget, a real 20 doubled it, and either way
+the round stopped somewhere the operator did not ask for. The `$top` that
+carries an item budget on the message delta (#264) has no documented
+counterpart on this endpoint, and the library sends no
+`Prefer: odata.maxpagesize` anywhere -- so no channel existed by which an item
+budget could reach the server at all. A bound that cannot bind is not a
+safeguard, and one derived from a guess is worse than none, because it reports
+a number.
+
+`graph.max_pages` bounds the walk instead, which is what it is for, and a round
+it interrupts resumes from the pending nextLink next cycle. This is the
+treatment `directory.py` got in #264 for the same shape.
 """
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 
 import structlog
@@ -23,19 +39,6 @@ log = structlog.get_logger()
 
 name = "contacts"
 required_scopes = ["Contacts.Read"]
-
-_CONTACT_SELECT = (
-    "id,displayName,givenName,surname,emailAddresses,businessPhones,"
-    "mobilePhone,companyName,jobTitle,department,officeLocation,"
-    "businessAddress,homeAddress,personalNotes,birthday,categories,"
-    "createdDateTime,lastModifiedDateTime"
-)
-
-# Graph's documented default page size for personal-contact collections; the
-# contacts delta endpoint rejects $top, so the page budget assumes this server
-# default: ceil(max_items_per_sync / page size) pages per cycle. A round
-# interrupted by the budget resumes from the pending nextLink next cycle.
-_DELTA_DEFAULT_PAGE_SIZE = 10
 
 
 def run(
@@ -59,7 +62,6 @@ def run(
         storage,
         "/me/contacts/delta",
         delta_link,
-        config.max_items_per_sync,
         ctx,
         path_map,
     )
@@ -69,7 +71,7 @@ def run(
 
     # Sync contact sub-folders if enabled
     if config.include_contact_folders:
-        folder_written = _sync_contact_folders(client, storage, state, config.max_items_per_sync, ctx, path_map)
+        folder_written = _sync_contact_folders(client, storage, state, ctx, path_map)
         total_written += folder_written
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -81,7 +83,6 @@ def _sync_contact_folders(
     client: GraphClient,
     storage: StorageBackend,
     state: dict,
-    max_items: int,
     ctx: ExtractorContext,
     path_map: dict[str, str],
 ) -> int:
@@ -105,7 +106,6 @@ def _sync_contact_folders(
             storage,
             path,
             delta_link,
-            max_items,
             ctx,
             path_map,
         )
@@ -122,17 +122,15 @@ def _sync_contacts(
     storage: StorageBackend,
     path: str,
     delta_link: str | None,
-    max_items: int,
     ctx: ExtractorContext,
     path_map: dict[str, str],
 ) -> tuple[int, str | None]:
     """Sync contacts from a single delta endpoint. Returns (items_written, new_delta_link)."""
-    # Contacts delta endpoint rejects $select, $top, $filter, etc. The page
-    # budget bounds per-cycle work; everything fetched IS processed — slicing
-    # after the fetch would skip the tail forever once the (resume) delta link
-    # is persisted.
-    max_pages = max(1, math.ceil(max_items / _DELTA_DEFAULT_PAGE_SIZE))
-    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=max_pages)
+    # `graph.max_pages` is the only bound -- see the module docstring for why
+    # there is no item budget. Everything fetched IS processed; slicing after
+    # the fetch would skip the tail forever once the (resume) delta link is
+    # persisted.
+    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=client.max_pages)
 
     written = 0
     for contact in contacts:

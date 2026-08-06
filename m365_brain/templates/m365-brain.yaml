@@ -65,7 +65,6 @@ auth:
 # service — process behaviour and logging
 # ---------------------------------------------------------------------------
 service:
-  mode: "cli"
   log_level: "INFO" # DEBUG | INFO | WARNING | ERROR | CRITICAL
   json_logs: false # true renders structured JSON; false is the console renderer
   continuous_poll_seconds: 30 # upper bound on a sleep slice, so SIGTERM is answered promptly
@@ -102,12 +101,25 @@ extractors:
     poll_interval_minutes: 3
     mailboxes:
       - address: "me" # "me" or a UPN for a shared mailbox
+        # A list, or null to auto-discover every visible folder at any depth
+        # (subfolders included; system and hidden folders are skipped).
         folders: ["Inbox", "SentItems", "Archive"]
         output_subdir: ""
-    # sent as $top on the delta query, which caps the WHOLE initial enumeration
+    # Sent as $top on the delta query, which caps the WHOLE initial enumeration
     # per folder — not a page size. Below a folder's volume, the rest never syncs.
-    # It is also the ONLY bound: a message delta query ignores $filter, so there
-    # is no lookback window — an initial sync enumerates the whole folder.
+    #
+    # It is not the only bound in force: graph.max_pages caps the same round in
+    # pages rather than items and usually stops it first (a delta round pages at
+    # roughly ten items whatever $top says). That resumes from its nextLink, so
+    # it costs throughput not data — graph.delta_max_pages_reached reports the
+    # item count it stopped at, which is how you tell which bound applied.
+    #
+    # There is no lookback window. A receivedDateTime cutoff was tried and
+    # provably did nothing (1,062 pre-cutoff messages on a cleared sync); why is
+    # unresolved, since Microsoft documents that $filter expression as supported.
+    #
+    # Editing this does nothing for a folder that already has a delta link:
+    # Graph freezes $select and $top into the state token. --resync adopts it.
     max_items_per_sync: 500
     download_attachments: false
     max_attachment_size_mb: 25
@@ -149,7 +161,9 @@ extractors:
   contacts:
     enabled: true
     poll_interval_minutes: 1440
-    max_items_per_sync: 500
+    # No max_items_per_sync: unlike the message delta, this endpoint documents no
+    # $top, so nothing could carry an item budget to the server. graph.max_pages
+    # bounds the walk and an interrupted round resumes from its nextLink.
     include_contact_folders: false
   directory:
     enabled: false
@@ -181,8 +195,6 @@ converters:
     extract_images: false
     image_format: "png"
     image_max_dimension: 0
-  slug_max_length: 80
-  hash_length: 6
 
 # ---------------------------------------------------------------------------
 # vault — every directory and filename, named here and nowhere else
@@ -396,12 +408,6 @@ ops:
       # senders exist only as rendered prose in the message timeline, which is
       # neither an observation nor a relation. A source naming it would report
       # zero and read as a quiet quarter -- the defect this list already had.
-    write_back:
-      enabled: false
-      fields: # computed value -> the frontmatter key it is written to
-        tier: "tier"
-        last_interaction: "last_interaction"
-      create_missing: false
   triage:
     own_email: "${M365_OWN_EMAIL}"
     inbox_folder: "Inbox"

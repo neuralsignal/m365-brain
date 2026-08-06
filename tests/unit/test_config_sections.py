@@ -55,7 +55,6 @@ def _legacy_sections() -> dict:
             "client_secret": None,
         },
         "service": {
-            "mode": "cli",
             "log_level": "INFO",
             "json_logs": False,
             "continuous_poll_seconds": 30,
@@ -122,7 +121,6 @@ def _legacy_sections() -> dict:
             "contacts": {
                 "enabled": False,
                 "poll_interval_minutes": 1440,
-                "max_items_per_sync": 500,
                 "include_contact_folders": False,
             },
             "directory": {
@@ -141,8 +139,6 @@ def _legacy_sections() -> dict:
                 "xlsx_max_rows_per_sheet": 500,
                 "isolation": "thread",
             },
-            "slug_max_length": 80,
-            "hash_length": 6,
         },
     }
 
@@ -268,7 +264,6 @@ def _ops_section() -> dict:
                     "exclude_future": True,
                 }
             ],
-            "write_back": {"enabled": False, "fields": {"tier": "tier"}, "create_missing": False},
         },
         "triage": {
             "own_email": "person@example.com",

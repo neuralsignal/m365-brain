@@ -93,34 +93,64 @@ def resolve_folder_id(
     return folder_id
 
 
+FOLDER_SELECT = "id,displayName,isHidden,childFolderCount"
+"""What discovery needs off a `mailFolder`.
+
+`childFolderCount` is in here so the walk descends only where there is
+something to descend into -- omit it from `$select` and Graph omits it from the
+response, which reads as "no children" and silently restores the bug this
+traversal exists to fix. `childFolders` is walked by request rather than
+`$expand`ed: the expansion returns one level, so a nested tree still needs the
+traversal and the expansion only makes the first page heavier."""
+
+
 def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> list[tuple[str, str]]:
-    """List all top-level mail folders for auto-discovery.
+    """Every visible mail folder, at any depth, for auto-discovery.
 
     Returns (display_name, folder_id) tuples with system / noise folders
     filtered out by display name and the `isHidden` flag. The caller can
     prime the resolved-id cache via `cache_folder_id` to avoid a second
     Graph round-trip per folder.
 
+    **Two silent ceilings used to sit on these lines**, and `folders: null` is
+    documented as "auto-discover all visible folders", so both were losses the
+    operator had asked not to have:
+
+    1. `GET /mailFolders` returns *only the root's children*. Microsoft's own
+       reference says so outright -- "this operation doesn't return all mail
+       folders in a mailbox, only the child folders of the root folder […] each
+       child folder must be traversed separately". Anything an operator had
+       filed one level down was never synced, never indexed, never triaged, and
+       nothing said so.
+    2. It was a single `client.get` with a literal `$top=100` and no
+       `@odata.nextLink` follow, so a mailbox with more folders than that lost
+       the tail without a warning. `get_pages` reports truncation; a bare `get`
+       cannot.
+
+    Both are fixed here: the collection is paged under `graph.max_pages`, and
+    the walk descends into `childFolders`. A skipped folder is not descended
+    into -- the children of `Deleted Items` are deleted items.
+
     Note: Graph API v1.0 does not expose `wellKnownName` on `mailFolder`, so
     filtering relies on `displayName` plus `isHidden`. See
     `AUTO_DISCOVER_SKIP_DISPLAY` for the localized display-name list.
     """
-    data = client.get(
-        f"{endpoint_base}/mailFolders",
-        {"$select": "id,displayName,isHidden", "$top": "100"},
-    )
-    folders = data.get("value", [])
     result: list[tuple[str, str]] = []
-    for f in folders:
-        display = f.get("displayName") or ""
-        folder_id = f.get("id") or ""
-        if not display or not folder_id:
-            continue
-        if f.get("isHidden", False):
-            continue
-        if display in AUTO_DISCOVER_SKIP_DISPLAY:
-            continue
-        result.append((display, folder_id))
+    pending = [f"{endpoint_base}/mailFolders"]
+    while pending:
+        folders, truncated = client.get_pages(pending.pop(), {"$select": FOLDER_SELECT}, client.max_pages)
+        if truncated:
+            log.warning("email.folder_discovery_truncated", mailbox=address, max_pages=client.max_pages)
+        for f in folders:
+            display = f.get("displayName") or ""
+            folder_id = f.get("id") or ""
+            if not display or not folder_id:
+                continue
+            if f.get("isHidden", False) or display in AUTO_DISCOVER_SKIP_DISPLAY:
+                continue
+            result.append((display, folder_id))
+            if f.get("childFolderCount", 0):
+                pending.append(f"{endpoint_base}/mailFolders/{folder_id}/childFolders")
     log.info("email.folders_discovered", mailbox=address, count=len(result))
     return result
 

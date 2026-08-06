@@ -9,7 +9,6 @@ auth:
   client_secret: "${AZURE_CLIENT_SECRET}"
 
 service:
-  mode: "web"
   log_level: "INFO"
   json_logs: false
   continuous_poll_seconds: 30
@@ -38,12 +37,8 @@ converters:
     default: "native"
 
 web:
-  host: "0.0.0.0"
-  port: 8000
-  secret_key: "${SECRET_KEY}"
   fernet_key: "${FERNET_KEY}"
   db_path: "../state/web.db"
-  session_timeout_minutes: 60
   db_url: "${DATABASE_URL}"
   admin_emails:
     - "${ADMIN_EMAIL}"

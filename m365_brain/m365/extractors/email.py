@@ -4,6 +4,18 @@ Reads from {/me | /users/{address}}/mailFolders/{folder}/messages/delta for each
 configured (mailbox, folder) pair. Writes Obsidian-compatible markdown files
 with YAML frontmatter, namespaced under emails/{output_subdir}/ when set.
 Downloads and optionally converts email attachments.
+
+**No `lookback_days`, and the reason it went is only half known.** Settled: the
+`receivedDateTime ge <cutoff>` filter had no effect -- a cleared initial sync
+wrote 1,062 pre-cutoff messages across all seven folders. Not settled: *why*.
+The claim this code used to carry, "a message delta does not support $filter",
+is wrong; Microsoft documents `receivedDateTime ge|gt` as one of the two
+supported expressions, which is the one the removed code sent. So Graph ignores
+it, or our filter string or param plumbing was wrong, and nothing offline tells
+those apart. It stays gone -- a knob that lies is worse than no knob -- but
+restoring it needs a measured round, not a doc page. Restored, it brings a
+second trap: `$filter` caps a delta round at 5,000 messages, arriving with a
+deltaLink as if the folder were complete.
 """
 
 from __future__ import annotations
@@ -146,13 +158,8 @@ def _sync_folder(
         # made every initial folder sync stop at 50 messages, ok=True.
         "$top": str(config.max_items_per_sync),
     }
-    # No $filter, and no time window at all: a message delta query does not
-    # support $filter, and Graph IGNORES it rather than rejecting it. The
-    # `receivedDateTime ge <cutoff>` that used to sit here read as an enforced
-    # `lookback_days` window while the call happily returned the whole folder —
-    # measured at 1061 messages past a 90-day cutoff. A knob that lies is worse
-    # than no knob, so the knob is gone: an initial sync enumerates the entire
-    # folder and `$top` above is the only real bound.
+    # No $filter, and no time window: see the module docstring for what is
+    # settled about `lookback_days` and what is not.
 
     # Graph pages a delta round at its own size (~10 items) whatever $top says,
     # so a page budget derived from the item budget could never bind. $top bounds

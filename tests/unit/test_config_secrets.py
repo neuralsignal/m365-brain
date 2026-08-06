@@ -114,7 +114,6 @@ def test_every_known_secret_is_discovered() -> None:
         ("AuthProfileConfig", "client_secret"),
         ("AzureBlobStorageConfig", "connection_string"),
         ("WebConfig", "fernet_key"),
-        ("WebConfig", "secret_key"),
     }
 
 

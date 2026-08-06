@@ -50,9 +50,8 @@ producer writes reports every link as unresolved.
     m365-brain --config "$M365_BRAIN_CONFIG" ops tiers --json
 
 Counts interactions per counterparty over `ops.tiers.lookback_days` and assigns
-each one a rung of `ops.tiers.ladder`. Reports; **writes nothing**. Setting
-`ops.tiers.write_back.enabled: true` is an error rather than a no-op — see
-`references/config-keys.md`.
+each one a rung of `ops.tiers.ladder`. Reports; **writes nothing**, and there is
+no write-back to configure — see `references/config-keys.md`.
 
 The ladder is an ordered list, and it can have any number of rungs — two, three,
 five. There is no code branch that knows which rung is last: the terminal one

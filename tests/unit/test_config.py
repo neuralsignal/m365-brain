@@ -32,7 +32,6 @@ class TestLoadConfig:
               scopes: ["User.Read", "Mail.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -97,7 +96,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -115,8 +113,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -152,7 +148,6 @@ class TestLoadConfig:
               scopes: "not-a-list"
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -217,7 +212,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -235,8 +229,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -258,7 +250,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -323,7 +314,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -341,8 +331,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -359,7 +347,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -424,7 +411,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -442,8 +428,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         # Ensure the variable is not set
@@ -464,7 +448,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -529,7 +512,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -547,8 +529,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -567,7 +547,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -632,7 +611,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -650,8 +628,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -668,7 +644,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -735,7 +710,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -753,8 +727,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -778,7 +750,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -843,7 +814,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -861,8 +831,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         config = load_config(str(config_file))
@@ -881,7 +849,6 @@ class TestLoadConfig:
               scopes: ["User.Read"]
               token_cache_path: "./state/token_cache.json"
             service:
-              mode: "cli"
               log_level: "INFO"
               json_logs: false
               continuous_poll_seconds: 30
@@ -946,7 +913,6 @@ class TestLoadConfig:
               contacts:
                 enabled: false
                 poll_interval_minutes: 1440
-                max_items_per_sync: 500
                 include_contact_folders: false
               directory:
                 enabled: false
@@ -964,8 +930,6 @@ class TestLoadConfig:
                 max_file_size_mb: 100
                 xlsx_max_rows_per_sheet: 500
                 isolation: "thread"
-              slug_max_length: 80
-              hash_length: 6
         """)
         )
         with pytest.raises(ConfigError):
@@ -980,7 +944,6 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       scopes: ["User.Read", "Mail.Read"]
       token_cache_path: "./state/token_cache.json"
     service:
-      mode: "cli"
       log_level: "INFO"
       json_logs: false
       continuous_poll_seconds: 30
@@ -1045,7 +1008,6 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       contacts:
         enabled: false
         poll_interval_minutes: 1440
-        max_items_per_sync: 500
         include_contact_folders: false
       directory:
         enabled: false
@@ -1063,8 +1025,6 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
         max_file_size_mb: 100
         xlsx_max_rows_per_sheet: 500
         isolation: "thread"
-      slug_max_length: 80
-      hash_length: 6
 """)
 
 

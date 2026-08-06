@@ -19,7 +19,7 @@ Every extractor follows the same contract:
 
 Syncs emails from configured mail folders using Graph API delta queries. Subsequent syncs use the stored delta link for incremental updates.
 
-The first sync of a folder enumerates **the whole folder** — there is no time window. A message delta query does not support `$filter`, and Graph silently ignores one rather than rejecting it, so no `receivedDateTime` cutoff can be enforced server-side. `max_items_per_sync` (sent as `$top`, which on a delta query caps the entire enumeration) is the only bound.
+The first sync of a folder enumerates **the whole folder** — there is no time window. A `receivedDateTime` cutoff was tried and provably did nothing (1,062 pre-cutoff messages on a sync with state cleared); *why* is unresolved, since Microsoft documents that `$filter` expression as supported on a message delta, so the knob is gone rather than restored on a doc page. `max_items_per_sync` (sent as `$top`, which on a delta query caps the entire enumeration) is the bound this config expresses; `graph.max_pages` caps the same round in pages and usually stops it first.
 
 ### Graph API Endpoints
 

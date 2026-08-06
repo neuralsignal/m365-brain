@@ -1,7 +1,6 @@
 # CLI service mode — interactive, console logging.
 
 service:
-  mode: "cli"
   log_level: "INFO"
   json_logs: false
   continuous_poll_seconds: 30

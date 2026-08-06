@@ -39,10 +39,18 @@ class EmailExtractorConfig(BaseModel):
     max_items_per_sync: int
     """Item budget per folder per cycle, sent verbatim as `$top` on the delta query.
 
-    The only bound on an initial sync. There is deliberately no `lookback_days`:
-    a message delta query ignores `$filter`, so a time window cannot be expressed
-    server-side (`extractors/email.py`). `calendar.lookback_days` is unaffected —
-    calendarView takes a real date range.
+    The only bound this code expresses on an initial sync, and not the only one
+    that binds: `graph.max_pages` is a page budget in different units and
+    usually stops the round first (`m365/pagination.py`). It is also frozen into
+    the delta token after the first request of a chain, so editing it does
+    nothing until `--resync`.
+
+    There is deliberately no `lookback_days`. The filter provably had no effect
+    -- 1,062 pre-cutoff messages arrived on a cleared initial sync across all
+    seven folders -- but the reason is open: Microsoft documents
+    `$filter=receivedDateTime ge|gt` as supported here. See
+    `extractors/email.py`. `calendar.lookback_days` is unaffected — calendarView
+    takes a real date range.
     """
     download_attachments: bool
     max_attachment_size_mb: int
@@ -124,8 +132,11 @@ class ContactsExtractorConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     enabled: bool
     poll_interval_minutes: int
-    max_items_per_sync: int
     include_contact_folders: bool
+    """No `max_items_per_sync`: nothing could carry one to the server.
+
+    It existed, and it was a page budget derived from a guessed page size --
+    see `m365/extractors/contacts.py`. `graph.max_pages` bounds the walk."""
 
 
 class DirectoryExtractorConfig(BaseModel):

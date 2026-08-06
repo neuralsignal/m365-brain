@@ -13,7 +13,6 @@ auth:
   client_secret: null
 
 service:
-  mode: "cli"
   log_level: "INFO"
   json_logs: false
   continuous_poll_seconds: 30
@@ -101,5 +100,3 @@ converters:
     timeout_seconds: 30
     max_file_size_mb: 100
     xlsx_max_rows_per_sheet: 500
-  slug_max_length: 80
-  hash_length: 6

@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 from pytest_httpx import HTTPXMock
 
 from m365_brain.config import ContactsExtractorConfig, GraphConfig
@@ -17,13 +18,17 @@ from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
 
+SHIPPED_CONTACTS = yaml.safe_load(
+    (Path(__file__).resolve().parents[4] / "m365_brain" / "templates" / "m365-brain.yaml").read_text(encoding="utf-8")
+)["extractors"]["contacts"]
+"""The shipped `extractors.contacts` block, loaded rather than restated."""
+
 
 @pytest.fixture()
 def contacts_config():
     return ContactsExtractorConfig(
         enabled=True,
         poll_interval_minutes=1440,
-        max_items_per_sync=500,
         include_contact_folders=False,
     )
 
@@ -191,11 +196,10 @@ class TestContactsExtractor:
     def test_everything_fetched_is_processed_no_post_hoc_slice(
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx
     ):
-        """B2: max_items_per_sync bounds the page budget; nothing fetched is sliced away and lost."""
+        """B2: nothing fetched is sliced away and lost."""
         config = ContactsExtractorConfig(
             enabled=True,
             poll_interval_minutes=1440,
-            max_items_per_sync=1,
             include_contact_folders=False,
         )
 
@@ -230,12 +234,19 @@ class TestContactsExtractor:
         assert state["delta_link"] == "https://delta?token=cap"
         client.close()
 
-    def test_capped_fetch_resumes_from_pending_next_link(self, httpx_mock: HTTPXMock, tmp_path, graph_config, ctx):
+    def test_capped_fetch_resumes_from_pending_next_link(self, httpx_mock: HTTPXMock, tmp_path, ctx):
         """B2 regression: a delta round capped mid-way resumes next cycle; the tail is never skipped."""
+        graph_config = GraphConfig(
+            max_retries=1,
+            backoff_base_ms=10,
+            timeout_seconds=5,
+            max_pages=1,
+            max_retry_after_seconds=300.0,
+            error_message_max_length=200,
+        )
         config = ContactsExtractorConfig(
             enabled=True,
             poll_interval_minutes=1440,
-            max_items_per_sync=1,
             include_contact_folders=False,
         )
         pending = "https://graph.microsoft.com/v1.0/me/contacts/delta?$skiptoken=tail"
@@ -288,7 +299,6 @@ class TestContactsExtractor:
         config = ContactsExtractorConfig(
             enabled=True,
             poll_interval_minutes=1440,
-            max_items_per_sync=500,
             include_contact_folders=True,
         )
 
@@ -335,7 +345,6 @@ class TestContactsExtractor:
         config = ContactsExtractorConfig(
             enabled=True,
             poll_interval_minutes=1440,
-            max_items_per_sync=500,
             include_contact_folders=True,
         )
 
@@ -465,3 +474,71 @@ class TestOddLayoutGoldenPaths:
         ]
         assert local_storage.list_files("inbox") == []
         client.close()
+
+
+class TestNoBoundIsDerivedFromAGuess:
+    """`graph.max_pages` bounds the walk. Nothing here divides by a page size.
+
+    This module carried `max_pages = ceil(max_items_per_sync / 10)`, where 10
+    was a module constant guessing Graph's server-side page size for a personal
+    contacts collection. Nothing measured it; a real page size of 5 halved the
+    operator's budget and 20 doubled it. And the knob it divided could not reach
+    the server at all -- the call sent `params=None`, this endpoint documents no
+    `$top`, and the library sends `Prefer: odata.maxpagesize` nowhere -- so it
+    was an item budget with no channel, converted into a page budget by
+    arithmetic over an unverified constant.
+
+    Driven over the **shipped** `extractors.contacts` block, so the assertion is
+    about the configuration an adopter actually gets.
+    """
+
+    @pytest.fixture()
+    def three_pages(self):
+        return GraphConfig(
+            max_retries=1,
+            backoff_base_ms=10,
+            timeout_seconds=5,
+            max_pages=3,
+            max_retry_after_seconds=300.0,
+            error_message_max_length=200,
+        )
+
+    def test_the_page_cap_is_the_configured_one(self, httpx_mock: HTTPXMock, tmp_path, three_pages, ctx):
+        """Five pages offered, `graph.max_pages: 3`, so three are walked.
+
+        Any budget derived from `max_items_per_sync: 500` and a page size of 10
+        is 50, which walks all five and captures the deltaLink -- which is what
+        this asserts is no longer true.
+        """
+        contact = {"displayName": "C", "emailAddresses": [], "businessPhones": [], "categories": []}
+        for page in range(5):
+            last = page == 4
+            httpx_mock.add_response(
+                url=re.compile(rf".*/me/contacts/delta.*page={page}.*" if page else r".*/me/contacts/delta$"),
+                json={
+                    "value": [contact | {"id": f"c{page}"}],
+                    **(
+                        {"@odata.deltaLink": "https://graph.example.invalid/delta?token=done"}
+                        if last
+                        else {"@odata.nextLink": f"https://graph.example.invalid/me/contacts/delta?page={page + 1}"}
+                    ),
+                },
+                # The pages past the cap are the point: they are offered and
+                # must not be walked.
+                is_optional=page >= 3,
+            )
+
+        client = GraphClient(three_pages, lambda: "test-token")
+        state, count = contacts.run(
+            client,
+            LocalBackend(str(tmp_path / "vault")),
+            {},
+            ContactsExtractorConfig(**SHIPPED_CONTACTS),
+            ctx,
+        )
+        client.close()
+
+        assert count == 3, "the walk must stop at graph.max_pages, not at a budget derived from a guess"
+        assert state["delta_link"] == "https://graph.example.invalid/me/contacts/delta?page=3", (
+            "an interrupted round resumes from its pending nextLink"
+        )

@@ -84,7 +84,6 @@ auth:
   client_secret: null  # Required for web mode; null for CLI device code flow
 
 service:
-  mode: "cli"
   log_level: "INFO"
 
 storage:

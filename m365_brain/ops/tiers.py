@@ -11,11 +11,12 @@ entity type, where the counterparty is read from, where the timestamp is read
 from. It is deliberately not a query language -- a fourth source that needs a
 different shape is a reason to cut the source, not to widen this.
 
-**Write-back is not implemented.** `IndexBackend` has no per-entity metadata
-write, and inventing a file-writing path here would put a second markdown
-writer in the package. `ops.tiers.write_back.enabled: true` therefore raises
-rather than being ignored: a switch an operator turned on that silently does
-nothing is worse than either answer.
+**Write-back is not implemented, and no longer configurable.** `IndexBackend`
+has no per-entity metadata write, and inventing a file-writing path here would
+put a second markdown writer in the package. `ops.tiers.write_back` used to
+declare it anyway -- one flag that raised on its only interesting value, and
+two keys below it that nothing read. `compute_tiers` returns the assignments
+and filing them is the consumer's; there is no switch to turn on.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from m365_brain.config.errors import ConfigError
 from m365_brain.config.ops import InteractionSourceConfig, TierLevelConfig, TiersConfig
 from m365_brain.index.backends.base import IndexBackend
 from m365_brain.index.query import parse_timeframe
@@ -94,12 +94,6 @@ def compute_tiers(backend: IndexBackend, config: TiersConfig, now: datetime, pag
     caller. Counterparties below every rung are absent from the result -- see
     `assign_rung`.
     """
-    if config.write_back.enabled:
-        raise ConfigError(
-            "ops.tiers.write_back.enabled is true, and this build does not write frontmatter back. "
-            "Set it to false and read the computed assignments from `ops tiers` instead."
-        )
-
     moment = _as_utc(now)
     window_start = moment - timedelta(days=config.lookback_days)
     grouped = _group_by_party(backend, config.interaction_sources, window_start, moment, page_size)

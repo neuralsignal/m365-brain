@@ -88,8 +88,6 @@ converters:
     extract_images: false
     image_format: "png"
     image_max_dimension: 0
-  slug_max_length: 80
-  hash_length: 6
 
 # ---------------------------------------------------------------------------
 # vault — every directory and filename, named here and nowhere else. Required

@@ -35,27 +35,23 @@ deterministic transforms, not policy.
 | `ops.tiers.interaction_sources[].party_from` | where the counterparty is read from: one observation category, or one relation type |
 | `ops.tiers.interaction_sources[].timestamp` | the observation category carrying the timestamp |
 | `ops.tiers.interaction_sources[].exclude_future` | whether to drop timestamps in the future |
-| `ops.tiers.write_back.enabled` | **must be `false` today.** `true` raises rather than doing nothing — see below |
-| `ops.tiers.write_back.fields` | computed value name → the frontmatter key it would be written to |
-| `ops.tiers.write_back.create_missing` | whether a missing key would be added or skipped |
 
 **The ladder is ordered and any length.** Two rungs, three, five — the code
 walks it and takes the first rung whose floor is met. Nothing knows which rung
 is last; the terminal one says `stale_after_days: null` and that is the whole
 of the "never stale" rule.
 
-`write_back.fields` is a mapping rather than a list so that a collection whose
-notes call it `contact_tier` does not have to call it `tier`.
-
 `interaction_sources` is one fixed join shape with three declarative fields. If
 a source you need does not fit it, the right answer is to leave that source out
 rather than to widen this into a query language.
 
-**Write-back is not implemented, and says so.** The index has no per-entity
-metadata write, so writing tiers into frontmatter would mean a second markdown
-writer inside the package. `enabled: true` therefore raises naming the key. A
-switch an operator turned on that silently does nothing is the worse of the two
-failures, so the verb prints the assignments and refuses to pretend.
+**Write-back is not implemented, and is not configurable.** The index has no
+per-entity metadata write, so writing tiers into frontmatter would mean a second
+markdown writer inside the package. `ops.tiers.write_back` used to declare it
+anyway — one flag that raised on its only interesting value, and two keys below
+it that nothing read. A schema is the one place documentation must not live,
+because a reader cannot tell it from a switch. The subtree is gone; the verb
+prints the assignments and filing them is the caller's.
 
 Rate conversion uses a fixed 30-day month, taken from the same timeframe parser
 the index uses so there is one definition of "a month" in the package. It is a

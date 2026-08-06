@@ -63,11 +63,27 @@ class TestResolveFolderId:
         client.get.assert_not_called()
 
 
+def _paging_client(pages: dict[str, list[dict]], max_pages: int = 10) -> MagicMock:
+    """A client whose `get_pages` serves one page per requested path.
+
+    `get_pages` rather than `get`, because a single `get` is half of what
+    `folders: null` was silently losing.
+    """
+    client = MagicMock(spec=GraphClient)
+    client.max_pages = max_pages
+    client.get_pages.side_effect = lambda path, params, cap: (pages.get(path, []), False)
+    # `get` is wired to the same pages so that reverting the traversal fails on
+    # the assertion below rather than on a MagicMock -- the point of the guard
+    # is what discovery returns, not how it asks.
+    client.get.side_effect = lambda path, params: {"value": pages.get(path, [])}
+    return client
+
+
 class TestListAllFolders:
     def test_returns_only_user_folders(self) -> None:
-        client = _client(
+        client = _paging_client(
             {
-                "value": [
+                "/me/mailFolders": [
                     {"id": "id-inbox", "displayName": "Inbox", "isHidden": False},
                     {"id": "id-projects", "displayName": "Projects"},
                     {"id": "id-drafts", "displayName": "Drafts"},
@@ -80,9 +96,60 @@ class TestListAllFolders:
         )
         assert list_all_folders(client, "/me", "me") == [("Inbox", "id-inbox"), ("Projects", "id-projects")]
 
-    def test_requests_the_fields_the_filter_depends_on(self) -> None:
-        client = _client({"value": []})
+    def test_requests_the_fields_the_filter_and_the_walk_depend_on(self) -> None:
+        client = _paging_client({})
         assert list_all_folders(client, "/users/a@x.test", "a@x.test") == []
-        path, params = client.get.call_args.args
+        path, params, cap = client.get_pages.call_args.args
         assert path == "/users/a@x.test/mailFolders"
-        assert params["$select"] == "id,displayName,isHidden"
+        assert params["$select"] == "id,displayName,isHidden,childFolderCount"
+        assert cap == client.max_pages, "the collection is paged under graph.max_pages"
+
+
+class TestAutoDiscoveryReachesEveryVisibleFolder:
+    """`folders: null` is documented as "all visible folders" and returned two thirds of nothing.
+
+    `GET /mailFolders` returns only the root's children -- Microsoft's reference
+    says so outright -- and this call was a bare `client.get` with a literal
+    `$top=100` and no `nextLink` follow. So anything an operator filed one level
+    down was never synced, never indexed, never triaged, and a mailbox with more
+    than a hundred folders lost the tail. Neither loss said anything: the round
+    completed and reported the folders it did find.
+    """
+
+    def test_a_nested_folder_is_discovered(self) -> None:
+        client = _paging_client(
+            {
+                "/me/mailFolders": [
+                    {"id": "id-inbox", "displayName": "Inbox", "isHidden": False, "childFolderCount": 2},
+                ],
+                "/me/mailFolders/id-inbox/childFolders": [
+                    {"id": "id-2026", "displayName": "2026", "isHidden": False, "childFolderCount": 1},
+                    {"id": "id-2025", "displayName": "2025", "isHidden": False, "childFolderCount": 0},
+                ],
+                "/me/mailFolders/id-2026/childFolders": [
+                    {"id": "id-q1", "displayName": "Q1", "isHidden": False, "childFolderCount": 0},
+                ],
+            }
+        )
+
+        assert sorted(list_all_folders(client, "/me", "me")) == [
+            ("2025", "id-2025"),
+            ("2026", "id-2026"),
+            ("Inbox", "id-inbox"),
+            ("Q1", "id-q1"),
+        ]
+
+    def test_a_skipped_folder_is_not_descended_into(self) -> None:
+        """The children of `Deleted Items` are deleted items."""
+        client = _paging_client(
+            {
+                "/me/mailFolders": [
+                    {"id": "id-bin", "displayName": "Deleted Items", "isHidden": False, "childFolderCount": 3},
+                ],
+                "/me/mailFolders/id-bin/childFolders": [
+                    {"id": "id-old", "displayName": "Old", "isHidden": False, "childFolderCount": 0},
+                ],
+            }
+        )
+
+        assert list_all_folders(client, "/me", "me") == []

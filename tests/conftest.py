@@ -225,7 +225,6 @@ def full_config(tmp_path):
             client_secret=None,
         ),
         service=ServiceConfig(
-            mode="cli",
             log_level="DEBUG",
             json_logs=False,
             continuous_poll_seconds=30,
@@ -300,7 +299,6 @@ def full_config(tmp_path):
             contacts=ContactsExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=1440,
-                max_items_per_sync=500,
                 include_contact_folders=False,
             ),
             directory=DirectoryExtractorConfig(
@@ -316,8 +314,6 @@ def full_config(tmp_path):
             extraction=ExtractionConfig(
                 timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500, isolation="thread"
             ),
-            slug_max_length=80,
-            hash_length=6,
         ),
         web=None,
         worker=WorkerConfig(max_concurrent_jobs=2, poll_interval_seconds=5),
@@ -330,12 +326,8 @@ def web_config(tmp_path):
 
     fernet_key = Fernet.generate_key().decode()
     return WebConfig(
-        host="127.0.0.1",
-        port=8000,
-        secret_key="test-secret-key-for-sessions",
         fernet_key=fernet_key,
         db_path=str(tmp_path / "web.db"),
-        session_timeout_minutes=60,
         db_url="sqlite://",
         admin_emails=["admin@example.com"],
     )
@@ -353,7 +345,6 @@ def full_web_config(tmp_path, web_config):
             client_secret="test-client-secret",
         ),
         service=ServiceConfig(
-            mode="web",
             log_level="DEBUG",
             json_logs=False,
             continuous_poll_seconds=30,
@@ -426,7 +417,6 @@ def full_web_config(tmp_path, web_config):
             contacts=ContactsExtractorConfig(
                 enabled=False,
                 poll_interval_minutes=1440,
-                max_items_per_sync=500,
                 include_contact_folders=False,
             ),
             directory=DirectoryExtractorConfig(
@@ -442,8 +432,6 @@ def full_web_config(tmp_path, web_config):
             extraction=ExtractionConfig(
                 timeout_seconds=30, max_file_size_mb=100, xlsx_max_rows_per_sheet=500, isolation="thread"
             ),
-            slug_max_length=80,
-            hash_length=6,
         ),
         web=web_config,
         worker=WorkerConfig(max_concurrent_jobs=2, poll_interval_seconds=5),

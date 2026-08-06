@@ -19,13 +19,11 @@ from pydantic import ValidationError
 
 from m365_brain.commands.ops import _fields, triage_command
 from m365_brain.config import (
-    ConfigError,
     InteractionSourceConfig,
     LinkResolutionConfig,
     PartySelector,
     TierLevelConfig,
     TiersConfig,
-    TierWriteBackConfig,
     TimestampSelector,
     TriageConfig,
     TriageFieldsConfig,
@@ -124,7 +122,6 @@ def tiers_config(rungs: list[TierLevelConfig], sources: list[InteractionSourceCo
         lookback_days=lookback_days,
         ladder=rungs,
         interaction_sources=sources,
-        write_back=TierWriteBackConfig(enabled=False, fields={}, create_missing=False),
     )
 
 
@@ -454,15 +451,16 @@ class TestComputeTiers:
         config = tiers_config(ladder(("rest", 0.0, None)), [source], lookback_days=90)
         assert [a.party for a in compute_tiers(corpus, config, NOW, PAGE_SIZE)] == ["Anna Meier"]
 
-    def test_write_back_is_refused_rather_than_ignored(self, backend):
-        config = TiersConfig(
-            lookback_days=90,
-            ladder=ladder(("rest", 0.0, None)),
-            interaction_sources=[EMAIL_SOURCE],
-            write_back=TierWriteBackConfig(enabled=True, fields={"tier": "tier"}, create_missing=False),
-        )
-        with pytest.raises(ConfigError, match="write_back"):
-            compute_tiers(backend, config, NOW, PAGE_SIZE)
+    def test_write_back_is_not_a_key_an_operator_can_reach_for(self, backend):
+        """The subtree is gone, so `extra="forbid"` names it instead of a flag
+        that raised on its only interesting value."""
+        with pytest.raises(ValidationError, match="write_back"):
+            TiersConfig(
+                lookback_days=90,
+                ladder=ladder(("rest", 0.0, None)),
+                interaction_sources=[EMAIL_SOURCE],
+                write_back={"enabled": True},
+            )
 
     def test_a_non_iso_timestamp_names_the_entity_it_came_from(self, backend):
         corpus = loaded(

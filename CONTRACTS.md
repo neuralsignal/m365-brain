@@ -173,8 +173,9 @@ and the CLI's `emit` applies it to everything it prints. See the output contract
 
 **Present.** UTF-8 markdown with a YAML frontmatter block. Frontmatter fields are per entity type
 (email, event, chat message, channel message, file, contact, directory user). Filenames are
-slugged and hash-suffixed with lengths taken from `converters.slug_max_length` and
-`converters.hash_length`. Attachments and converted derivatives are written beside the message
+slugged and hash-suffixed at a fixed 80 characters and 6 hex digits. Those were once
+`converters.slug_max_length` / `.hash_length`; the keys were declared, required, and read by
+nothing — all fifteen call sites passed the literals — so they are gone. Attachments and converted derivatives are written beside the message
 that carries them.
 
 Downstream consumers may rely on: the file being valid UTF-8 markdown; the frontmatter parsing as
@@ -387,7 +388,7 @@ the root they hang off, so nothing is missing.
 | `teams post` | `--channel-url` · `--body-file` · `--created-by` · `--json` | the intent file written; sends nothing | 0 / 3 |
 | `vault path AREA` | `--extractor` · `--outbox` · `--json` | one path | 0 / 3 |
 | `ops resolve-links` | `--json` | unresolved links and their candidates | 0 / 3 |
-| `ops tiers` | `--json` | per-counterparty tier and staleness; reports only, `write_back.enabled: true` raises | 0 / 3 |
+| `ops tiers` | `--json` | per-counterparty tier and staleness; reports only, there is no write-back to configure | 0 / 3 |
 | `ops triage` | `--timeframe` · seven optional `--*-category` overrides of `ops.triage.fields` · `--json` | messages awaiting a reply | 0 / 3 |
 | `worker` | — | multi-user per-`(user, extractor)` job loop (requires the `web` section) | 0 / 1 / 3 |
 

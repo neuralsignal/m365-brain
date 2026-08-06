@@ -89,25 +89,18 @@ class InteractionSourceConfig(BaseModel):
     exclude_future: bool
 
 
-class TierWriteBackConfig(BaseModel):
-    model_config = SECTION_MODEL_CONFIG
-    enabled: bool
-    fields: dict[str, str]
-    """Computed value name -> frontmatter key it is written to.
-
-    A mapping rather than a list, so an operator whose notes call it
-    `contact_tier` does not have to call it `tier`.
-    """
-
-    create_missing: bool
-
-
 class TiersConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     lookback_days: int
     ladder: list[TierLevelConfig]
     interaction_sources: list[InteractionSourceConfig]
-    write_back: TierWriteBackConfig
+    """No `write_back` subtree. It described a capability this package does not
+    have: `fields` and `create_missing` were read by nothing, and `enabled`
+    raised when set to its only other value. Four keys that could only be
+    spelled one way are documentation wearing a config schema -- and a schema
+    is the one place documentation must not live, because a reader cannot tell
+    it from a switch. `ops tiers` prints the assignments; filing them is the
+    consumer's."""
 
     @model_validator(mode="after")
     def _ladder_is_named_and_unique(self) -> TiersConfig:

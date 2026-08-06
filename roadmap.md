@@ -181,7 +181,8 @@ Harden for multi-user production use.
 - New `AuditEvent` SQLModel table: `user_id, action, details_json, timestamp`
 
 **6d. Session timeout enforcement** (1 hour)
-- `web.session_timeout_minutes` already in config but not enforced in Reflex state
+- `web.session_timeout_minutes` was in config and enforced nowhere, so it was removed —
+  a required key nobody reads is not a head start. Re-declare it when the expiry check exists
 - Add expiry check in `AuthState.on_load()`
 
 ### Phase 5E: Azure Deployment -- DONE (dev), PENDING (prod)
