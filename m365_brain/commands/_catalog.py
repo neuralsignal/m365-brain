@@ -21,7 +21,7 @@ from pathlib import Path
 
 import click
 
-from m365_brain.commands._context import emit, open_workspace, require_config
+from m365_brain.commands._context import NotFound, emit, open_workspace, require_config
 from m365_brain.config import ConfigError, StorageConfig, require_section
 from m365_brain.config.vault import VaultConfig
 from m365_brain.index.catalog_extract import CatalogConversionError, converted_output_path, extract_pending
@@ -117,7 +117,7 @@ def resolve(ctx: click.Context, query: str, as_json: bool) -> None:
     with open_workspace(require_config(ctx)) as workspace:
         entries = workspace.catalog().search(_query(None, None, None, None, query, RESOLVE_SAMPLE))
     if not entries:
-        raise ConfigError(f"no catalogued file matches {query!r}")
+        raise NotFound(f"no catalogued file matches {query!r}")
     exact = [entry for entry in entries if entry.file_name == query]
     if len(exact) == 1:
         # An exact filename is not ambiguous just because it is also a

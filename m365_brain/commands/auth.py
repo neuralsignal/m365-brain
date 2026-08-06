@@ -9,14 +9,38 @@ from m365_brain.config import AuthProfileConfig, ConfigError
 from m365_brain.m365.auth.profiles import AuthProfiles, ProfileStatus
 
 
+def _uses_the_bare_section(config) -> bool:
+    """True when some consumer resolves its app from `auth:` rather than a name.
+
+    `auth_profile: null` is the documented way to say "use the `auth:` section
+    itself", so the bare section is live whenever any consumer leaves it unset.
+    """
+    if config.extractors.auth_profile is None:
+        return True
+    outboxes = getattr(config, "outboxes", None)
+    definitions = getattr(outboxes, "definitions", None) or {}
+    return any(getattr(each, "auth_profile", None) is None for each in definitions.values())
+
+
 def _profiles(config) -> AuthProfiles:
-    """Every named profile, plus the `auth:` section itself under `default`.
+    """Every named profile, plus the `auth:` section under `default` when it is used.
 
     The single-app deployment names no profile at all, and `auth status` still
-    has to have something to report on it.
+    has to have something to report on it -- but it was reported
+    *unconditionally*, which made the aggregate verdict wrong for everyone
+    else. A deployment that names its profiles never authenticates the bare
+    section, so its cache never exists, so the synthesised `default` is
+    permanently `never_authenticated` -- and `status` exits 4 if **any** profile
+    is unauthenticated. The shipped template names `mail`/`files`/`chat` and
+    uses `auth:` for nothing, so the health verb failed forever on a healthy
+    install and advised `auth login default` for a profile the template never
+    mentions.
+
+    Now it appears only when something actually resolves through it.
     """
     named = dict(config.auth.profiles or {})
-    named.setdefault("default", AuthProfileConfig(**config.auth.model_dump(exclude={"profiles"})))
+    if not named or _uses_the_bare_section(config):
+        named.setdefault("default", AuthProfileConfig(**config.auth.model_dump(exclude={"profiles"})))
     return AuthProfiles(named)
 
 

@@ -17,7 +17,14 @@ from click.testing import CliRunner
 from pytest_httpx import HTTPXMock
 
 from m365_brain.cli import main
-from m365_brain.commands._context import EXIT_AUTH, EXIT_CONFIG, EXIT_FAILURE, EXIT_OK, EXIT_USAGE
+from m365_brain.commands._context import (
+    EXIT_AUTH,
+    EXIT_CONFIG,
+    EXIT_FAILURE,
+    EXIT_NOT_FOUND,
+    EXIT_OK,
+    EXIT_USAGE,
+)
 from m365_brain.commands.teams import parse_channel_url
 from m365_brain.config import ConfigError
 from m365_brain.logging_config import _stderr_logger
@@ -167,9 +174,15 @@ class TestExitCodes:
     def test_an_unknown_vault_area_is_two(self, runner, config_file):
         assert _run(runner, config_file, "vault", "path", "nowhere").exit_code == EXIT_USAGE
 
-    def test_an_inbox_path_without_an_extractor_is_three(self, runner, config_file):
+    def test_an_inbox_path_without_an_extractor_is_two(self, runner, config_file):
+        """A missing companion flag is a command-line mistake, not a bad config.
+
+        `index context` already exits 2 for the same class (give ENTITY or
+        --permalink, not neither). This used to exit 3, so one command answered
+        two variants of "you typed it wrong" with two different codes.
+        """
         result = _run(runner, config_file, "vault", "path", "inbox")
-        assert result.exit_code == EXIT_CONFIG
+        assert result.exit_code == EXIT_USAGE
         assert "needs --extractor" in result.output
 
     def test_an_unauthenticated_profile_is_four(self, runner, config_file):
@@ -360,9 +373,10 @@ class TestIndexVerbs:
         assert _run(runner, config_file, "index", "context").exit_code == EXIT_USAGE
         assert _run(runner, config_file, "index", "context", "X", "--permalink", "y").exit_code == EXIT_USAGE
 
-    def test_context_on_a_missing_entity_is_three(self, runner, config_file):
+    def test_context_on_a_missing_entity_is_not_found(self, runner, config_file):
+        """A query matching nothing is a fact about the data, not a broken config."""
         _run(runner, config_file, "index", "sync")
-        assert _run(runner, config_file, "index", "context", "nothing-here").exit_code == EXIT_CONFIG
+        assert _run(runner, config_file, "index", "context", "nothing-here").exit_code == EXIT_NOT_FOUND
 
     def test_recent_json_parses(self, runner, config_file, tmp_path):
         (tmp_path / "vault" / "note.md").write_text("---\ntitle: Fresh\n---\nbody\n", encoding="utf-8")
@@ -379,9 +393,9 @@ class TestIndexVerbs:
         _run(runner, config_file, "index", "sync")
         assert json.loads(_run(runner, config_file, "index", "catalog", "list", "--json").stdout)["entries"] == []
 
-    def test_catalog_resolve_on_nothing_is_three(self, runner, config_file):
+    def test_catalog_resolve_on_nothing_is_not_found(self, runner, config_file):
         _run(runner, config_file, "index", "sync")
-        assert _run(runner, config_file, "index", "catalog", "resolve", "x").exit_code == EXIT_CONFIG
+        assert _run(runner, config_file, "index", "catalog", "resolve", "x").exit_code == EXIT_NOT_FOUND
 
 
 class TestOutboxVerbs:
@@ -528,3 +542,48 @@ class TestLogsNeverReachStdout:
         result = runner.invoke(main, ["--config", str(config_file), "index", "paths", "--json"])
         assert result.exit_code == EXIT_OK, result.output
         json.loads(result.stdout)  # raises if anything got in front of the payload
+
+
+class TestAuthStatusReportsOnlyProfilesInUse:
+    """A deployment that names its profiles never authenticates the bare section.
+
+    `_profiles` synthesised `default` from `auth:` unconditionally, and `status`
+    exits 4 if *any* profile is unauthenticated -- so a config that resolves
+    everything through named profiles had a permanently `never_authenticated`
+    phantom and a health verb that failed forever. The shipped template is
+    exactly such a config, so every new adopter met it on day one.
+    """
+
+    def _named_profiles(self, runtime_config, tmp_path):
+        from m365_brain.config import AuthProfileConfig
+
+        profile = AuthProfileConfig(
+            client_id="named-client-id",
+            tenant_id="test-tenant-id",
+            scopes=["Mail.Read"],
+            token_cache_path=str(tmp_path / "named_cache.json"),
+            client_secret=None,
+        )
+        auth = runtime_config.auth.model_copy(update={"profiles": {"mail": profile}})
+        extractors = runtime_config.extractors.model_copy(update={"auth_profile": "mail"})
+        return runtime_config.model_copy(update={"auth": auth, "extractors": extractors})
+
+    def _write(self, config, tmp_path):
+        path = tmp_path / "named.yaml"
+        path.write_text(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=True), encoding="utf-8")
+        return path
+
+    def test_default_is_absent_when_nothing_resolves_through_the_bare_section(self, runner, runtime_config, tmp_path):
+        path = self._write(self._named_profiles(runtime_config, tmp_path), tmp_path)
+        result = runner.invoke(main, ["--config", str(path), "auth", "status", "--json"])
+        names = [entry["name"] for entry in json.loads(result.stdout)["profiles"]]
+        assert names == ["mail"], names
+
+    def test_default_survives_when_a_consumer_leaves_auth_profile_unset(self, runner, runtime_config, tmp_path):
+        """`auth_profile: null` means "use the auth: section", so it must still report."""
+        config = self._named_profiles(runtime_config, tmp_path)
+        config = config.model_copy(update={"extractors": config.extractors.model_copy(update={"auth_profile": None})})
+        path = self._write(config, tmp_path)
+        result = runner.invoke(main, ["--config", str(path), "auth", "status", "--json"])
+        names = [entry["name"] for entry in json.loads(result.stdout)["profiles"]]
+        assert "default" in names, names

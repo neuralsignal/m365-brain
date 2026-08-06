@@ -17,10 +17,19 @@ which both are true.
 | 2 | usage -- Click's own                                                     |
 | 3 | configuration invalid or unresolvable                                    |
 | 4 | authentication required or expired beyond refresh                        |
+| 5 | the corpus holds nothing matching the query                              |
 
 3 and 4 exist so a supervisor can tell "you typed it wrong" and "go re-login"
 apart from "Graph is down" without scraping a message. They are mapped in one
 place -- the group's `invoke` -- rather than in fifteen `try` blocks.
+
+5 exists because 3 was answering two questions. `index context nope` and
+`catalog resolve nope` raised `ConfigError`, so a query that matched nothing
+reported "your configuration is invalid" and sent the reader to edit a file
+that was fine -- while `catalog search nope` exited 0 for the same situation.
+Only the verbs promising exactly one answer raise it; the list-shaped verbs
+still exit 0 with an empty result, because "no rows" is an ordinary answer to
+a search.
 """
 
 from __future__ import annotations
@@ -47,6 +56,8 @@ from m365_brain.commands._context import (
     EXIT_AUTH,
     EXIT_CONFIG,
     EXIT_FAILURE,
+    EXIT_NOT_FOUND,
+    NotFound,
     build_runtime,
     comma_list,
     emit,
@@ -69,11 +80,20 @@ SECONDS_PER_MINUTE = 60
 
 
 class ExitCodeGroup(click.Group):
-    """Maps the two failure families onto their exit codes, once."""
+    """Maps the failure families onto their exit codes, once.
+
+    `NotFound` is separate from `ConfigError` because they are separate facts.
+    Routing both through one class made `index context nope` exit 3 -- "your
+    configuration is invalid" -- when the config was fine and the corpus simply
+    had no match, while `catalog search nope` exited 0 for the same situation.
+    """
 
     def invoke(self, ctx: click.Context) -> object:
         try:
             return super().invoke(ctx)
+        except NotFound as exc:
+            click.echo(f"not found: {exc}", err=True)
+            raise SystemExit(EXIT_NOT_FOUND) from exc
         except (ConfigError, HookResolutionError, VaultPathError) as exc:
             click.echo(f"config error: {exc}", err=True)
             raise SystemExit(EXIT_CONFIG) from exc

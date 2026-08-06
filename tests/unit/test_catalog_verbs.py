@@ -27,7 +27,7 @@ import yaml
 from click.testing import CliRunner
 
 from m365_brain.cli import main
-from m365_brain.commands._context import EXIT_CONFIG, EXIT_OK, EXIT_USAGE
+from m365_brain.commands._context import EXIT_CONFIG, EXIT_NOT_FOUND, EXIT_OK, EXIT_USAGE
 from m365_brain.index.backends import create_index_backend
 from m365_brain.index.catalog import FileCatalog
 from m365_brain.model import CatalogEntry
@@ -168,8 +168,11 @@ class TestResolve:
         assert "matches 2 files" in result.output
         assert f"{ATTACHMENTS}/annual_report.pdf" in result.output
 
-    def test_no_match_is_an_error(self, runner, populated):
-        assert _run(runner, populated, "index", "catalog", "resolve", "nothing-like-this").exit_code == EXIT_CONFIG
+    def test_no_match_is_not_found_not_a_config_error(self, runner, populated):
+        """`resolve` promises exactly one answer, so no match is still an error --
+        but exit 5, not the 3 that tells the reader to go and fix their config."""
+        result = _run(runner, populated, "index", "catalog", "resolve", "nothing-like-this")
+        assert result.exit_code == EXIT_NOT_FOUND
 
 
 class TestExtract:

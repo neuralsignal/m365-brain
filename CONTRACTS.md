@@ -396,10 +396,22 @@ file-mutation operation to expose, and a CLI verb is not the place to invent one
 | 2 | usage error (Click's own) | fix the command line |
 | 3 | configuration invalid or unresolvable — bad YAML, a missing key, an unknown extractor / outbox / root / profile / area name, or a hook that cannot be imported | fix the config |
 | 4 | authentication required or expired beyond refresh | `auth login --profile …` |
+| 5 | the corpus holds nothing matching the query | widen the query, or sync |
 
 3 and 4 exist so a supervisor can tell "you typed it wrong" and "go re-login" apart from "Graph is
 down" without scraping a message. They are mapped in one place — the root group's `invoke` — rather
 than in fifteen `try` blocks.
+
+5 exists because 3 was answering two different questions. `index context` and `catalog resolve`
+raised `ConfigError` when nothing matched, so a query against a perfectly valid config reported
+"configuration invalid" and sent the reader to edit a file that was fine — while `catalog search`
+exited 0 for the same situation. Only the verbs that promise **exactly one** answer raise 5; the
+list-shaped verbs (`search`, `list`) still exit 0 with an empty result, because "no rows" is an
+ordinary answer to a search.
+
+A missing companion flag is a **usage** error, not a config one: `vault path inbox` without
+`--extractor` exits 2, matching `index context` given neither `ENTITY` nor `--permalink`. It used
+to exit 3, so one command answered two variants of the same mistake with two different codes.
 
 ### The change manifest
 

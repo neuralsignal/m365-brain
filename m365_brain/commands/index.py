@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import click
 
 from m365_brain.commands._catalog import catalog
-from m365_brain.commands._context import EXIT_FAILURE, emit, open_workspace, require_config
+from m365_brain.commands._context import EXIT_FAILURE, NotFound, emit, open_workspace, require_config
 from m365_brain.config import ConfigError, require_section
 from m365_brain.index.query import parse_metadata_filter
 from m365_brain.index.search import SearchFilters
@@ -138,7 +138,7 @@ def context(ctx: click.Context, entity: str | None, permalink: str | None, depth
     with open_workspace(config) as workspace:
         found = workspace.find(identifier, by_permalink=permalink is not None)
         if found is None:
-            raise ConfigError(f"no entity matches {identifier!r}")
+            raise NotFound(f"no entity matches {identifier!r}")
         observations = workspace.observations(found.entity_id)
         edges = workspace.context(found.entity_id, depth)
 

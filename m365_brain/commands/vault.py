@@ -35,11 +35,11 @@ def path(ctx: click.Context, area: str, extractor: str | None, outbox_name: str 
 
     if area == "inbox":
         if extractor is None:
-            raise ConfigError("`vault path inbox` needs --extractor: the inbox is one directory per extractor")
+            raise click.UsageError("`vault path inbox` needs --extractor: the inbox is one directory per extractor")
         relative = resolver.inbox_root(extractor)
     elif area == "outbox":
         if outbox_name is None:
-            raise ConfigError("`vault path outbox` needs --outbox: the outbox is one directory per outbox")
+            raise click.UsageError("`vault path outbox` needs --outbox: the outbox is one directory per outbox")
         _require_known_outbox(config, outbox_name)
         relative = resolver.outbox(outbox_name)
     elif area == "annotations":

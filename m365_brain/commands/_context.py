@@ -40,6 +40,22 @@ that cannot be resolved. Distinct from 1 so a supervisor can tell "you typed it
 wrong" from "Graph is down" without scraping a message."""
 EXIT_AUTH = 4
 """No usable token. The answer is `auth login`, not a retry."""
+EXIT_NOT_FOUND = 5
+"""The corpus holds nothing matching what you asked for.
+
+Distinct from 3, which says the *configuration* is wrong. A query that matches
+nothing is a fact about the data, and answering it with "your config is
+invalid" sends the reader to edit a file that is fine.
+
+Only the verbs that promise exactly one answer raise it -- `index context`,
+`catalog resolve`. The list-shaped verbs (`search`, `list`) keep returning 0
+with an empty result, because "no rows" is an ordinary answer to a search.
+"""
+
+
+class NotFound(Exception):
+    """Raised by a verb that must resolve exactly one thing and found none."""
+
 
 CONFIG_KEY = "config_path"
 
