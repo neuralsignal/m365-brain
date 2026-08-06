@@ -72,6 +72,11 @@ looks narrower than it is.
 
 ## Paging
 
-`--page` is 1-based; the page size is `index.search.page_size`. `--limit` caps
-the hits printed from the page already fetched — it is a display cap, not a
-smaller query, so `--limit 5 --page 2` is the second *page*, trimmed to five.
+`--page` is 1-based and `--limit` is the size of the page it walks, defaulting
+to `index.search.page_size`. `--limit 5 --page 2` is therefore hits 6–10.
+
+`--limit` used to trim a page the configured size had already capped, so a
+limit above that size could not be reached: `--limit 100` against 23,012
+matches returned 20, with nothing in the output saying the flag had been
+ignored. The response now carries `total`, `returned` and `limit`, so a short
+answer is visible as one.

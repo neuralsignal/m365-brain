@@ -24,7 +24,7 @@ from dataclasses import dataclass, replace
 
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.base import MetadataFilter, TextQuery
-from m365_brain.index.backends.filters import evaluate, normalised_extension
+from m365_brain.index.backends.filters import catalog_matches, evaluate
 from m365_brain.model import (
     CatalogEntry,
     CatalogQuery,
@@ -190,13 +190,12 @@ class InMemoryIndexBackend:
         ]
         return SearchPage(hits=hits, total=len(matched), page=query.page, page_size=query.page_size)
 
-    def recent_entities(self, updated_since: str, limit: int) -> list[EntityRef]:
-        recent = sorted(
-            (e for e in self._entities.values() if e.updated_at >= updated_since),
-            key=lambda e: e.updated_at,
-            reverse=True,
-        )
+    def recent_entities(self, updated_since: str, entity_type: str | None, limit: int) -> list[EntityRef]:
+        recent = self._updated_since(updated_since, entity_type)
         return [self._ref(self._ids[entity.key]) for entity in recent[:limit]]
+
+    def count_recent_entities(self, updated_since: str, entity_type: str | None) -> int:
+        return len(self._updated_since(updated_since, entity_type))
 
     def hydrate(self, entity_ids: Sequence[int]) -> dict[int, EntityRef]:
         return {eid: self._ref(eid) for eid in entity_ids if eid in self._entities}
@@ -217,9 +216,10 @@ class InMemoryIndexBackend:
         return entry_id
 
     def search_catalog(self, query: CatalogQuery) -> list[CatalogEntry]:
-        rows = sorted(self._catalog.values(), key=lambda e: e.modified_at, reverse=True)
-        matched = [row for row in rows if self._catalog_matches(row, query)]
-        return matched[: query.limit]
+        return self._matching(query)[: query.limit]
+
+    def count_catalog(self, query: CatalogQuery) -> int:
+        return len(self._matching(query))
 
     def get_catalog_entry(self, original_path: str) -> CatalogEntry | None:
         return self._catalog.get(original_path)
@@ -264,6 +264,19 @@ class InMemoryIndexBackend:
                 return self._ref(entity_id)
         return None
 
+    def _updated_since(self, updated_since: str, entity_type: str | None) -> list[Entity]:
+        """Newest first. The type filter applies here, before any limit does."""
+        rows = [
+            entity
+            for entity in self._entities.values()
+            if entity.updated_at >= updated_since and (entity_type is None or entity.entity_type == entity_type)
+        ]
+        return sorted(rows, key=lambda entity: entity.updated_at, reverse=True)
+
+    def _matching(self, query: CatalogQuery) -> list[CatalogEntry]:
+        rows = sorted(self._catalog.values(), key=lambda e: e.modified_at, reverse=True)
+        return [row for row in rows if catalog_matches(row, query)]
+
     def _matches(self, entity_id: int, row: tuple[str, str, str], query: TextQuery) -> bool:
         entity = self._entities[entity_id]
         if query.fts is not None:
@@ -284,16 +297,3 @@ class InMemoryIndexBackend:
                 return False
             value = value.get(part)
         return evaluate(value, metadata_filter)
-
-    @staticmethod
-    def _catalog_matches(row: CatalogEntry, query: CatalogQuery) -> bool:
-        # Case-folded on both `extension` and `name_contains`, to give the same
-        # answers SQLite's `LIKE` does. It used to give different ones.
-        extension = None if query.extension is None else normalised_extension(query.extension)
-        return not (
-            (extension is not None and row.extension != extension)
-            or (query.extractor is not None and row.extractor != query.extractor)
-            or (query.status is not None and row.conversion_status != query.status)
-            or (query.modified_after is not None and row.modified_at < query.modified_after)
-            or (query.name_contains is not None and query.name_contains.lower() not in row.file_name.lower())
-        )

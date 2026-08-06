@@ -353,6 +353,15 @@ right.
 verb takes `--json`. A caller therefore never parses human text and never has to separate log noise
 from data.
 
+**A capped result says so.** Every verb taking a `--limit` — `index search`, `index recent`,
+`index catalog list`, `index catalog search`, `index catalog extract` — emits `total`, `returned`
+and `limit` beside its rows, and appends a `-- truncated: M of N` line to its human output when the
+two differ. `returned < total` is the whole test, and it is one shape across all five. `--limit`
+defaults to `index.search.page_size` everywhere rather than to a literal in a decorator, and
+`--help` names that key. `catalog list --json` used to return exactly 100 of 900 rows in a bare
+`{"entries": [...]}`, which is the `$top` defect again: a call that succeeds while returning a
+fraction.
+
 **Every path printed is fully resolved** — an absolute filesystem path under `storage.backend:
 local`, a blob URL under `azure_blob`. It needs no base the caller has to know, so what one verb
 prints the next verb takes and `pwd` decides nothing. The join happens once, in `emit`, which is
@@ -372,12 +381,12 @@ the root they hang off, so nothing is missing.
 | `config show` | `--json` | the effective merged config, secrets redacted | 0 / 3 |
 | `index sync` | `--root NAME` (repeatable) | indexed / skipped / pruned / errors / elapsed | 0 / 1 / 3 |
 | `index rebuild` | `--root NAME` · `--yes` (required) | same counters | 0 / 1 / 3 |
-| `index search` | `QUERY` · `--search-type text\|vector\|hybrid` · `--type` · `--tag` · `--field` · `--limit` · `--page` · `--json` | ranked results | 0 / 3 |
+| `index search` | `QUERY` · `--search-type text\|vector\|hybrid` · `--type` · `--tag` · `--field` · `--limit` (page size) · `--page` · `--json` | ranked results, with `total` / `returned` / `limit` | 0 / 3 |
 | `index context` | `ENTITY` \| `--permalink` · `--depth` · `--format text\|json` | entity, observations, edges | 0 / 3 |
-| `index recent` | `--timeframe` · `--type` · `--limit` · `--json` | recently changed entities | 0 / 3 |
+| `index recent` | `--timeframe` · `--type` (narrows the query, not the page) · `--limit` · `--json` | recently changed entities, with `total` / `returned` / `limit` | 0 / 3 |
 | `index paths` | `--json` | configured roots, database, and each extractor's inbox | 0 / 3 |
-| `index catalog list` | `--ext` · `--extractor` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows or per-state counts | 0 / 3 |
-| `index catalog search` | `QUERY` · `--status` · `--limit` · `--json` | matching rows | 0 / 3 |
+| `index catalog list` | `--ext` · `--extractor` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows with `total` / `returned` / `limit`, or per-state counts | 0 / 3 |
+| `index catalog search` | `QUERY` · `--status` · `--limit` · `--json` | matching rows, with `total` / `returned` / `limit` | 0 / 3 |
 | `index catalog resolve` | `QUERY` — a file name, or a path this family printed · `--json` | one source path, resolved; ambiguity is an error | 0 / 3 / 5 |
 | `index catalog read` | `PATH` — absolute, or relative to the vault root; never to the CWD | the converted markdown on stdout; writes nothing | 0 / 2 / 3 |
 | `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, authority, status | 0 / 3 |

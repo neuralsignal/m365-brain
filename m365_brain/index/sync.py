@@ -66,7 +66,16 @@ def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -
                     continue
             to_parse.append((root, path, key))
 
-    pruned = backend.delete_entities(sorted(set(indexed_before) - found_keys))
+    # Prune only within the roots this run actually walked. `--root` filters
+    # `config.roots`, so a scoped run scans one root while `indexed_before`
+    # still holds every key in the index -- and the set difference then deletes
+    # every entity of every root that was NOT selected. `index rebuild --root
+    # m365` silently removed 818 knowledge-root entities that way: an
+    # unscoped prune wearing a scoped flag, reported only as a `pruned=` count
+    # in a line that otherwise said the run succeeded.
+    walked = tuple(f"{root.name}/" for root in config.roots)
+    prunable = {key for key in indexed_before if key.startswith(walked)}
+    pruned = backend.delete_entities(sorted(prunable - found_keys))
     owners = backend.permalink_owners()
 
     indexed = 0

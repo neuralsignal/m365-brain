@@ -61,6 +61,26 @@ def upsert_catalog_entry(conn: sqlite3.Connection, entry: CatalogEntry) -> int:
 
 
 def search_catalog(conn: sqlite3.Connection, query: CatalogQuery) -> list[CatalogEntry]:
+    where, params = _where(query)
+    rows = conn.execute(
+        f"SELECT {COLUMNS} FROM file_catalog {where} ORDER BY modified_at DESC LIMIT ?",
+        (*params, query.limit),
+    ).fetchall()
+    return [_entry(row) for row in rows]
+
+
+def count_catalog(conn: sqlite3.Connection, query: CatalogQuery) -> int:
+    """The same filters, uncapped. `query.limit` is deliberately not applied."""
+    where, params = _where(query)
+    return int(conn.execute(f"SELECT COUNT(*) AS n FROM file_catalog {where}", tuple(params)).fetchone()["n"])
+
+
+def _where(query: CatalogQuery) -> tuple[str, list[object]]:
+    """One rendering of `CatalogQuery`, shared by the rows and their count.
+
+    Two renderings would be two chances to disagree, and a count computed from
+    a different filter than the rows is worse than no count at all.
+    """
     clauses: list[str] = []
     params: list[object] = []
 
@@ -80,12 +100,7 @@ def search_catalog(conn: sqlite3.Connection, query: CatalogQuery) -> list[Catalo
         clauses.append("modified_at >= ?")
         params.append(query.modified_after)
 
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows = conn.execute(
-        f"SELECT {COLUMNS} FROM file_catalog {where} ORDER BY modified_at DESC LIMIT ?",
-        (*params, query.limit),
-    ).fetchall()
-    return [_entry(row) for row in rows]
+    return (f"WHERE {' AND '.join(clauses)}" if clauses else "", params)
 
 
 def get_catalog_entry(conn: sqlite3.Connection, original_path: str) -> CatalogEntry | None:

@@ -39,10 +39,14 @@ Query syntax (operators, field filters, timeframes): `references/search-syntax.m
 JSON shape:
 
 ```json
-{"total": 12, "page": 1, "page_size": 20,
+{"total": 12, "returned": 5, "limit": 5, "page": 2,
  "results": [{"permalink": "...", "title": "...", "type": "...",
               "file_path": "...", "updated_at": "...", "score": 1.4, "snippet": "..."}]}
 ```
+
+`returned < total` means the answer was cut short by `limit` — raise it or ask
+for the next `--page`. Every verb taking a `--limit` carries the same three
+keys, so one check covers all of them.
 
 ## Follow relationships
 

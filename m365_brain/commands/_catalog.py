@@ -21,7 +21,7 @@ from pathlib import Path
 
 import click
 
-from m365_brain.commands._context import NotFound, emit, open_workspace, require_config
+from m365_brain.commands._context import NotFound, emit, emit_capped, open_workspace, require_config, row_limit
 from m365_brain.config import ConfigError, StorageConfig, require_section
 from m365_brain.config.vault import VaultConfig
 from m365_brain.index.catalog_extract import CatalogConversionError, converted_output_path, extract_pending
@@ -65,7 +65,7 @@ def _query(
 @click.option("--extractor", type=str, default=None, help="The extractor that registered it, e.g. email")
 @click.option("--status", type=str, default=None, help="A value from index.catalog.conversion_states")
 @click.option("--modified-after", type=str, default=None, help="ISO timestamp")
-@click.option("--limit", type=int, default=100)
+@click.option("--limit", type=int, default=None, show_default="index.search.page_size", help="How many rows to return")
 @click.option("--stats", is_flag=True, help="Print counts per conversion state instead of rows")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
@@ -75,7 +75,7 @@ def list_entries(
     extractor: str | None,
     status: str | None,
     modified_after: str | None,
-    limit: int,
+    limit: int | None,
     stats: bool,
     as_json: bool,
 ) -> None:
@@ -86,28 +86,31 @@ def list_entries(
         # they did -- which is only detectable once the table has rows.
         raise click.UsageError("--stats counts the whole catalog; it cannot be combined with a filter")
     config = require_config(ctx)
+    query = _query(extension, extractor, status, modified_after, None, row_limit(config, limit))
     with open_workspace(config) as workspace:
         store = workspace.catalog()
         if stats:
             counts = store.stats()
             emit(as_json, counts, [f"{state}\t{count}" for state, count in sorted(counts.items())])
             return
-        entries = store.search(_query(extension, extractor, status, modified_after, None, limit))
-    _emit_entries(entries, config.storage, as_json)
+        entries, total = store.search(query), store.count(query)
+    _emit_entries(entries, total, query.limit, config.storage, as_json)
 
 
 @catalog.command("search")
 @click.argument("query")
 @click.option("--status", type=str, default=None, help="A value from index.catalog.conversion_states")
-@click.option("--limit", type=int, default=100)
+@click.option("--limit", type=int, default=None, show_default="index.search.page_size", help="How many rows to return")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
-def search(ctx: click.Context, query: str, status: str | None, limit: int, as_json: bool) -> None:
+def search(ctx: click.Context, query: str, status: str | None, limit: int | None, as_json: bool) -> None:
     """Catalogued files whose name contains QUERY."""
     config = require_config(ctx)
+    catalog_query = _query(None, None, status, None, query, row_limit(config, limit))
     with open_workspace(config) as workspace:
-        entries = workspace.catalog().search(_query(None, None, status, None, query, limit))
-    _emit_entries(entries, config.storage, as_json)
+        store = workspace.catalog()
+        entries, total = store.search(catalog_query), store.count(catalog_query)
+    _emit_entries(entries, total, catalog_query.limit, config.storage, as_json)
 
 
 @catalog.command("resolve")
@@ -159,7 +162,13 @@ def _one_of(entries: list[CatalogEntry], query: str, storage: StorageConfig) -> 
 
 
 @catalog.command("extract")
-@click.option("--limit", type=int, default=100, help="How many rows this pass may convert")
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    show_default="index.search.page_size",
+    help="How many rows this pass may convert",
+)
 @click.option(
     "--retry-failed",
     is_flag=True,
@@ -167,25 +176,31 @@ def _one_of(entries: list[CatalogEntry], query: str, storage: StorageConfig) -> 
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
-def extract(ctx: click.Context, limit: int, retry_failed: bool, as_json: bool) -> None:
-    """Convert catalogued files that have not been converted yet."""
+def extract(ctx: click.Context, limit: int | None, retry_failed: bool, as_json: bool) -> None:
+    """Convert catalogued files that have not been converted yet.
+
+    `total` is what was eligible when the pass began, so `returned < total`
+    means the limit stopped it with rows still queued -- run it again.
+    """
     config = require_config(ctx)
     vault = require_section(config.vault, "vault")
     # Before anything is opened: a backend this verb cannot read from should
     # say so, not fail later inside a storage client's constructor.
     source_root = local_base_path(config.storage)
     storage = create_storage(config.storage)
+    rows = row_limit(config, limit)
     with open_workspace(config) as workspace:
         store = workspace.catalog()
         stats = extract_pending(
             store,
             workspace.config.index.catalog,
             _converter(source_root, storage, vault, config.converters.model_dump()),
-            limit,
+            rows,
             retry_failed,
         )
-    payload = {"attempted": stats.attempted, "converted": stats.converted, "failed": stats.failed}
-    emit(as_json, payload, [f"attempted={stats.attempted} converted={stats.converted} failed={stats.failed}"])
+    payload = {"converted": stats.converted, "failed": stats.failed}
+    line = f"converted={stats.converted} failed={stats.failed}"
+    emit_capped(as_json, payload, stats.attempted, stats.eligible, rows, [line])
 
 
 def _converter(
@@ -248,7 +263,7 @@ def _source_file(storage_config: StorageConfig, path: str) -> Path:
     return candidate
 
 
-def _emit_entries(entries: list[CatalogEntry], storage: StorageConfig, as_json: bool) -> None:
+def _emit_entries(entries: list[CatalogEntry], total: int, limit: int, storage: StorageConfig, as_json: bool) -> None:
     """Rows, with both printed paths resolved before either output shape sees them."""
     rows = [
         {
@@ -265,8 +280,11 @@ def _emit_entries(entries: list[CatalogEntry], storage: StorageConfig, as_json: 
         }
         for entry in entries
     ]
-    emit(
+    emit_capped(
         as_json,
         {"entries": rows},
+        len(rows),
+        total,
+        limit,
         [f"{row['conversion_status']}\t{row['extension']}\t{row['original_path']}" for row in rows],
     )

@@ -14,11 +14,17 @@ text.
 the two backends each normalised a catalog `--ext` filter their own way, one
 case-sensitively and one not, so the same query returned different rows
 depending on configuration. It was invisible while the catalog was empty.
+
+`catalog_matches` joins them as the Python reading of a whole `CatalogQuery` --
+the peer of the SQL `WHERE` clause the other backend builds. One filter has to
+mean one thing whether it is being counted or being listed, and whether the
+store is a dict or a table.
 """
 
 from __future__ import annotations
 
 from m365_brain.index.backends.base import MetadataFilter
+from m365_brain.model import CatalogEntry, CatalogQuery
 
 # op -> SQL comparison operator, for the operators that map to one.
 SQL_COMPARISON: dict[str, str] = {"eq": "=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
@@ -33,6 +39,22 @@ def normalised_extension(extension: str) -> str:
     """
     lowered = extension.lower()
     return lowered if lowered.startswith(".") else f".{lowered}"
+
+
+def catalog_matches(row: CatalogEntry, query: CatalogQuery) -> bool:
+    """True when a catalog row satisfies every set filter. `limit` is not one.
+
+    Case-folded on both `extension` and `name_contains`, to give the same
+    answers SQLite's `LIKE` does. It used to give different ones.
+    """
+    extension = None if query.extension is None else normalised_extension(query.extension)
+    return not (
+        (extension is not None and row.extension != extension)
+        or (query.extractor is not None and row.extractor != query.extractor)
+        or (query.status is not None and row.conversion_status != query.status)
+        or (query.modified_after is not None and row.modified_at < query.modified_after)
+        or (query.name_contains is not None and query.name_contains.lower() not in row.file_name.lower())
+    )
 
 
 def evaluate(value: object, metadata_filter: MetadataFilter) -> bool:

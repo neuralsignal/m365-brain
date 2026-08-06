@@ -135,12 +135,27 @@ def text_search(conn: sqlite3.Connection, query: TextQuery, config: SearchConfig
     return _page(rows, total, query)
 
 
-def recent_entities(conn: sqlite3.Connection, updated_since: str, limit: int) -> list[EntityRef]:
+def recent_entities(
+    conn: sqlite3.Connection, updated_since: str, entity_type: str | None, limit: int
+) -> list[EntityRef]:
+    where, params = _recent_where(updated_since, entity_type)
     rows = conn.execute(
-        f"SELECT {ENTITY_COLUMNS} FROM entity e WHERE e.updated_at >= ? ORDER BY e.updated_at DESC LIMIT ?",
-        (updated_since, limit),
+        f"SELECT {ENTITY_COLUMNS} FROM entity e {where} ORDER BY e.updated_at DESC LIMIT ?",
+        (*params, limit),
     ).fetchall()
     return [_ref(r) for r in rows]
+
+
+def count_recent_entities(conn: sqlite3.Connection, updated_since: str, entity_type: str | None) -> int:
+    where, params = _recent_where(updated_since, entity_type)
+    return int(conn.execute(f"SELECT COUNT(*) AS n FROM entity e {where}", tuple(params)).fetchone()["n"])
+
+
+def _recent_where(updated_since: str, entity_type: str | None) -> tuple[str, list[object]]:
+    """One filter, shared by the rows and their count."""
+    if entity_type is None:
+        return "WHERE e.updated_at >= ?", [updated_since]
+    return "WHERE e.updated_at >= ? AND e.type = ?", [updated_since, entity_type]
 
 
 def hydrate(conn: sqlite3.Connection, entity_ids: Sequence[int]) -> dict[int, EntityRef]:

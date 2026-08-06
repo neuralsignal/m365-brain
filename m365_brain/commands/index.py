@@ -11,7 +11,15 @@ from datetime import UTC, datetime
 import click
 
 from m365_brain.commands._catalog import catalog
-from m365_brain.commands._context import EXIT_FAILURE, NotFound, emit, open_workspace, require_config
+from m365_brain.commands._context import (
+    EXIT_FAILURE,
+    NotFound,
+    emit,
+    emit_capped,
+    open_workspace,
+    require_config,
+    row_limit,
+)
 from m365_brain.config import ConfigError, require_section
 from m365_brain.index.query import parse_metadata_filter
 from m365_brain.index.search import SearchFilters
@@ -74,7 +82,13 @@ def _narrow(index, names: tuple[str, ...]):
 @click.option("--type", "entity_type", type=str, default=None, help="Restrict to one entity type")
 @click.option("--tag", type=str, default=None, help="Restrict to one tag")
 @click.option("--field", "fields", multiple=True, help="Metadata filter, e.g. status=open (repeatable)")
-@click.option("--limit", type=int, default=None, help="Cap the hits printed; absent means the page size")
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    show_default="index.search.page_size",
+    help="How many hits one page holds",
+)
 @click.option("--page", type=int, default=1, help="1-based page number")
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
@@ -89,7 +103,13 @@ def search(
     page: int,
     as_json: bool,
 ) -> None:
-    """Full-text, semantic or hybrid search over the index."""
+    """Full-text, semantic or hybrid search over the index.
+
+    `--limit` is the size of the page fetched, so it can exceed
+    `index.search.page_size` -- it used to trim a page already capped by it,
+    which made `--limit 100` return 20 hits out of 23,012 with nothing saying
+    the flag had not been honoured. `--page` walks pages of that size.
+    """
     config = require_config(ctx)
     filters = SearchFilters(
         entity_type=entity_type,
@@ -97,16 +117,14 @@ def search(
         metadata=tuple(parse_metadata_filter(expression) for expression in fields),
     )
     with open_workspace(config) as workspace:
-        results = workspace.search(query, mode, filters, page)
-    _emit_page(results, limit, as_json)
+        results = workspace.search(query, mode, filters, page, row_limit(config, limit))
+    _emit_page(results, as_json)
 
 
-def _emit_page(results: SearchPage, limit: int | None, as_json: bool) -> None:
-    hits = results.hits if limit is None else results.hits[:limit]
+def _emit_page(results: SearchPage, as_json: bool) -> None:
+    hits = results.hits
     payload = {
-        "total": results.total,
         "page": results.page,
-        "page_size": results.page_size,
         "results": [
             {
                 "permalink": hit.entity.permalink,
@@ -120,7 +138,14 @@ def _emit_page(results: SearchPage, limit: int | None, as_json: bool) -> None:
             for hit in hits
         ],
     }
-    emit(as_json, payload, [f"{hit.entity.permalink}\t{hit.entity.entity_type}\t{hit.entity.title}" for hit in hits])
+    emit_capped(
+        as_json,
+        payload,
+        len(hits),
+        results.total,
+        results.page_size,
+        [f"{hit.entity.permalink}\t{hit.entity.entity_type}\t{hit.entity.title}" for hit in hits],
+    )
 
 
 @index_group.command("context")
@@ -158,23 +183,35 @@ def context(ctx: click.Context, entity: str | None, permalink: str | None, depth
 @index_group.command("recent")
 @click.option("--timeframe", type=str, default="7d", help="e.g. 7d, 2 weeks ago")
 @click.option("--type", "entity_type", type=str, default=None, help="Restrict to one entity type")
-@click.option("--limit", type=int, default=20)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    show_default="index.search.page_size",
+    help="How many entities to return",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit JSON on stdout")
 @click.pass_context
-def recent(ctx: click.Context, timeframe: str, entity_type: str | None, limit: int, as_json: bool) -> None:
-    """Entities updated within a timeframe, newest first."""
+def recent(ctx: click.Context, timeframe: str, entity_type: str | None, limit: int | None, as_json: bool) -> None:
+    """Entities updated within a timeframe, newest first.
+
+    `--type` narrows the query rather than the page: it used to filter the rows
+    *after* the limit had already chosen them, so `--type task --limit 20` gave
+    the tasks among the twenty newest entities of any kind.
+    """
     config = require_config(ctx)
+    rows = row_limit(config, limit)
     with open_workspace(config) as workspace:
-        entities = workspace.recent(timeframe, limit)
-    if entity_type is not None:
-        entities = [entity for entity in entities if entity.entity_type == entity_type]
+        entities = workspace.recent(timeframe, entity_type, rows)
+        total = workspace.recent_total(timeframe, entity_type)
     payload = {
         "entities": [
             {"permalink": e.permalink, "title": e.title, "type": e.entity_type, "updated_at": e.updated_at}
             for e in entities
         ]
     }
-    emit(as_json, payload, [f"{e.updated_at}\t{e.entity_type}\t{e.title}" for e in entities])
+    lines = [f"{e.updated_at}\t{e.entity_type}\t{e.title}" for e in entities]
+    emit_capped(as_json, payload, len(entities), total, rows, lines)
 
 
 @index_group.command("paths")

@@ -26,8 +26,12 @@ stdout, logs to stderr; pass `--json` when you intend to parse.
 files is an error naming them, because resolving to the first would be a coin
 flip. Narrow the query.
 
-`list` and `search` return `{"entries": [...]}` with `original_path`,
-`extension`, `size_bytes`, `modified_at` and `conversion_status`.
+`list` and `search` return `{"entries": [...], "total": N, "returned": M,
+"limit": L}`, each entry carrying `original_path`, `extension`, `size_bytes`,
+`modified_at` and `conversion_status`. **`returned < total` means rows were
+withheld** — raise `--limit`, which defaults to `index.search.page_size`.
+`index catalog extract` reports the same three keys against the rows it had
+left to convert.
 
 ## Read a file as markdown
 

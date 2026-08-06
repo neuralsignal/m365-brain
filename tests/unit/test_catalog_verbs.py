@@ -194,7 +194,13 @@ class TestExtract:
         result = _run(runner, populated, "index", "catalog", "extract", "--json")
 
         assert result.exit_code == EXIT_OK, result.output
-        assert json.loads(result.stdout) == {"attempted": 4, "converted": 4, "failed": 0}
+        assert json.loads(result.stdout) == {
+            "converted": 4,
+            "failed": 0,
+            "limit": 20,
+            "returned": 4,
+            "total": 4,
+        }
 
     def test_the_markdown_lands_in_the_converted_sibling(self, runner, populated, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -214,7 +220,13 @@ class TestExtract:
         _run(runner, populated, "index", "catalog", "extract")
         result = _run(runner, populated, "index", "catalog", "extract", "--json")
 
-        assert json.loads(result.stdout) == {"attempted": 0, "converted": 0, "failed": 0}
+        assert json.loads(result.stdout) == {
+            "converted": 0,
+            "failed": 0,
+            "limit": 20,
+            "returned": 0,
+            "total": 0,
+        }
 
     def test_a_failure_is_recorded_on_the_row_and_not_retried(self, runner, populated, monkeypatch):
         from m365_brain.m365.converters.document import DocumentConversionError
@@ -227,7 +239,7 @@ class TestExtract:
         second = _run(runner, populated, "index", "catalog", "extract", "--json")
 
         assert json.loads(first.stdout)["failed"] == 4
-        assert json.loads(second.stdout)["attempted"] == 0, "a failed row is terminal without --retry-failed"
+        assert json.loads(second.stdout)["returned"] == 0, "a failed row is terminal without --retry-failed"
 
         rows = json.loads(_run(runner, populated, "index", "catalog", "list", "--json").stdout)["entries"]
         assert all("encrypted" in row["error"] for row in rows)
@@ -247,7 +259,13 @@ class TestExtract:
             lambda file_path, converters_config: "# recovered",
         )
         result = _run(runner, populated, "index", "catalog", "extract", "--retry-failed", "--json")
-        assert json.loads(result.stdout) == {"attempted": 4, "converted": 4, "failed": 0}
+        assert json.loads(result.stdout) == {
+            "converted": 4,
+            "failed": 0,
+            "limit": 20,
+            "returned": 4,
+            "total": 4,
+        }
 
     def test_the_limit_caps_one_pass(self, runner, populated, monkeypatch):
         monkeypatch.setattr(
@@ -255,7 +273,9 @@ class TestExtract:
             lambda file_path, converters_config: "# converted",
         )
         result = _run(runner, populated, "index", "catalog", "extract", "--limit", "2", "--json")
-        assert json.loads(result.stdout)["attempted"] == 2
+        payload = json.loads(result.stdout)
+        assert payload["returned"] == 2
+        assert (payload["total"], payload["limit"]) == (4, 2), "the rows it did not take have to be visible"
 
     def test_a_blob_backed_vault_says_why_it_cannot(self, runner, populated, runtime_config, tmp_path):
         """`StorageBackend` can write bytes but not read them. Say so, do not guess."""

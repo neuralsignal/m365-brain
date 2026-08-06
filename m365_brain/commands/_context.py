@@ -10,6 +10,12 @@ to stdout, logs go to stderr through structlog. Every read verb takes `--json`.
 A caller therefore never parses human text and never has to separate log noise
 from data.
 
+**A capped result says it was capped.** Every verb with a `--limit` emits
+through `emit_capped`, which carries `total`, `returned` and `limit` beside the
+rows and appends a note to the human lines when the two differ. A short answer
+that reads as a complete one is the same class of defect as a log line on
+stdout: the caller is given something usable-looking that is not.
+
 **Every path printed is fully resolved.** A storage key is relative by
 contract, and `emit` is the one place all of them cross the process boundary,
 so the base is joined on here rather than at each call site -- a verb added
@@ -204,6 +210,37 @@ def emit(as_json: bool, payload: Any, lines: Sequence[str]) -> None:
         return
     for line in lines:
         click.echo(line)
+
+
+def emit_capped(as_json: bool, payload: Any, returned: int, total: int, limit: int, lines: Sequence[str]) -> None:
+    """One result whose row count a `--limit` may have cut short.
+
+    `index catalog list --json` returned exactly 100 of 900 rows inside a bare
+    `{"entries": [...]}`: no total, no echo of the cap, nothing anywhere in the
+    response saying a fraction had arrived. That is the `$top` defect in a
+    second costume -- a call that succeeds while returning part of the answer,
+    with only the caller's own suspicion to go on.
+
+    Every verb carrying a `--limit` emits through here, so `total`, `returned`
+    and `limit` are one shape across all five rather than five judgement calls.
+    The human lines gain a note **only** when rows were withheld: a footer
+    printed on every listing is noise, and noise nobody reads cannot warn.
+    """
+    note = [] if returned >= total else [f"-- truncated: {returned} of {total}, at --limit {limit}"]
+    emit(as_json, {**payload, "total": total, "returned": returned, "limit": limit}, [*lines, *note])
+
+
+def row_limit(config: Config, limit: int | None) -> int:
+    """`--limit`, or `index.search.page_size` when it was not given.
+
+    One default for every capped verb, and it is a config value rather than a
+    literal in a decorator. The five `--limit` flags used to default to `None`,
+    20, 100, 100 and 100 -- four numbers, none of them shown in `--help`, none
+    reachable from a config file.
+    """
+    if limit is not None:
+        return limit
+    return require_section(config.index, "index").search.page_size
 
 
 def comma_list(value: str | None) -> list[str] | None:

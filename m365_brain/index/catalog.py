@@ -46,6 +46,17 @@ class FileCatalog:
             self._require_known_state(query.status)
         return self._backend.search_catalog(query)
 
+    def count(self, query: CatalogQuery) -> int:
+        """How many rows match, ignoring `query.limit`.
+
+        What `search` cannot say: a listing that came back holding exactly
+        `limit` rows looks identical whether that was all of them or the first
+        hundred of nine hundred.
+        """
+        if query.status is not None:
+            self._require_known_state(query.status)
+        return self._backend.count_catalog(query)
+
     def get(self, original_path: str) -> CatalogEntry | None:
         return self._backend.get_catalog_entry(original_path)
 

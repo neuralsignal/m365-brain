@@ -94,19 +94,17 @@ class Workspace:
 
     # -- reading ----------------------------------------------------------
 
-    def search(self, text: str | None, mode: SearchMode, filters: SearchFilters, page: int) -> SearchPage:
-        """One page of results at `index.search.page_size`."""
-        return search(
-            self._index,
-            self._backend,
-            self._provider,
-            self._store,
-            text,
-            mode,
-            filters,
-            page,
-            self._index.search.page_size,
-        )
+    def search(
+        self, text: str | None, mode: SearchMode, filters: SearchFilters, page: int, page_size: int
+    ) -> SearchPage:
+        """One page of `page_size` results.
+
+        The size is the caller's, not `index.search.page_size` read in here.
+        `index search --limit` used to trim the page *after* it was fetched, so
+        a limit above the configured size silently could not be reached: asking
+        for 100 hits out of 23,012 returned 20, with nothing saying why.
+        """
+        return search(self._index, self._backend, self._provider, self._store, text, mode, filters, page, page_size)
 
     def find(self, identifier: str, by_permalink: bool) -> EntityRef | None:
         """One entity by permalink, or by title with alias and partial fallbacks."""
@@ -120,9 +118,13 @@ class Workspace:
         """Every edge within `max_depth` hops of an entity, in discovery order."""
         return traverse(self._backend, entity_id, max_depth)
 
-    def recent(self, timeframe: str, limit: int) -> list[EntityRef]:
+    def recent(self, timeframe: str, entity_type: str | None, limit: int) -> list[EntityRef]:
         """Entities updated within a timeframe such as `7d` or `last week`, newest first."""
-        return self._backend.recent_entities(updated_since(timeframe, datetime.now(UTC)), limit)
+        return self._backend.recent_entities(updated_since(timeframe, datetime.now(UTC)), entity_type, limit)
+
+    def recent_total(self, timeframe: str, entity_type: str | None) -> int:
+        """How many `recent` would return uncapped -- what makes its cap visible."""
+        return self._backend.count_recent_entities(updated_since(timeframe, datetime.now(UTC)), entity_type)
 
     def catalog(self) -> FileCatalog:
         """The file catalog, bound to the configured conversion vocabulary."""

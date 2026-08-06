@@ -131,9 +131,13 @@ class SqliteIndexBackend:
         with self.connect(readonly=True) as conn:
             return read.text_search(conn, query, self._config.search)
 
-    def recent_entities(self, updated_since: str, limit: int) -> list[EntityRef]:
+    def recent_entities(self, updated_since: str, entity_type: str | None, limit: int) -> list[EntityRef]:
         with self.connect(readonly=True) as conn:
-            return read.recent_entities(conn, updated_since, limit)
+            return read.recent_entities(conn, updated_since, entity_type, limit)
+
+    def count_recent_entities(self, updated_since: str, entity_type: str | None) -> int:
+        with self.connect(readonly=True) as conn:
+            return read.count_recent_entities(conn, updated_since, entity_type)
 
     def hydrate(self, entity_ids: Sequence[int]) -> dict[int, EntityRef]:
         with self.connect(readonly=True) as conn:
@@ -152,6 +156,10 @@ class SqliteIndexBackend:
     def search_catalog(self, query: CatalogQuery) -> list[CatalogEntry]:
         with self.connect(readonly=True) as conn:
             return catalog.search_catalog(conn, query)
+
+    def count_catalog(self, query: CatalogQuery) -> int:
+        with self.connect(readonly=True) as conn:
+            return catalog.count_catalog(conn, query)
 
     def get_catalog_entry(self, original_path: str) -> CatalogEntry | None:
         with self.connect(readonly=True) as conn:

@@ -34,8 +34,15 @@ class CatalogConversionError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ExtractStats:
-    """What one `extract` pass did. `attempted == converted + failed`."""
+    """What one `extract` pass did, against what there was to do.
 
+    `attempted == converted + failed`, and `attempted < eligible` means the
+    limit stopped the pass with work still queued. Without `eligible` a caller
+    could not tell a pass that finished the backlog from one that took the
+    first hundred rows of it -- both print the same counters.
+    """
+
+    eligible: int
     attempted: int
     converted: int
     failed: int
@@ -54,6 +61,14 @@ def pending_batch(catalog: FileCatalog, config: CatalogConfig, limit: int, retry
     return entries
 
 
+def pending_total(catalog: FileCatalog, config: CatalogConfig, retry_failed: bool) -> int:
+    """How many rows a pass would take if `limit` did not cap it."""
+    eligible = _count(catalog, config.initial_state)
+    if retry_failed:
+        eligible += _count(catalog, config.failed_state)
+    return eligible
+
+
 def extract_pending(
     catalog: FileCatalog,
     config: CatalogConfig,
@@ -64,6 +79,7 @@ def extract_pending(
     """Convert one batch, recording every outcome. Re-runnable by construction."""
     converted = 0
     failed = 0
+    eligible = pending_total(catalog, config, retry_failed)
     entries = pending_batch(catalog, config, limit, retry_failed)
     for entry in entries:
         try:
@@ -74,7 +90,7 @@ def extract_pending(
         else:
             catalog.set_status(entry.original_path, config.converted_state, output_path, None)
             converted += 1
-    return ExtractStats(attempted=len(entries), converted=converted, failed=failed)
+    return ExtractStats(eligible=eligible, attempted=len(entries), converted=converted, failed=failed)
 
 
 def converted_output_path(original_path: str, attachments_dir: str, converted_dir: str) -> str:
@@ -103,13 +119,20 @@ def converted_output_path(original_path: str, attachments_dir: str, converted_di
 
 
 def _search(catalog: FileCatalog, status: str, limit: int) -> list[CatalogEntry]:
-    return catalog.search(
-        CatalogQuery(
-            extension=None,
-            extractor=None,
-            status=status,
-            modified_after=None,
-            name_contains=None,
-            limit=limit,
-        )
+    return catalog.search(_in_state(status, limit))
+
+
+def _count(catalog: FileCatalog, status: str) -> int:
+    """`limit` is required by the query and ignored by the count."""
+    return catalog.count(_in_state(status, limit=0))
+
+
+def _in_state(status: str, limit: int) -> CatalogQuery:
+    return CatalogQuery(
+        extension=None,
+        extractor=None,
+        status=status,
+        modified_after=None,
+        name_contains=None,
+        limit=limit,
     )

@@ -128,22 +128,23 @@ def test_sync_vectors_raises_when_vectors_are_off(tmp_path, corpus_root):
 def test_search_returns_a_page(workspace, corpus_root):
     note(corpus_root, "alpha", "# Alpha\n\nrhubarb\n")
     workspace.sync(full_rebuild=False)
-    page = workspace.search("rhubarb", mode="text", filters=NO_FILTERS, page=1)
+    page = workspace.search("rhubarb", mode="text", filters=NO_FILTERS, page=1, page_size=20)
     assert [hit.entity.key for hit in page.hits] == ["corpus/alpha.md"]
 
 
 def test_search_pages_at_the_configured_size(workspace, corpus_root):
     note(corpus_root, "alpha", "# Alpha\n")
     workspace.sync(full_rebuild=False)
-    page = workspace.search(None, mode="text", filters=NO_FILTERS, page=1)
-    assert page.page_size == workspace.config.index.search.page_size
+    size = workspace.config.index.search.page_size
+    page = workspace.search(None, mode="text", filters=NO_FILTERS, page=1, page_size=size)
+    assert page.page_size == size
 
 
 def test_hybrid_search_runs_end_to_end(workspace, corpus_root):
     note(corpus_root, "alpha", "# Alpha\n\nrhubarb crumble\n")
     workspace.sync(full_rebuild=False)
     workspace.sync_vectors(full_rebuild=False)
-    assert workspace.search("rhubarb crumble", mode="hybrid", filters=NO_FILTERS, page=1).total == 1
+    assert workspace.search("rhubarb crumble", mode="hybrid", filters=NO_FILTERS, page=1, page_size=20).total == 1
 
 
 def test_find_and_observations_reach_the_graph(workspace, corpus_root):
@@ -170,12 +171,22 @@ def test_context_walks_the_graph(workspace, corpus_root):
 def test_recent_accepts_a_timeframe(workspace, corpus_root):
     note(corpus_root, "alpha", "# Alpha\n")
     workspace.sync(full_rebuild=False)
-    assert len(workspace.recent("7d", limit=10)) == 1
+    assert len(workspace.recent("7d", entity_type=None, limit=10)) == 1
+
+
+def test_recent_total_counts_past_the_limit(workspace, corpus_root):
+    """What makes `index recent`'s cap visible: the rows it did not return."""
+    for name in ("alpha", "beta", "gamma"):
+        note(corpus_root, name, f"# {name.title()}\n")
+    workspace.sync(full_rebuild=False)
+
+    assert len(workspace.recent("7d", entity_type=None, limit=1)) == 1
+    assert workspace.recent_total("7d", entity_type=None) == 3
 
 
 def test_an_unparseable_timeframe_raises(workspace):
     with pytest.raises(ValueError, match="cannot parse timeframe"):
-        workspace.recent("whenever", limit=10)
+        workspace.recent("whenever", entity_type=None, limit=10)
 
 
 def test_catalog_is_bound_to_the_configured_states(workspace):

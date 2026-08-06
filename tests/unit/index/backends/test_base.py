@@ -275,7 +275,7 @@ def test_recent_entities_are_newest_first(backend):
             an_entity(key="corpus/new.md", permalink="new", updated_at="2026-03-01T00:00:00Z"),
         ]
     )
-    recent = backend.recent_entities("2026-02-01T00:00:00Z", 10)
+    recent = backend.recent_entities("2026-02-01T00:00:00Z", None, 10)
     assert [ref.key for ref in recent] == ["corpus/new.md"]
 
 
@@ -286,7 +286,32 @@ def test_recent_entities_honours_the_limit(backend):
             an_entity(key="corpus/b.md", permalink="b", updated_at="2026-03-02T00:00:00Z"),
         ]
     )
-    assert len(backend.recent_entities("2026-01-01T00:00:00Z", 1)) == 1
+    assert len(backend.recent_entities("2026-01-01T00:00:00Z", None, 1)) == 1
+
+
+def test_recent_entities_narrow_by_type_before_the_limit(backend):
+    """`--type X --limit 1` must mean "the newest X", not "X among the newest"."""
+    backend.upsert_entities(
+        [
+            an_entity(key="corpus/n.md", permalink="n", entity_type="note", updated_at="2026-03-02T00:00:00Z"),
+            an_entity(key="corpus/t.md", permalink="t", entity_type="task", updated_at="2026-03-01T00:00:00Z"),
+        ]
+    )
+    found = backend.recent_entities("2026-01-01T00:00:00Z", "task", 1)
+    assert [ref.key for ref in found] == ["corpus/t.md"]
+
+
+def test_count_recent_entities_ignores_the_limit_and_honours_the_type(backend):
+    backend.upsert_entities(
+        [
+            an_entity(key="corpus/a.md", permalink="a", entity_type="note", updated_at="2026-03-01T00:00:00Z"),
+            an_entity(key="corpus/b.md", permalink="b", entity_type="note", updated_at="2026-03-02T00:00:00Z"),
+            an_entity(key="corpus/c.md", permalink="c", entity_type="task", updated_at="2026-03-03T00:00:00Z"),
+        ]
+    )
+    assert backend.count_recent_entities("2026-01-01T00:00:00Z", None) == 3
+    assert backend.count_recent_entities("2026-01-01T00:00:00Z", "note") == 2
+    assert backend.count_recent_entities("2026-03-03T00:00:00Z", None) == 1
 
 
 def test_hydrate_turns_ids_back_into_entities(backend):
@@ -372,6 +397,17 @@ def test_catalog_search_filters(backend):
     assert [e.file_name for e in backend.search_catalog(a_catalog_query(name_contains="deck"))] == ["deck.pptx"]
     assert len(backend.search_catalog(a_catalog_query(modified_after="2026-01-15T00:00:00Z"))) == 1
     assert len(backend.search_catalog(a_catalog_query(limit=1))) == 1
+
+
+def test_count_catalog_sees_past_the_limit(backend):
+    """The number a capped listing cannot tell you: how many there were."""
+    backend.upsert_catalog_entry(a_catalog_entry())
+    backend.upsert_catalog_entry(
+        a_catalog_entry(original_path="mail/deck.pptx", file_name="deck.pptx", extension=".pptx", extractor="mail")
+    )
+    assert len(backend.search_catalog(a_catalog_query(limit=1))) == 1
+    assert backend.count_catalog(a_catalog_query(limit=1)) == 2
+    assert backend.count_catalog(a_catalog_query(limit=1, extension=".pptx")) == 1
 
 
 def test_catalog_removal(backend):

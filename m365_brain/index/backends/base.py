@@ -115,8 +115,18 @@ class IndexBackend(Protocol):
         """One page of matches, plus the unpaginated total."""
         ...
 
-    def recent_entities(self, updated_since: str, limit: int) -> list[EntityRef]:
-        """Entities updated at or after an ISO timestamp, newest first."""
+    def recent_entities(self, updated_since: str, entity_type: str | None, limit: int) -> list[EntityRef]:
+        """Entities updated at or after an ISO timestamp, newest first.
+
+        `entity_type` narrows *before* the limit. It used to be applied by the
+        caller afterwards, which made `--type task --limit 20` mean "the tasks
+        among the twenty most recent entities of any type" while reading as
+        "the twenty most recent tasks".
+        """
+        ...
+
+    def count_recent_entities(self, updated_since: str, entity_type: str | None) -> int:
+        """How many entities `recent_entities` would return without a limit."""
         ...
 
     def hydrate(self, entity_ids: Sequence[int]) -> dict[int, EntityRef]:
@@ -135,6 +145,14 @@ class IndexBackend(Protocol):
 
     def search_catalog(self, query: CatalogQuery) -> list[CatalogEntry]:
         """Catalog rows matching every set filter, newest modification first."""
+        ...
+
+    def count_catalog(self, query: CatalogQuery) -> int:
+        """How many rows match every set filter. `query.limit` is ignored.
+
+        The limit is what this count exists to see past: a listing that returns
+        `query.limit` rows says nothing about whether that was all of them.
+        """
         ...
 
     def get_catalog_entry(self, original_path: str) -> CatalogEntry | None:

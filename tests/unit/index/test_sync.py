@@ -189,3 +189,38 @@ def test_batching_does_not_change_the_result(index_payload, corpus_root):
 def test_stats_report_elapsed_time(run, corpus_root):
     write(corpus_root, "a.md", "# A\n")
     assert run(full_rebuild=False).elapsed_seconds >= 0
+
+
+def test_a_scoped_run_does_not_prune_the_roots_it_did_not_walk(index_payload, tmp_path):
+    """`--root` filters `config.roots`; the prune must follow it.
+
+    `indexed_before` holds every key in the index, so a prune computed as
+    `indexed_before - found_keys` deletes every entity of every root the run
+    did not scan. `index rebuild --root m365` removed 818 knowledge-root
+    entities exactly this way -- an unscoped prune behind a scoped flag,
+    surfacing only as a `pruned=` count on a line that otherwise reported
+    success.
+    """
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for directory, name in ((first, "a.md"), (second, "b.md")):
+        directory.mkdir()
+        (directory / name).write_text("# doc\n", encoding="utf-8")
+
+    index_payload["backend"] = "memory"
+    index_payload["roots"] = [
+        {"name": "first", "path": str(first), "recursive": True},
+        {"name": "second", "path": str(second), "recursive": True},
+    ]
+    both = IndexConfig.model_validate(index_payload)
+    backend = create_index_backend(both)
+    backend.initialize()
+    sync_index(both, backend, full_rebuild=False)
+    assert set(backend.indexed_files()) == {"first/a.md", "second/b.md"}
+
+    # Exactly what `--root first` builds: the same config with one root.
+    scoped = both.model_copy(update={"roots": [root for root in both.roots if root.name == "first"]})
+    stats = sync_index(scoped, backend, full_rebuild=True)
+
+    assert stats.pruned == 0, "a scoped run pruned a root it never walked"
+    assert set(backend.indexed_files()) == {"first/a.md", "second/b.md"}
