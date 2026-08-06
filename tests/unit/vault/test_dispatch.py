@@ -1,8 +1,10 @@
 """The vocabulary the lifecycle and the executors share.
 
 Mostly declarations, so the tests are mostly about what must *not* drift: the
-draft-only operation set, the closed rejection-reason vocabulary, and the fact
-that a handler satisfies `OutboxHandler` without importing it.
+draft-only operation set, the closed non-dispatch-reason vocabulary, and the
+fact that a handler satisfies `OutboxHandler` without importing it. The two
+outcome vocabularies staying disjoint is guarded next to `Verdict`, in
+`tests/unit/outbox/test_reconcile.py`.
 """
 
 from __future__ import annotations
@@ -18,8 +20,8 @@ from m365_brain.vault.dispatch import (
     DispatchReceipt,
     DispatchResult,
     GraphOp,
+    NonDispatchReason,
     OutboxHandler,
-    RejectionReason,
 )
 from m365_brain.vault.intent import IntentEnvelope
 
@@ -31,10 +33,10 @@ def test_draft_only_ops_excludes_everything_that_leaves_the_mailbox():
     assert GraphOp.PUT_FILE not in DRAFT_ONLY_OPS
 
 
-def test_the_rejection_reasons_are_a_closed_set():
+def test_the_non_dispatch_reasons_are_a_closed_set():
     """An operator greps receipts by reason. Free text would make the archive
     unqueryable exactly when someone needs to ask why 40 intents failed."""
-    assert set(typing.get_args(RejectionReason)) == {
+    assert set(typing.get_args(NonDispatchReason)) == {
         "tier_blocked",
         "no_approval_recorded",
         "etag_conflict",
@@ -80,7 +82,7 @@ class TestReceipt:
 
     def test_an_unknown_reason_is_rejected(self):
         with pytest.raises(ValidationError):
-            self._receipt(outcome="rejected", reason="because")
+            self._receipt(outcome="failed", reason="because")
 
     def test_an_unknown_outcome_is_rejected(self):
         with pytest.raises(ValidationError):

@@ -44,7 +44,7 @@ def test_a_written_binary_lands_in_storage_and_in_the_catalog(storage, catalog, 
 
     assert inner.read_file(BINARY) == "%PDF-1.4 body"
     entry = catalog.get(BINARY)
-    assert (entry.file_name, entry.extension, entry.source) == ("report.pdf", ".pdf", "email")
+    assert (entry.file_name, entry.extension, entry.extractor) == ("report.pdf", ".pdf", "email")
     assert entry.size_bytes == len(b"%PDF-1.4 body")
     assert entry.conversion_status == catalog.initial_state
     assert entry.modified_at == FIXED_NOW.isoformat()
@@ -127,4 +127,4 @@ def test_the_context_manager_catalogs_and_then_closes_the_backend(inner, index_p
         entry = FileCatalog(backend, config.catalog).get(BINARY)
     finally:
         backend.close()
-    assert entry.source == "onedrive"
+    assert entry.extractor == "onedrive"

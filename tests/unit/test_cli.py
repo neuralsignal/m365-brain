@@ -399,12 +399,74 @@ class TestIndexVerbs:
         assert _run(runner, config_file, "index", "catalog", "resolve", "x").exit_code == EXIT_NOT_FOUND
 
 
+SHIPPED_TEMPLATE = yaml.safe_load(
+    (Path(__file__).resolve().parents[2] / "m365_brain" / "templates" / "m365-brain.yaml").read_text(encoding="utf-8")
+)
+"""The shipped example config, loaded rather than restated."""
+
+
 class TestOutboxVerbs:
     def test_list_without_outboxes_configured_is_three(self, runner, config_file):
         assert _run(runner, config_file, "outbox", "list").exit_code == EXIT_CONFIG
 
     def test_an_unknown_outbox_is_three(self, runner, config_file):
         assert _run(runner, config_file, "outbox", "push", "--outbox", "nope").exit_code == EXIT_CONFIG
+
+
+class TestOutboxListNamesAPermissionLevelNotATier:
+    """`tier` belongs to the person vocabulary, and `outbox list --json` spent it.
+
+    `ops tiers` computes a *person's* relationship rung -- `Tier 1`, `Tier 2` --
+    writes it into person files and hands it back under `tier`. `outbox list`
+    emitted `"tier": "draft_only"` into the same consuming workspace, and the
+    package carried two modules called `tiers.py`. The values cannot collide,
+    but a JSON key has no adjective, so the reader on the other end has to know
+    which of the two it is holding. The outbox side moved: it is an
+    `authority`.
+
+    Driven through the real CLI over the **shipped** outbox definitions and a
+    real intent file, so the emitted key is the one a caller actually parses.
+    """
+
+    @pytest.fixture()
+    def outboxed(self, runtime_config, tmp_path):
+        """`runtime_config` plus the shipped `outboxes:` section, on disk."""
+        from m365_brain.config import AuthProfileConfig, OutboxesConfig
+
+        outboxes = OutboxesConfig.model_validate(SHIPPED_TEMPLATE["outboxes"])
+        profiles = {
+            definition.auth_profile: AuthProfileConfig(
+                client_id=f"{definition.auth_profile}-client-id",
+                tenant_id="test-tenant-id",
+                scopes=["Mail.Read"],
+                token_cache_path=str(tmp_path / f"{definition.auth_profile}_cache.json"),
+                client_secret=None,
+            )
+            for definition in outboxes.definitions.values()
+        }
+        config = runtime_config.model_copy(
+            update={
+                "outboxes": outboxes,
+                "auth": runtime_config.auth.model_copy(update={"profiles": profiles}),
+            }
+        )
+        (tmp_path / "vault").mkdir(exist_ok=True)
+        draft_dir = tmp_path / "vault" / config.vault.layout.outbox / "email.draft"
+        draft_dir.mkdir(parents=True)
+        (draft_dir / "11111111-2222-3333-4444-555555555555.md").write_text("---\n---\n", encoding="utf-8")
+        path = tmp_path / "outboxed.yaml"
+        path.write_text(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=True), encoding="utf-8")
+        return path
+
+    def test_a_listed_intent_reports_an_authority_and_never_a_tier(self, runner, outboxed):
+        result = _run(runner, outboxed, "outbox", "list", "--json")
+        assert result.exit_code == EXIT_OK, result.output
+        rows = json.loads(result.stdout)["intents"]
+
+        assert rows, "the fixture wrote one pending intent"
+        for row in rows:
+            assert "tier" not in row, f"`tier` names a person's rung in this corpus: {row}"
+        assert [row["authority"] for row in rows] == ["draft_only"]
 
 
 class TestTeamsPost:

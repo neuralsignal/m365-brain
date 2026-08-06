@@ -80,7 +80,7 @@ class FilesystemIntentStore:
 
     def already_dispatched(self, uuid: str) -> bool:
         return self._storage.file_exists(self._paths.processed(uuid)) or self._storage.file_exists(
-            self._paths.rejected(uuid)
+            self._paths.failed(uuid)
         )
 
     def archive(self, uuid: str, receipt: DispatchReceipt) -> None:
@@ -88,8 +88,8 @@ class FilesystemIntentStore:
         if not self._storage.file_exists(inflight):
             raise IntentNotClaimed(f"{uuid} is not in flight; claim it before archiving")
         dispatched = receipt.outcome == "dispatched"
-        target = self._paths.processed(uuid) if dispatched else self._paths.rejected(uuid)
-        sidecar = self._paths.processed_receipt(uuid) if dispatched else self._paths.rejected_receipt(uuid)
+        target = self._paths.processed(uuid) if dispatched else self._paths.failed(uuid)
+        sidecar = self._paths.processed_receipt(uuid) if dispatched else self._paths.failed_receipt(uuid)
         self._storage.write_file(target, self._storage.read_file(inflight))
         self._storage.write_file(sidecar, receipt.model_dump_json(indent=2))
         self._storage.delete_file(inflight)
@@ -99,7 +99,7 @@ class FilesystemIntentStore:
         return sorted(_stem(key, MARKDOWN_SUFFIX) for key in self._storage.list_files(root))
 
     def receipt(self, uuid: str) -> DispatchReceipt | None:
-        for key in (self._paths.processed_receipt(uuid), self._paths.rejected_receipt(uuid)):
+        for key in (self._paths.processed_receipt(uuid), self._paths.failed_receipt(uuid)):
             if self._storage.file_exists(key):
                 return DispatchReceipt.model_validate(json.loads(self._storage.read_file(key)))
         return None
@@ -114,7 +114,7 @@ class FilesystemIntentStore:
                 yield receipt
 
     def archived_intent(self, uuid: str) -> IntentEnvelope | None:
-        for key in (self._paths.processed(uuid), self._paths.rejected(uuid)):
+        for key in (self._paths.processed(uuid), self._paths.failed(uuid)):
             if self._storage.file_exists(key):
                 return parse_intent(self._storage.read_file(key), key, uuid)
         return None

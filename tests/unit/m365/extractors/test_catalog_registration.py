@@ -254,7 +254,7 @@ def _open_catalog(config) -> FileCatalog:
 
 def _rows(catalog: FileCatalog) -> list:
     return catalog.search(
-        CatalogQuery(extension=None, source=None, status=None, modified_after=None, name_contains=None, limit=100)
+        CatalogQuery(extension=None, extractor=None, status=None, modified_after=None, name_contains=None, limit=100)
     )
 
 
@@ -272,14 +272,14 @@ def test_every_binary_written_becomes_a_catalog_row(name, httpx_mock: HTTPXMock,
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_rows_carry_the_extension_the_source_and_the_initial_state(
+def test_rows_carry_the_extension_the_extractor_and_the_initial_state(
     name, httpx_mock: HTTPXMock, tmp_path, runtime_config
 ):
     spy, catalog = _run(name, runtime_config, httpx_mock, tmp_path)
     rows = _rows(catalog)
 
     assert {row.extension for row in rows} == {Path(path).suffix.lower() for path in spy.binaries}
-    assert {row.source for row in rows} == {name}, "source is the extractor that wrote the bytes"
+    assert {row.extractor for row in rows} == {name}, "the column names the extractor that wrote the bytes"
     assert {row.conversion_status for row in rows} == {runtime_config.index.catalog.initial_state}
     assert all(row.output_path is None and row.error is None for row in rows)
 

@@ -19,12 +19,12 @@ from m365_brain.config import Config, ConfigError, require_section
 from m365_brain.m365.auth.profiles import AuthProfiles
 from m365_brain.m365.client import GraphClient
 from m365_brain.m365.outboxes import build_handlers
+from m365_brain.outbox.authority import AuthorityRouter
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
 from m365_brain.outbox.reconcile import RECONCILE_SELECT, QuoteMarkers
 from m365_brain.outbox.registry import build_registry
 from m365_brain.outbox.runner import push as push_pass
 from m365_brain.outbox.runner import reconcile as reconcile_pass
-from m365_brain.outbox.tiers import TierRouter
 from m365_brain.storage import create_storage
 from m365_brain.vault.paths import VaultPaths
 
@@ -77,16 +77,16 @@ def list_intents(ctx: click.Context, only: str | None, as_json: bool) -> None:
     store = _store(config, tuple(sorted(outboxes.definitions)))
 
     rows = [
-        {"uuid": uuid, "outbox": name, "tier": outboxes.definitions[name].tier, "status": "pending"}
+        {"uuid": uuid, "outbox": name, "authority": outboxes.definitions[name].authority, "status": "pending"}
         for name, uuid in store.pending()
         if name in names
     ]
-    rows += [{"uuid": uuid, "outbox": None, "tier": None, "status": "inflight"} for uuid in store.inflight()]
+    rows += [{"uuid": uuid, "outbox": None, "authority": None, "status": "inflight"} for uuid in store.inflight()]
     rows += [
         {
             "uuid": receipt.uuid,
             "outbox": receipt.kind,
-            "tier": None,
+            "authority": None,
             "status": receipt.outcome,
             "graph_message_id": receipt.graph_message_id,
         }
@@ -111,11 +111,11 @@ def push(ctx: click.Context, only: str | None, as_json: bool) -> None:
         registry = build_registry(
             config.outboxes, config.auth.profiles or {}, build_handlers(outboxes, m365.upload, clients)
         )
-        counts = push_pass(store, registry, TierRouter())
+        counts = push_pass(store, registry, AuthorityRouter())
 
     payload = counts.as_dict()
     emit(as_json, payload, [f"{key}={value}" for key, value in sorted(payload.items())])
-    if counts.rejected:
+    if counts.failed:
         raise SystemExit(EXIT_FAILURE)
 
 

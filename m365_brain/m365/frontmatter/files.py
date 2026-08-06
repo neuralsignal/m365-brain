@@ -85,7 +85,6 @@ def build_onedrive_frontmatter(data: OneDriveFileData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/onedrive/1.0",
         },
-        "status": "raw",
     }
 
 
@@ -118,5 +117,4 @@ def build_sharepoint_frontmatter(data: SharePointFileData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/sharepoint/1.0",
         },
-        "status": "raw",
     }

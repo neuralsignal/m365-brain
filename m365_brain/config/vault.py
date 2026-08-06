@@ -16,8 +16,12 @@ from m365_brain.config.extractors import EXTRACTOR_NAMES
 class VaultLayout(BaseModel):
     """Top-level directory names under `vault.root`.
 
-    `processed`, `rejected` and `inflight` are the outbox archive segments;
+    `processed`, `failed` and `inflight` are the outbox archive segments;
     `state` and `manifests` sit under `meta`.
+
+    `failed` was `rejected` until the dispatch vocabulary moved off that word --
+    see `vault/dispatch.py`. Only the *key* changed: the directory name is still
+    whatever the operator puts here, so nothing on disk has to move.
     """
 
     model_config = SECTION_MODEL_CONFIG
@@ -26,7 +30,7 @@ class VaultLayout(BaseModel):
     outbox: str
     meta: str
     processed: str
-    rejected: str
+    failed: str
     inflight: str
     state: str
     manifests: str

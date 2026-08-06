@@ -1,6 +1,9 @@
-"""The `outboxes:` section -- tier policy, signature, and reconciliation markers.
+"""The `outboxes:` section -- authority policy, signature, reconciliation markers.
 
-A tier is policy, so it is config rather than a class attribute on a handler.
+An authority is policy, so it is config rather than a class attribute on a
+handler. It is not called `tier`: `ops.tiers` spends that word on a person's
+relationship rung, which is written into person files and read back by name --
+see `m365_brain/outbox/authority.py`.
 The quote-marker table is locale- and sign-off-specific, so it is config rather
 than a regex list in a module: a user's own closing phrase compiled into a
 library is exactly the assumption this package exists to remove.
@@ -14,14 +17,14 @@ from pydantic import BaseModel, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
 
-Tier = Literal["never_auto", "human_approval", "draft_only", "auto_send"]
+Authority = Literal["never_auto", "human_approval", "draft_only", "auto_send"]
 
 
 class OutboxDefinitionConfig(BaseModel):
-    """One outbox: its permission tier and the Entra app it dispatches through."""
+    """One outbox: its permission level and the Entra app it dispatches through."""
 
     model_config = SECTION_MODEL_CONFIG
-    tier: Tier
+    authority: Authority
     auth_profile: str
 
 

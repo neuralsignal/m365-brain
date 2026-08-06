@@ -27,7 +27,6 @@ EXPECTED_KEYS = {
     "importance",
     "has_attachments",
     "source",
-    "status",
 }
 
 SCALAR_KEYS = EXPECTED_KEYS - {"tags", "source"}
@@ -64,7 +63,6 @@ class TestEmailFrontmatterProperties:
 
         assert set(fm) == EXPECTED_KEYS
         assert fm["type"] == "email"
-        assert fm["status"] == "raw"
         assert fm["source"]["extractor"] == "m365-brain/email/1.3"
         assert fm["source"]["service"] == "exchange"
         assert fm["source"]["id"] == data.message_id

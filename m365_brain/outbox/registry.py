@@ -1,4 +1,4 @@
-"""Which outboxes exist, what tier each runs at, and who executes it.
+"""Which outboxes exist, what authority each runs at, and who executes it.
 
 Built from config at startup and handed its handlers, so there is no
 module-level mutable singleton and no import-time registration side effect.
@@ -8,9 +8,9 @@ singleton into its worker, and consequently rejected 100% of production intents
 with "no outbox registered". A registry you must remember to fill is a registry
 that ships empty.
 
-Both tier guards run here, at build, and both crash the process. A `draft_only`
-outbox that could send mail is not an intent to route around; it is a
-configuration that cannot be true.
+Both authority guards run here, at build, and both crash the process. A
+`draft_only` outbox that could send mail is not an intent to route around; it
+is a configuration that cannot be true.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from m365_brain.config import AuthProfileConfig, OutboxesConfig
-from m365_brain.outbox.tiers import Tier, TierViolation
+from m365_brain.outbox.authority import Authority, AuthorityViolation
 from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, GraphOp, OutboxHandler
 
 
@@ -36,7 +36,7 @@ class RegisteredOutbox:
     """One outbox: its policy from config, its behaviour from a handler."""
 
     name: str
-    tier: Tier
+    authority: Authority
     auth_profile: str
     handler: OutboxHandler
 
@@ -62,7 +62,7 @@ def build_registry(
     profiles: Mapping[str, AuthProfileConfig],
     handlers: Mapping[str, OutboxHandler],
 ) -> OutboxRegistry:
-    """Pair each configured outbox with its handler, running both tier guards.
+    """Pair each configured outbox with its handler, running both authority guards.
 
     Handlers are injected rather than imported. The executors live in the
     Microsoft 365 half of the package, which is this module's peer in the layer
@@ -72,12 +72,14 @@ def build_registry(
     _reject_mismatched_sets(config, handlers)
     entries: dict[str, RegisteredOutbox] = {}
     for name, definition in config.definitions.items():
-        tier = Tier(definition.tier)
+        authority = Authority(definition.authority)
         handler = handlers[name]
-        if tier is Tier.DRAFT_ONLY:
+        if authority is Authority.DRAFT_ONLY:
             _guard_declared_ops(name, handler)
             _guard_granted_scopes(name, definition.auth_profile, profiles, config.forbidden_send_scopes)
-        entries[name] = RegisteredOutbox(name=name, tier=tier, auth_profile=definition.auth_profile, handler=handler)
+        entries[name] = RegisteredOutbox(
+            name=name, authority=authority, auth_profile=definition.auth_profile, handler=handler
+        )
     return OutboxRegistry(entries)
 
 
@@ -94,16 +96,16 @@ def _reject_mismatched_sets(config: OutboxesConfig, handlers: Mapping[str, Outbo
     if extra:
         raise OutboxConfigurationError(
             f"handlers were supplied for outboxes absent from outboxes.definitions: {extra}. "
-            "A handler with no configured tier has no permission policy at all."
+            "A handler with no configured authority has no permission policy at all."
         )
 
 
 def _guard_declared_ops(name: str, handler: OutboxHandler) -> None:
-    """Guard 1: what the handler says it may do must fit inside the tier."""
+    """Guard 1: what the handler says it may do must fit inside the authority."""
     excess = sorted(GraphOp(op).value for op in handler.declared_ops if op not in DRAFT_ONLY_OPS)
     if excess:
-        raise TierViolation(
-            f"outbox {name!r} is tier draft_only but its handler declares {excess}. "
+        raise AuthorityViolation(
+            f"outbox {name!r} is authority draft_only but its handler declares {excess}. "
             f"draft_only permits only {sorted(op.value for op in DRAFT_ONLY_OPS)}."
         )
 
@@ -129,7 +131,7 @@ def _guard_granted_scopes(
     blocked = {scope.casefold() for scope in forbidden}
     granted = sorted(scope for scope in profile.scopes if scope.casefold() in blocked)
     if granted:
-        raise TierViolation(
-            f"outbox {name!r} is tier draft_only but its auth profile {profile_name!r} is granted "
-            f"{granted}. Remove the scope, or change the tier -- not both halves of a contradiction."
+        raise AuthorityViolation(
+            f"outbox {name!r} is authority draft_only but its auth profile {profile_name!r} is granted "
+            f"{granted}. Remove the scope, or change the authority -- not both halves of a contradiction."
         )

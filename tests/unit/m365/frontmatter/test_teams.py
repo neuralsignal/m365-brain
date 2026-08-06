@@ -27,7 +27,6 @@ COMMON_KEYS = {
     "message_count",
     "history_complete",
     "source",
-    "status",
 }
 
 CHATS = st.builds(
@@ -59,7 +58,6 @@ class TestTeamsFrontmatterProperties:
 
         assert set(fm) == COMMON_KEYS | {"participants"}
         assert fm["type"] == "teams_chat"
-        assert fm["status"] == "raw"
         assert fm["title"] == data.title
         assert fm["participants"] == data.participants
         assert fm["message_count"] == data.message_count

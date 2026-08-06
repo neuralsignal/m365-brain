@@ -292,7 +292,7 @@ class InMemoryIndexBackend:
         extension = None if query.extension is None else normalised_extension(query.extension)
         return not (
             (extension is not None and row.extension != extension)
-            or (query.source is not None and row.source != query.source)
+            or (query.extractor is not None and row.extractor != query.extractor)
             or (query.status is not None and row.conversion_status != query.status)
             or (query.modified_after is not None and row.modified_at < query.modified_after)
             or (query.name_contains is not None and query.name_contains.lower() not in row.file_name.lower())

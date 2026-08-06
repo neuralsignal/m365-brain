@@ -359,7 +359,7 @@ def test_catalog_search_filters(backend):
             original_path="mail/deck.pptx",
             file_name="deck.pptx",
             extension=".pptx",
-            source="mail",
+            extractor="mail",
             conversion_status="converted",
             modified_at="2026-02-01T00:00:00Z",
         )
@@ -367,7 +367,7 @@ def test_catalog_search_filters(backend):
     assert len(backend.search_catalog(a_catalog_query())) == 2
     assert [e.extension for e in backend.search_catalog(a_catalog_query(extension=".pptx"))] == [".pptx"]
     assert [e.extension for e in backend.search_catalog(a_catalog_query(extension="pptx"))] == [".pptx"]
-    assert [e.source for e in backend.search_catalog(a_catalog_query(source="mail"))] == ["mail"]
+    assert [e.extractor for e in backend.search_catalog(a_catalog_query(extractor="mail"))] == ["mail"]
     assert [e.conversion_status for e in backend.search_catalog(a_catalog_query(status="pending"))] == ["pending"]
     assert [e.file_name for e in backend.search_catalog(a_catalog_query(name_contains="deck"))] == ["deck.pptx"]
     assert len(backend.search_catalog(a_catalog_query(modified_after="2026-01-15T00:00:00Z"))) == 1

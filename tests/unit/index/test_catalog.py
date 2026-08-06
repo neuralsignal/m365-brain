@@ -82,7 +82,7 @@ def test_failure_records_an_error_and_drops_a_stale_output(catalog):
     ("filters", "expected"),
     [
         ({"extension": ".pdf"}, ["drive/manual.pdf"]),
-        ({"source": "mail"}, ["mail/note.docx"]),
+        ({"extractor": "mail"}, ["mail/note.docx"]),
         ({"status": "converted"}, ["drive/manual.pdf"]),
         ({"name_contains": "manual"}, ["drive/manual.pdf"]),
         ({"modified_at": None}, ["drive/manual.pdf", "mail/note.docx", "drive/report.docx"]),
@@ -103,7 +103,7 @@ def test_every_filter_narrows(catalog, filters, expected):
         a_catalog_entry(
             original_path="mail/note.docx",
             file_name="note.docx",
-            source="mail",
+            extractor="mail",
             modified_at="2026-02-01T00:00:00Z",
         )
     )

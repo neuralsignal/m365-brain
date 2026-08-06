@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from m365_brain.outbox.authority import Authority, AuthorityViolation
 from m365_brain.outbox.registry import OutboxConfigurationError, UnknownOutbox, build_registry
-from m365_brain.outbox.tiers import Tier, TierViolation
 from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, DispatchResult, GraphOp, OutboxHandler
 from m365_brain.vault.intent import IntentEnvelope
 
@@ -46,8 +46,8 @@ class TestHappyPath:
         registry = build_registry(outboxes_config, auth_profiles, _handlers())
 
         assert registry.names() == ["email.draft", "teams.post_message"]
-        assert registry.get("email.draft").tier is Tier.DRAFT_ONLY
-        assert registry.get("teams.post_message").tier is Tier.AUTO_SEND
+        assert registry.get("email.draft").authority is Authority.DRAFT_ONLY
+        assert registry.get("teams.post_message").authority is Authority.AUTO_SEND
         assert registry.get("email.draft").auth_profile == "mail"
 
     def test_an_unregistered_name_raises_naming_what_is_registered(self, outboxes_config, auth_profiles):
@@ -86,7 +86,7 @@ class TestGuardOne:
             **{"email.draft": FakeHandler("email.draft", frozenset({GraphOp.CREATE_DRAFT, GraphOp.SEND_MAIL}))}
         )
 
-        with pytest.raises(TierViolation) as excinfo:
+        with pytest.raises(AuthorityViolation) as excinfo:
             build_registry(outboxes_config, auth_profiles, handlers)
 
         assert "send_mail" in str(excinfo.value)
@@ -110,7 +110,7 @@ class TestGuardTwo:
         app's scopes for another workload."""
         auth_profiles["mail"] = auth_profiles["mail"].model_copy(update={"scopes": ["Mail.ReadWrite", "Mail.Send"]})
 
-        with pytest.raises(TierViolation) as excinfo:
+        with pytest.raises(AuthorityViolation) as excinfo:
             build_registry(outboxes_config, auth_profiles, _handlers())
 
         assert "Mail.Send" in str(excinfo.value)
@@ -118,7 +118,7 @@ class TestGuardTwo:
     def test_the_scope_comparison_ignores_case(self, outboxes_config, auth_profiles):
         auth_profiles["mail"] = auth_profiles["mail"].model_copy(update={"scopes": ["mail.send"]})
 
-        with pytest.raises(TierViolation):
+        with pytest.raises(AuthorityViolation):
             build_registry(outboxes_config, auth_profiles, _handlers())
 
     def test_the_forbidden_list_is_config_not_a_constant(self, outboxes_config, auth_profiles):

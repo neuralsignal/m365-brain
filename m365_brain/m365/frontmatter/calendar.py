@@ -72,7 +72,6 @@ def build_calendar_frontmatter(data: CalendarEventData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/calendar/1.1",
         },
-        "status": "raw",
     }
     if data.location:
         fm["location"] = data.location

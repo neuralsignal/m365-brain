@@ -85,10 +85,10 @@ def test_search_combines_filters(sqlite_backend):
             original_path="mail/report.pdf",
             file_name="report.pdf",
             extension=".pdf",
-            source="mail",
+            extractor="mail",
         )
     )
-    matched = sqlite_backend.search_catalog(a_catalog_query(name_contains="report", source="mail"))
+    matched = sqlite_backend.search_catalog(a_catalog_query(name_contains="report", extractor="mail"))
     assert [e.file_name for e in matched] == ["report.pdf"]
 
 

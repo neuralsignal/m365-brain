@@ -34,7 +34,7 @@ def layout() -> VaultLayout:
         outbox="pending",
         meta="dot-meta",
         processed="done",
-        rejected="refused",
+        failed="refused",
         inflight="claimed",
         state="cursors",
         manifests="runs",

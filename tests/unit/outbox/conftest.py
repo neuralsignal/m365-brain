@@ -47,7 +47,7 @@ def vault_config() -> VaultConfig:
             outbox="pending",
             meta="dot-meta",
             processed="done",
-            rejected="refused",
+            failed="refused",
             inflight="claimed",
             state="cursors",
             manifests="runs",
@@ -90,8 +90,8 @@ def outboxes_config(tmp_path) -> OutboxesConfig:
         attachment_root=str(tmp_path / "assets"),
         forbidden_send_scopes=["Mail.Send"],
         definitions={
-            "email.draft": OutboxDefinitionConfig(tier="draft_only", auth_profile="mail"),
-            "teams.post_message": OutboxDefinitionConfig(tier="auto_send", auth_profile="teams"),
+            "email.draft": OutboxDefinitionConfig(authority="draft_only", auth_profile="mail"),
+            "teams.post_message": OutboxDefinitionConfig(authority="auto_send", auth_profile="teams"),
         },
         email=EmailOutboxConfig(
             signature=EmailSignatureConfig(html_path=None, logo_path=None, logo_content_id="brand_logo")

@@ -48,9 +48,22 @@ operator widening this would be redefining what "draft only" means, which is
 the one thing the tier exists to hold still."""
 
 
-DispatchOutcome = Literal["dispatched", "rejected", "blocked"]
+DispatchOutcome = Literal["dispatched", "failed", "blocked"]
+"""What became of an intent we were asked to send. Disjoint from `Verdict`.
 
-RejectionReason = Literal[
+`failed` was `rejected`, and the two words were opposite facts under one uuid:
+here it meant **we never dispatched it**, while `outbox.reconcile.Verdict`'s
+`rejected` means **we did dispatch it and a human then deleted the draft**. An
+operator grepping `_meta` for "rejected" got both, and the archive directory
+holding only the first is called `_rejected`, which reinforced the wrong
+reading. This side moved because the other is the human's own word for what
+they did, and `ops triage` reads it back under that name.
+
+`blocked` stays separate from `failed`: policy refused (the outbox's authority
+tier), rather than an attempt that went wrong.
+"""
+
+NonDispatchReason = Literal[
     "tier_blocked",
     "no_approval_recorded",
     "etag_conflict",
@@ -59,8 +72,12 @@ RejectionReason = Literal[
     "parse_error",
     "unknown_outbox",
 ]
-"""Closed set, machine-readable. An operator greps receipts by reason, so a
-free-text field would make the archive unqueryable exactly when it matters."""
+"""Why an intent was not dispatched -- `blocked` and `failed` both land here.
+
+Closed set, machine-readable. An operator greps receipts by reason, so a
+free-text field would make the archive unqueryable exactly when it matters.
+Named for the whole set rather than for `rejected`, which is no longer one of
+the outcomes it explains."""
 
 
 class DispatchResult(BaseModel):
@@ -77,7 +94,7 @@ class DispatchReceipt(BaseModel):
     A sidecar rather than injected frontmatter. The implementation this
     replaces wrote a `rejection_reason:` key into the archived file, which then
     failed its own `extra="forbid"` on any re-read -- a hazard they worked
-    around by never re-reading the rejected archive. Here the archived intent
+    around by never re-reading the failed archive. Here the archived intent
     is byte-identical to what was submitted, which is what lets it serve as the
     fixture reconciliation compares against.
     """
@@ -88,7 +105,7 @@ class DispatchReceipt(BaseModel):
     outcome: DispatchOutcome
     dispatched_at: datetime
     graph_message_id: str | None
-    reason: RejectionReason | None
+    reason: NonDispatchReason | None
     detail: str | None
     """Human-readable context for `reason`. Set iff `reason` is set."""
 

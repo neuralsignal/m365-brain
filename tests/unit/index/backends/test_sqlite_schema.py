@@ -68,7 +68,7 @@ def test_entity_carries_content_and_aliases(conn):
 def test_catalog_columns_match_the_model(conn):
     assert columns(conn, "file_catalog") == {
         "id",
-        "source",
+        "extractor",
         "original_path",
         "file_name",
         "extension",
@@ -78,6 +78,64 @@ def test_catalog_columns_match_the_model(conn):
         "output_path",
         "error_message",
     }
+
+
+OLD_CATALOG_SQL = """
+CREATE TABLE file_catalog (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    original_path TEXT NOT NULL UNIQUE,
+    file_name TEXT NOT NULL,
+    extension TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    modified_at TEXT NOT NULL,
+    conversion_status TEXT NOT NULL,
+    output_path TEXT,
+    error_message TEXT
+);
+CREATE INDEX idx_catalog_source ON file_catalog(source);
+"""
+"""`file_catalog` exactly as it was created before the column was renamed."""
+
+
+@pytest.fixture()
+def legacy_conn():
+    """A database carrying one catalogued row under the old column name."""
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(OLD_CATALOG_SQL)
+    connection.execute(
+        "INSERT INTO file_catalog (source, original_path, file_name, extension, size_bytes,"
+        " modified_at, conversion_status) VALUES ('email', 'a/r.pdf', 'r.pdf', '.pdf', 3, '2026-01-01', 'pending')"
+    )
+    yield connection
+    connection.close()
+
+
+def test_an_existing_catalog_is_renamed_rather_than_stranded(legacy_conn):
+    """The rows survive the rename -- nothing else can put them back.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already has the
+    table, so without this every catalog query on an existing index would raise
+    `no such column: extractor` forever. Deleting the index is not a recovery:
+    catalog rows are registered while an extractor downloads a binary, and no
+    sync rebuilds them.
+    """
+    schema.initialize(legacy_conn)
+
+    row = legacy_conn.execute("SELECT extractor, file_name FROM file_catalog").fetchone()
+    assert (row["extractor"], row["file_name"]) == ("email", "r.pdf")
+    assert "source" not in columns(legacy_conn, "file_catalog")
+
+
+def test_the_rename_leaves_one_index_on_the_column(legacy_conn):
+    """SQLite carries an index across a rename under its old name; two would remain."""
+    schema.initialize(legacy_conn)
+    schema.initialize(legacy_conn)
+
+    names = {row["name"] for row in legacy_conn.execute("PRAGMA index_list(file_catalog)")}
+    assert "idx_catalog_source" not in names
+    assert "idx_catalog_extractor" in names
 
 
 def test_search_column_index_maps_names_to_positions():

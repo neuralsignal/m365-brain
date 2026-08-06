@@ -143,7 +143,7 @@ def test_catalog_entry_is_unsaved_when_id_is_none():
         original_path="/tmp/report.pdf",
         file_name="report.pdf",
         extension=".pdf",
-        source="onedrive",
+        extractor="onedrive",
         size_bytes=10,
         modified_at="2026-08-05T00:00:00Z",
         conversion_status="pending",

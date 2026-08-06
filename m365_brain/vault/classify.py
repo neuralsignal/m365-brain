@@ -68,7 +68,7 @@ def classify_outbox_path(path: str, layout: VaultLayout) -> ClassifiedPath:
         return _reject(f"path is not under {root!r}: {path!r}")
 
     tail = segments[1:]
-    archives = {layout.processed, layout.rejected, layout.inflight}
+    archives = {layout.processed, layout.failed, layout.inflight}
     if archives & set(tail):
         return ClassifiedPath(PathClassification.SKIP, None, None, None)
 

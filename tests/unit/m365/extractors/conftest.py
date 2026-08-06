@@ -55,7 +55,7 @@ def _layout(prefix: str) -> VaultLayout:
         outbox=f"{prefix}outbox",
         meta=f"{prefix}_meta",
         processed=f"{prefix}_processed",
-        rejected=f"{prefix}_rejected",
+        failed=f"{prefix}_failed",
         inflight=f"{prefix}_inflight",
         state=f"{prefix}state",
         manifests=f"{prefix}manifests",

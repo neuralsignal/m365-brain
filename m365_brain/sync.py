@@ -97,7 +97,7 @@ def run_one(
     wired in. Both callers -- the cycle and the loop below -- reach an extractor
     through here, so wrapping the storage for the length of this call catalogs
     every binary written by every extractor, including one added tomorrow. The
-    extractor name is the catalog's `source`, and it is in scope here and
+    extractor name is the catalog's `extractor` column, and it is in scope here and
     nowhere lower: `index` and `m365` are peers in the layer map and neither may
     import the other, so the join has to happen above both.
     """

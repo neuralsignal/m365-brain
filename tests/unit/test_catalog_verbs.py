@@ -35,7 +35,7 @@ from m365_brain.model import CatalogEntry
 
 ATTACHMENTS = "inbox/emails/2026-03/note/attachments"
 
-# (path under ATTACHMENTS, source, bytes)
+# (path under ATTACHMENTS, extractor, bytes)
 CORPUS = [
     ("annual_report.pdf", "email", b"%PDF annual"),
     ("annualXreport.pdf", "email", b"%PDF decoy"),
@@ -58,7 +58,7 @@ def populated(runtime_config, tmp_path):
     backend.initialize()
     catalog = FileCatalog(backend, runtime_config.index.catalog)
     try:
-        for index, (name, source, payload) in enumerate(CORPUS):
+        for index, (name, extractor, payload) in enumerate(CORPUS):
             path = f"{ATTACHMENTS}/{name}"
             (vault / path).parent.mkdir(parents=True, exist_ok=True)
             (vault / path).write_bytes(payload)
@@ -68,7 +68,7 @@ def populated(runtime_config, tmp_path):
                     original_path=path,
                     file_name=name,
                     extension=f".{name.rsplit('.', 1)[1].lower()}",
-                    source=source,
+                    extractor=extractor,
                     size_bytes=len(payload),
                     modified_at=f"2026-03-{index + 1:02d}T00:00:00Z",
                     conversion_status=runtime_config.index.catalog.initial_state,
@@ -102,8 +102,8 @@ class TestList:
             "annual_report.pdf",
         ]
 
-    def test_the_source_filter_narrows(self, runner, populated):
-        names = _names(_run(runner, populated, "index", "catalog", "list", "--source", "onedrive", "--json"))
+    def test_the_extractor_filter_narrows(self, runner, populated):
+        names = _names(_run(runner, populated, "index", "catalog", "list", "--extractor", "onedrive", "--json"))
         assert names == ["SUMMARY.PDF"]
 
     @pytest.mark.parametrize("spelling", [".pdf", "pdf", ".PDF", "PDF"])
@@ -124,7 +124,7 @@ class TestList:
 
     def test_stats_beside_a_filter_is_a_usage_error(self, runner, populated):
         """It counted the whole table regardless, which reads as an answer."""
-        result = _run(runner, populated, "index", "catalog", "list", "--stats", "--source", "email")
+        result = _run(runner, populated, "index", "catalog", "list", "--stats", "--extractor", "email")
         assert result.exit_code == EXIT_USAGE
 
 
@@ -408,5 +408,5 @@ def _all_rows():
     from m365_brain.model import CatalogQuery
 
     return CatalogQuery(
-        extension=None, source=None, status=None, modified_after=None, name_contains=None, limit=len(CORPUS)
+        extension=None, extractor=None, status=None, modified_after=None, name_contains=None, limit=len(CORPUS)
     )

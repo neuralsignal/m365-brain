@@ -206,3 +206,23 @@ class TestClassify:
 def test_the_select_list_is_complete():
     """A dropped field does not fail -- it degrades classification silently."""
     assert set(RECONCILE_SELECT) == {"id", "isDraft", "subject", "body", "conversationId", "sentDateTime"}
+
+
+def test_a_verdict_and_a_dispatch_outcome_share_no_word():
+    """The two vocabularies are keyed by one uuid, so they may not share a token.
+
+    `rejected` used to be in both, meaning opposite things: here it is "we
+    dispatched it and a human then deleted the draft"; in
+    `vault.dispatch.DispatchOutcome` it meant "we never dispatched it at all".
+    Both are archived under `_meta` against the same uuid, so an operator
+    grepping the archive got two opposite facts with nothing to tell them
+    apart. That side moved to `failed`; this one keeps the human's own word.
+
+    Imported inside the test so the assertion is what fails, not the module.
+    """
+    import typing
+
+    from m365_brain.outbox.reconcile import Verdict
+    from m365_brain.vault.dispatch import DispatchOutcome
+
+    assert set(typing.get_args(DispatchOutcome)) & set(typing.get_args(Verdict)) == set()

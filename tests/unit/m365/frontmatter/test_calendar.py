@@ -28,7 +28,6 @@ REQUIRED_KEYS = {
     "attendees",
     "is_recurring",
     "source",
-    "status",
 }
 
 ISO_TIMES = st.sampled_from(["2026-03-12T09:00:00Z", "2026-01-01T00:00:00Z", "2025-12-31T23:59:59Z"])
@@ -56,7 +55,6 @@ class TestCalendarFrontmatterProperties:
 
         assert set(fm) >= REQUIRED_KEYS
         assert fm["type"] == "calendar_event"
-        assert fm["status"] == "raw"
         assert fm["source"]["system"] == "microsoft365"
         assert fm["source"]["service"] == "exchange"
         assert fm["source"]["extractor"] == "m365-brain/calendar/1.1"

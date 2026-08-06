@@ -110,7 +110,6 @@ def build_contact_frontmatter(data: ContactData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/contacts/1.1",
         },
-        "status": "raw",
     }
     if data.email_addresses:
         fm["email"] = data.email_addresses
@@ -159,7 +158,6 @@ def build_directory_user_frontmatter(data: DirectoryUserData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/directory/1.0",
         },
-        "status": "raw",
     }
     if data.job_title:
         fm["job_title"] = data.job_title

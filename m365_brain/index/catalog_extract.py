@@ -106,7 +106,7 @@ def _search(catalog: FileCatalog, status: str, limit: int) -> list[CatalogEntry]
     return catalog.search(
         CatalogQuery(
             extension=None,
-            source=None,
+            extractor=None,
             status=status,
             modified_after=None,
             name_contains=None,

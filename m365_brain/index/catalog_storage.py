@@ -37,10 +37,12 @@ from m365_brain.storage.base import StorageBackend
 class CatalogingStorage:
     """A `StorageBackend` that catalogs every binary written through it."""
 
-    def __init__(self, inner: StorageBackend, catalog: FileCatalog, source: str, clock: Callable[[], datetime]) -> None:
+    def __init__(
+        self, inner: StorageBackend, catalog: FileCatalog, extractor: str, clock: Callable[[], datetime]
+    ) -> None:
         self._inner = inner
         self._catalog = catalog
-        self._source = source
+        self._extractor = extractor
         self._clock = clock
 
     def write_bytes(self, path: str, content: bytes) -> None:
@@ -59,7 +61,7 @@ class CatalogingStorage:
                 original_path=path,
                 file_name=name.name,
                 extension=name.suffix.lower(),
-                source=self._source,
+                extractor=self._extractor,
                 size_bytes=len(content),
                 modified_at=self._clock().isoformat(),
                 conversion_status=self._catalog.initial_state,
@@ -87,7 +89,7 @@ class CatalogingStorage:
 
 @contextmanager
 def catalog_writes(
-    index: IndexConfig | None, inner: StorageBackend, source: str, clock: Callable[[], datetime]
+    index: IndexConfig | None, inner: StorageBackend, extractor: str, clock: Callable[[], datetime]
 ) -> Iterator[StorageBackend]:
     """Wrap `inner` so its binary writes are catalogued for the duration.
 
@@ -102,6 +104,6 @@ def catalog_writes(
     backend = create_index_backend(index)
     backend.initialize()
     try:
-        yield CatalogingStorage(inner, FileCatalog(backend, index.catalog), source, clock)
+        yield CatalogingStorage(inner, FileCatalog(backend, index.catalog), extractor, clock)
     finally:
         backend.close()

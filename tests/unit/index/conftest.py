@@ -45,7 +45,7 @@ BASE_CATALOG_ENTRY = CatalogEntry(
     original_path="drive/report.docx",
     file_name="report.docx",
     extension=".docx",
-    source="drive",
+    extractor="drive",
     size_bytes=1024,
     modified_at="2026-01-01T00:00:00Z",
     conversion_status="pending",
@@ -76,7 +76,7 @@ def a_text_query(**fields: Any) -> TextQuery:
 
 
 def a_catalog_query(**fields: Any) -> CatalogQuery:
-    base = CatalogQuery(extension=None, source=None, status=None, modified_after=None, name_contains=None, limit=50)
+    base = CatalogQuery(extension=None, extractor=None, status=None, modified_after=None, name_contains=None, limit=50)
     return replace(base, **fields)
 
 

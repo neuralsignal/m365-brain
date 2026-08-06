@@ -48,7 +48,7 @@ Sections present today:
 
 Also **Present**: `vault` (layout, per-extractor directory names, filenames); `auth.profiles`
 (N named Entra apps, each with its own scopes and token cache); `outboxes`
-(`attachment_root`, `forbidden_send_scopes`, `definitions.<name>.{tier,auth_profile}`,
+(`attachment_root`, `forbidden_send_scopes`, `definitions.<name>.{authority,auth_profile}`,
 `email.signature.{html_path,logo_path,logo_content_id}`, `reconcile.quote_markers`);
 `m365.upload` (`inline_attachment_max_bytes`, `simple_upload_max_bytes`, `chunk_bytes` — which
 must be a multiple of 320 KiB, and the validator caught that the constant it replaced was not).
@@ -156,7 +156,7 @@ tested, but nothing writes intents yet.
 └── <layout.meta>/         sync state, manifests, and the intent archive
     ├── <layout.inflight>/    claimed, outcome unknown — never auto-retried
     ├── <layout.processed>/   dispatched intents + receipt sidecars
-    └── <layout.rejected>/    blocked or failed intents + receipt sidecars
+    └── <layout.failed>/      blocked or failed intents + receipt sidecars
 ```
 
 Every segment in that tree is a config value. `m365_brain/vault/paths.py` is the only thing that
@@ -280,7 +280,7 @@ consumer keeping its own seen-set file is doing work the manifest already did.
 
 **Present.** Dispatch is claim → route → execute → receipt → archive, and the archive is the
 **ledger**: `already_dispatched(uuid)` is true once either archive holds the uuid, so a replayed
-intent is skipped and a rejected one is not retried. Purging `<layout.processed>` re-arms replay —
+intent is skipped and a failed one is not retried. Purging `<layout.processed>` re-arms replay —
 a deliberate operator act, not something guarded against.
 
 ```
@@ -288,23 +288,24 @@ a deliberate operator act, not something guarded against.
 <meta>/<processed>/<uuid>.md             the intent, byte-identical to what was submitted
 <meta>/<processed>/<uuid>.receipt.json   DispatchReceipt
 <meta>/<processed>/<uuid>.reconciled.json  terminal verdict, written by the reconcile pass
-<meta>/<rejected>/<uuid>.md              + <uuid>.receipt.json
+<meta>/<failed>/<uuid>.md                + <uuid>.receipt.json
 ```
 
-`DispatchReceipt`: `uuid`, `kind`, `outcome` (`dispatched` | `rejected` | `blocked`),
+`DispatchReceipt`: `uuid`, `kind`, `outcome` (`dispatched` | `failed` | `blocked`),
 `dispatched_at`, `graph_message_id`, `reason`, `detail`. `reason` is a **closed set** —
 `tier_blocked`, `no_approval_recorded`, `etag_conflict`, `graph_error`, `attachment_missing`,
 `parse_error`, `unknown_outbox` — because an operator greps by it. See ADR 0019.
 
-### Permission tiers
+### Permission authorities
 
-**Present.** A tier is a property of the **outbox**, read from `outboxes.definitions.<name>.tier`,
-never from the intent file.
+**Present.** An authority is a property of the **outbox**, read from
+`outboxes.definitions.<name>.authority`, never from the intent file. It is not called `tier`:
+`ops tiers` spends that word on a person's relationship rung.
 
-| tier | `pending` | `approved` | terminal |
+| authority | `pending` | `approved` | terminal |
 |---|---|---|---|
 | `never_auto` | `await_admin` → `blocked`, `reason: tier_blocked` | *raises* | `archive` |
-| `human_approval` | `await_approval` → `rejected`, `reason: no_approval_recorded` | `execute` | `archive` |
+| `human_approval` | `await_approval` → `failed`, `reason: no_approval_recorded` | `execute` | `archive` |
 | `draft_only` | **`execute`** (ADR 0013) | *raises* | `archive` |
 | `auto_send` | `execute` | *raises* | `archive` |
 
@@ -315,7 +316,7 @@ Two guards run at registry build — process start, not per intent — and both 
 2. a `draft_only` outbox whose auth profile is granted a scope in
    `outboxes.forbidden_send_scopes`.
 
-A *data* item whose tier forbids dispatch is not an exception: it is a receipt with an outcome and
+A *data* item whose authority forbids dispatch is not an exception: it is a receipt with an outcome and
 a reason, and the pass continues.
 
 ### Writes into Microsoft 365
@@ -374,12 +375,12 @@ the root they hang off, so nothing is missing.
 | `index context` | `ENTITY` \| `--permalink` · `--depth` · `--format text\|json` | entity, observations, edges | 0 / 3 |
 | `index recent` | `--timeframe` · `--type` · `--limit` · `--json` | recently changed entities | 0 / 3 |
 | `index paths` | `--json` | configured roots, database, and each extractor's inbox | 0 / 3 |
-| `index catalog list` | `--ext` · `--source` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows or per-state counts | 0 / 3 |
+| `index catalog list` | `--ext` · `--extractor` · `--status` · `--modified-after` · `--limit` · `--stats` · `--json` | catalog rows or per-state counts | 0 / 3 |
 | `index catalog search` | `QUERY` · `--status` · `--limit` · `--json` | matching rows | 0 / 3 |
 | `index catalog resolve` | `QUERY` — a file name, or a path this family printed · `--json` | one source path, resolved; ambiguity is an error | 0 / 3 / 5 |
 | `index catalog read` | `PATH` — absolute, or relative to the vault root; never to the CWD | the converted markdown on stdout; writes nothing | 0 / 2 / 3 |
-| `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, tier, status | 0 / 3 |
-| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / rejected / replayed / contended / inflight | 0 / 1 / 3 / 4 |
+| `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, authority, status | 0 / 3 |
+| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / failed / replayed / contended / inflight | 0 / 1 / 3 / 4 |
 | `outbox reconcile` | `--outbox NAME` · `--json` | per-intent verdict | 0 / 1 / 3 / 4 |
 | `files pull` | `--profile` · `--site-hostname` · `--site-path` · `--library` · `--item-path` · `--out` · `--json` | bytes written and the eTag | 0 / 1 / 3 / 4 |
 | `files push` | the same, plus `--in` · `--content-type` · `--if-match` (required) | the new eTag; **raises on 412, never overwrites** | 0 / 1 / 3 / 4 |

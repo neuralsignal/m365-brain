@@ -79,7 +79,6 @@ def build_teams_chat_frontmatter(data: TeamsChatData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/teams_chats/2.1",
         },
-        "status": "raw",
     }
 
 
@@ -121,5 +120,4 @@ def build_teams_channel_frontmatter(data: TeamsChannelData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/teams_channels/2.0",
         },
-        "status": "raw",
     }

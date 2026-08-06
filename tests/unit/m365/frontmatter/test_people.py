@@ -18,7 +18,7 @@ from m365_brain.m365.frontmatter.people import (
 )
 from m365_brain.parsers.observations import parse_observations
 
-CONTACT_BASE_KEYS = {"title", "permalink", "type", "tags", "source", "status"}
+CONTACT_BASE_KEYS = {"title", "permalink", "type", "tags", "source"}
 DIRECTORY_BASE_KEYS = CONTACT_BASE_KEYS | {"email", "upn"}
 
 CONTACTS = st.builds(
@@ -56,7 +56,6 @@ class TestPeopleFrontmatterProperties:
 
         assert set(fm) >= CONTACT_BASE_KEYS
         assert fm["type"] == "contact"
-        assert fm["status"] == "raw"
         assert fm["source"]["service"] == "people"
         assert fm["source"]["extractor"] == "m365-brain/contacts/1.1"
         assert re.fullmatch(r"contact-[a-z0-9-]+-[0-9a-f]{6}", fm["permalink"])

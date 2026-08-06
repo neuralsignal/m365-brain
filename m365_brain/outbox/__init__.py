@@ -1,4 +1,4 @@
-"""The outbox lifecycle: claim, route by tier, dispatch, receipt, archive.
+"""The outbox lifecycle: claim, route by authority, dispatch, receipt, archive.
 
 Knows nothing about Microsoft Graph. Handlers arrive injected and satisfy a
 Protocol declared in `vault`, so this half of the package is exercisable end to
@@ -6,6 +6,14 @@ end with no transport present -- which is also why the layer map forbids it
 from importing `m365` at all.
 """
 
+from m365_brain.outbox.authority import (
+    Action,
+    Authority,
+    AuthorityRouter,
+    AuthorityRoutingError,
+    AuthorityViolation,
+    IntentStatus,
+)
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
 from m365_brain.outbox.registry import (
     OutboxConfigurationError,
@@ -20,10 +28,13 @@ from m365_brain.outbox.stores import (
     IntentNotClaimed,
     IntentStore,
 )
-from m365_brain.outbox.tiers import Action, IntentStatus, Tier, TierRouter, TierRoutingError, TierViolation
 
 __all__ = [
     "Action",
+    "Authority",
+    "AuthorityRouter",
+    "AuthorityRoutingError",
+    "AuthorityViolation",
     "FilesystemIntentStore",
     "InMemoryIntentStore",
     "IntentAlreadyClaimed",
@@ -33,10 +44,6 @@ __all__ = [
     "OutboxConfigurationError",
     "OutboxRegistry",
     "RegisteredOutbox",
-    "Tier",
-    "TierRouter",
-    "TierRoutingError",
-    "TierViolation",
     "UnknownOutbox",
     "build_registry",
 ]

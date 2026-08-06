@@ -79,7 +79,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 CATALOG_SQL = """
 CREATE TABLE IF NOT EXISTS file_catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,
+    extractor TEXT NOT NULL,
     original_path TEXT NOT NULL UNIQUE,
     file_name TEXT NOT NULL,
     extension TEXT NOT NULL,
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS file_catalog (
     output_path TEXT,
     error_message TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_catalog_source ON file_catalog(source);
+CREATE INDEX IF NOT EXISTS idx_catalog_extractor ON file_catalog(extractor);
 CREATE INDEX IF NOT EXISTS idx_catalog_extension ON file_catalog(extension);
 CREATE INDEX IF NOT EXISTS idx_catalog_status ON file_catalog(conversion_status);
 CREATE INDEX IF NOT EXISTS idx_catalog_name ON file_catalog(file_name);
@@ -113,8 +113,36 @@ def search_column_index(column: str) -> int:
     return SEARCH_COLUMNS.index(column)
 
 
+CATALOG_RENAMES: tuple[tuple[str, str], ...] = (("source", "extractor"),)
+"""Catalog columns renamed since a database in the wild was created.
+
+The one exception to "no migration framework", and it is narrow on purpose.
+Every other table here IS derived from markdown, so a schema change is answered
+by `index sync --full`, which rewrites entity/observation/relation/FTS from the
+files. `file_catalog` is not: its rows are registered at the storage boundary
+while an extractor downloads a binary (`index/catalog_storage.py`), and no sync
+ever recreates them. A bare `CREATE TABLE IF NOT EXISTS` with a renamed column
+is a no-op on an existing database, so every catalog query would raise
+`no such column` until the operator deleted the index -- which loses the rows
+for good, because getting them back means re-downloading every attachment.
+"""
+
+
+def _apply_catalog_renames(conn: sqlite3.Connection) -> None:
+    """Rename any catalog column still carrying its old name. Idempotent."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(file_catalog)")}
+    for old, new in CATALOG_RENAMES:
+        if old in columns and new not in columns:
+            conn.execute(f"ALTER TABLE file_catalog RENAME COLUMN {old} TO {new}")
+            # SQLite carries an index across a column rename but keeps its old
+            # name, so `CATALOG_SQL` would then add a second index over the same
+            # column. Indexes here are named `idx_catalog_<column>`.
+            conn.execute(f"DROP INDEX IF EXISTS idx_catalog_{old}")
+
+
 def initialize(conn: sqlite3.Connection) -> None:
     """Create tables, indexes, the FTS table and the catalog. Safe to repeat."""
     conn.executescript(ENTITY_SQL)
     conn.executescript(FTS_SQL)
+    _apply_catalog_renames(conn)
     conn.executescript(CATALOG_SQL)

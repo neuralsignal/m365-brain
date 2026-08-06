@@ -195,7 +195,7 @@ vault:
     outbox: "outbox" # intents waiting to be dispatched
     meta: "_meta" # sync state, delta tokens, manifests
     processed: "_processed" # dispatched intents + receipt sidecars
-    rejected: "_rejected" # blocked or failed intents + receipt sidecars
+    failed: "_failed" # blocked or failed intents + receipt sidecars
     inflight: "_inflight" # claimed but not yet archived; never auto-retried
     state: "state" # under meta/
     manifests: "manifests" # under meta/
@@ -293,7 +293,7 @@ index:
     write_batch_size: 50
 
 # ---------------------------------------------------------------------------
-# outboxes — dispatch policy. A tier is policy, so it is config.
+# outboxes — dispatch policy. An authority is policy, so it is config.
 # ---------------------------------------------------------------------------
 outboxes:
   attachment_root: "../attachments" # attachment paths in an intent resolve against this
@@ -302,12 +302,13 @@ outboxes:
   # an unrelated reason and a later bug then sends mail.
   forbidden_send_scopes: ["Mail.Send", "Mail.Send.Shared"]
   definitions:
-    # tier: never_auto | human_approval | draft_only | auto_send
-    "email.draft": { tier: "draft_only", auth_profile: "mail" }
-    "email.reply": { tier: "draft_only", auth_profile: "mail" }
-    "email.forward": { tier: "draft_only", auth_profile: "mail" }
-    "teams.post_message": { tier: "auto_send", auth_profile: "chat" }
-    "file.update": { tier: "auto_send", auth_profile: "files" }
+    # authority: never_auto | human_approval | draft_only | auto_send
+    # Not `tier` — that word names a person's relationship rung under `ops.tiers`.
+    "email.draft": { authority: "draft_only", auth_profile: "mail" }
+    "email.reply": { authority: "draft_only", auth_profile: "mail" }
+    "email.forward": { authority: "draft_only", auth_profile: "mail" }
+    "teams.post_message": { authority: "auto_send", auth_profile: "chat" }
+    "file.update": { authority: "auto_send", auth_profile: "files" }
   email:
     signature:
       html_path: null # a path to signature HTML, or null for no signature

@@ -19,7 +19,7 @@ tags:
 Give a person or a small team a durable, local, greppable copy of their Microsoft 365 working
 context — mail, calendar, chats, channels, files, contacts, directory — as markdown; make that
 copy searchable alongside whatever else they already write in markdown; and let an agent or a
-script act back into Microsoft 365 through a reviewable, permission-tiered outbox.
+script act back into Microsoft 365 through a reviewable, permission-gated outbox.
 
 Three capabilities, one package, one config file:
 
@@ -27,7 +27,7 @@ Three capabilities, one package, one config file:
    incrementally.
 2. **Index** — any configured markdown tree, *including trees this package did not produce*, for
    full-text, vector, and hybrid search plus entity/relation traversal.
-3. **Write back** — typed intents that a permission tier gates before they reach Graph, with
+3. **Write back** — typed intents that an outbox *authority* gates before they reach Graph, with
    reconciliation of what actually happened to them.
 
 The unit exists to be adoptable by a stranger. Every folder name, tree shape, file-naming rule,
@@ -56,8 +56,8 @@ fusion, checksum-driven incremental sync over an explicitly configured list of r
 traversal, and the discovered-file catalog with its conversion lifecycle.
 
 **Write-back.** Typed intent envelope with a client-supplied idempotency key, per-outbox payload
-schema, a four-tier permission router (`never_auto` / `human_approval` / `draft_only` /
-`auto_send`), lifecycle states, `_processed/` and `_rejected/` archiving with a machine-readable
+schema, a four-level authority router (`never_auto` / `human_approval` / `draft_only` /
+`auto_send`), lifecycle states, `_processed/` and `_failed/` archiving with a machine-readable
 reason, and locale-aware reconciliation that classifies an executed intent as sent / amended /
 rejected / pending.
 

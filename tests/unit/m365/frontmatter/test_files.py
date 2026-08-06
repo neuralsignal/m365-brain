@@ -26,7 +26,6 @@ SHARED_KEYS = {
     "parent_path",
     "content_status",
     "source",
-    "status",
 }
 
 FILE_NAMES = st.sampled_from(["report.docx", "Plan.PPTX", "notes", "archive.tar.gz", "budget.xlsx"])
@@ -65,7 +64,6 @@ class TestFileFrontmatterProperties:
 
         assert set(fm) == SHARED_KEYS
         assert fm["type"] == "onedrive_file"
-        assert fm["status"] == "raw"
         assert fm["title"] == data.file_name == fm["file_name"]
         assert fm["file_size"] == data.size
         assert fm["content_status"] == data.content_status

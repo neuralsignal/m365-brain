@@ -154,9 +154,9 @@ class VaultPaths:
         """A dispatched intent, archived byte-identical. This tree is the ledger."""
         return self.meta(self.vault.layout.processed, f"{uuid}.md")
 
-    def rejected(self, uuid: str) -> str:
+    def failed(self, uuid: str) -> str:
         """A blocked or failed intent, archived byte-identical beside its receipt."""
-        return self.meta(self.vault.layout.rejected, f"{uuid}.md")
+        return self.meta(self.vault.layout.failed, f"{uuid}.md")
 
     def processed_receipt(self, uuid: str) -> str:
         """The receipt sidecar beside a dispatched intent.
@@ -167,14 +167,14 @@ class VaultPaths:
         """
         return self.meta(self.vault.layout.processed, f"{uuid}{RECEIPT_SUFFIX}")
 
-    def rejected_receipt(self, uuid: str) -> str:
+    def failed_receipt(self, uuid: str) -> str:
         """The receipt sidecar beside a blocked or failed intent.
 
         Two methods rather than one taking an archive argument: the caller
         already knows which archive it is writing to, and an argument it could
         get wrong would put the receipt somewhere nothing looks.
         """
-        return self.meta(self.vault.layout.rejected, f"{uuid}{RECEIPT_SUFFIX}")
+        return self.meta(self.vault.layout.failed, f"{uuid}{RECEIPT_SUFFIX}")
 
     def reconciled(self, uuid: str) -> str:
         """The terminal-verdict marker beside a dispatched intent."""

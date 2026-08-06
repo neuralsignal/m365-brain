@@ -12,16 +12,16 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from m365_brain.outbox.authority import AuthorityRouter
 from m365_brain.outbox.reconcile import QuoteMarkers
 from m365_brain.outbox.registry import build_registry
 from m365_brain.outbox.runner import push, reconcile
-from m365_brain.outbox.tiers import TierRouter
 from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, DispatchResult, GraphOp
 from m365_brain.vault.intent import IntentEnvelope
 
 from .conftest import DRAFT_PAYLOAD, QUOTE_MARKERS, intent_markdown
 
-ROUTER = TierRouter()
+ROUTER = AuthorityRouter()
 
 
 @dataclass
@@ -87,7 +87,9 @@ class TestTierOutcomes:
             update={
                 "definitions": {
                     **outboxes_config.definitions,
-                    "email.draft": outboxes_config.definitions["email.draft"].model_copy(update={"tier": "never_auto"}),
+                    "email.draft": outboxes_config.definitions["email.draft"].model_copy(
+                        update={"authority": "never_auto"}
+                    ),
                 }
             }
         )
@@ -114,7 +116,7 @@ class TestTierOutcomes:
                 "definitions": {
                     **outboxes_config.definitions,
                     "email.draft": outboxes_config.definitions["email.draft"].model_copy(
-                        update={"tier": "human_approval"}
+                        update={"authority": "human_approval"}
                     ),
                 }
             }
@@ -128,7 +130,7 @@ class TestTierOutcomes:
 
         counts = push(store, registry, ROUTER)
 
-        assert counts.rejected == 1
+        assert counts.failed == 1
         assert store.receipt("abc").reason == "no_approval_recorded"
 
 
@@ -140,7 +142,7 @@ class TestFailSafe:
 
         counts = push(store, registry, ROUTER)
 
-        assert counts.rejected == 2
+        assert counts.failed == 2
         assert handler.calls == ["aaa", "bbb"]
 
     def test_a_graph_failure_is_recorded_as_graph_error(self, store, place, registry, handler):
@@ -180,7 +182,7 @@ class TestFailSafe:
 
         counts = push(store, registry, ROUTER)
 
-        assert counts.rejected == 1
+        assert counts.failed == 1
         assert store.receipt("bad").reason == "parse_error"
         assert store.already_dispatched("bad") is True, "a rejection must not be retried"
 

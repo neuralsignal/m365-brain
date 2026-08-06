@@ -15,7 +15,7 @@ from m365_brain.index.backends.filters import normalised_extension
 from m365_brain.model import CatalogEntry, CatalogQuery
 
 COLUMNS = (
-    "id, source, original_path, file_name, extension, size_bytes, "
+    "id, extractor, original_path, file_name, extension, size_bytes, "
     "modified_at, conversion_status, output_path, error_message"
 )
 
@@ -32,11 +32,11 @@ def upsert_catalog_entry(conn: sqlite3.Connection, entry: CatalogEntry) -> int:
     """Insert or update by `original_path`. Returns the row id."""
     conn.execute(
         """INSERT INTO file_catalog
-               (source, original_path, file_name, extension, size_bytes, modified_at,
+               (extractor, original_path, file_name, extension, size_bytes, modified_at,
                 conversion_status, output_path, error_message)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(original_path) DO UPDATE SET
-               source = excluded.source,
+               extractor = excluded.extractor,
                file_name = excluded.file_name,
                extension = excluded.extension,
                size_bytes = excluded.size_bytes,
@@ -45,7 +45,7 @@ def upsert_catalog_entry(conn: sqlite3.Connection, entry: CatalogEntry) -> int:
                output_path = excluded.output_path,
                error_message = excluded.error_message""",
         (
-            entry.source,
+            entry.extractor,
             entry.original_path,
             entry.file_name,
             entry.extension,
@@ -67,9 +67,9 @@ def search_catalog(conn: sqlite3.Connection, query: CatalogQuery) -> list[Catalo
     if query.name_contains is not None:
         clauses.append(f"file_name LIKE ? ESCAPE '{LIKE_ESCAPE}'")
         params.append(_contains_pattern(query.name_contains))
-    if query.source is not None:
-        clauses.append("source = ?")
-        params.append(query.source)
+    if query.extractor is not None:
+        clauses.append("extractor = ?")
+        params.append(query.extractor)
     if query.extension is not None:
         clauses.append("extension = ?")
         params.append(normalised_extension(query.extension))
@@ -152,7 +152,7 @@ def _entry(row: sqlite3.Row) -> CatalogEntry:
         original_path=row["original_path"],
         file_name=row["file_name"],
         extension=row["extension"],
-        source=row["source"],
+        extractor=row["extractor"],
         size_bytes=row["size_bytes"],
         modified_at=row["modified_at"],
         conversion_status=row["conversion_status"],

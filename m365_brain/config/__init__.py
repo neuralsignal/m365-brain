@@ -45,12 +45,12 @@ from m365_brain.config.ops import (
     TriageFieldsConfig,
 )
 from m365_brain.config.outbox import (
+    Authority,
     EmailOutboxConfig,
     EmailSignatureConfig,
     OutboxDefinitionConfig,
     OutboxesConfig,
     ReconcileConfig,
-    Tier,
 )
 from m365_brain.config.runtime import (
     HooksConfig,
@@ -125,7 +125,7 @@ __all__ = [
     "StorageConfig",
     "TeamsChannelsExtractorConfig",
     "TeamsChatsExtractorConfig",
-    "Tier",
+    "Authority",
     "TierLevelConfig",
     "TierWriteBackConfig",
     "TiersConfig",

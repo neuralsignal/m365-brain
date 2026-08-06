@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 
 import structlog
 
+from m365_brain.outbox.authority import AuthorityRouter
 from m365_brain.outbox.reconcile import (
     RECONCILE_SELECT,
     TERMINAL_VERDICTS,
@@ -34,8 +35,7 @@ from m365_brain.outbox.reconcile import (
 )
 from m365_brain.outbox.registry import OutboxRegistry, UnknownOutbox
 from m365_brain.outbox.stores import IntentAlreadyClaimed, IntentStore
-from m365_brain.outbox.tiers import TierRouter
-from m365_brain.vault.dispatch import DispatchReceipt, RejectionReason
+from m365_brain.vault.dispatch import DispatchReceipt, NonDispatchReason
 from m365_brain.vault.intent import IntentParseError
 
 log = structlog.get_logger()
@@ -57,7 +57,7 @@ class PushCounts:
 
     dispatched: int = 0
     blocked: int = 0
-    rejected: int = 0
+    failed: int = 0
     replayed: int = 0
     contended: int = 0
     inflight: int = 0
@@ -66,7 +66,7 @@ class PushCounts:
         return {
             "dispatched": self.dispatched,
             "blocked": self.blocked,
-            "rejected": self.rejected,
+            "failed": self.failed,
             "replayed": self.replayed,
             "contended": self.contended,
             "inflight": self.inflight,
@@ -75,12 +75,12 @@ class PushCounts:
 
 @dataclass
 class _Failure:
-    reason: RejectionReason
+    reason: NonDispatchReason
     detail: str
     blocked: bool = field(default=False)
 
 
-def push(store: IntentStore, registry: OutboxRegistry, router: TierRouter) -> PushCounts:
+def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) -> PushCounts:
     """Claim, route, dispatch, receipt, archive -- once per pending intent."""
     counts = PushCounts()
     for outbox_name, uuid in list(store.pending()):
@@ -110,14 +110,14 @@ def _dispatch_one(store, registry, router, outbox_name, uuid, envelope, counts) 
         _record(store, uuid, envelope.kind, None, _Failure("unknown_outbox", str(exc)), counts)
         return
 
-    action = router.next_action(outbox.tier, "pending")
+    action = router.next_action(outbox.authority, "pending")
     if action == "await_admin":
         _record(
             store,
             uuid,
             envelope.kind,
             None,
-            _Failure("tier_blocked", f"outbox {outbox_name!r} is tier {outbox.tier.value}", blocked=True),
+            _Failure("tier_blocked", f"outbox {outbox_name!r} is authority {outbox.authority.value}", blocked=True),
             counts,
         )
         return
@@ -179,7 +179,7 @@ def _record(store, uuid: str, kind: str, message_id: str | None, failure: _Failu
         DispatchReceipt(
             uuid=uuid,
             kind=kind,
-            outcome="blocked" if failure.blocked else "rejected",
+            outcome="blocked" if failure.blocked else "failed",
             dispatched_at=datetime.now(UTC),
             graph_message_id=message_id,
             reason=failure.reason,
@@ -189,7 +189,7 @@ def _record(store, uuid: str, kind: str, message_id: str | None, failure: _Failu
     if failure.blocked:
         counts.blocked += 1
     else:
-        counts.rejected += 1
+        counts.failed += 1
     log.info("outbox.not_dispatched", uuid=uuid, reason=failure.reason, detail=failure.detail)
 
 

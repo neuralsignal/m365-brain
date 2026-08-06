@@ -69,7 +69,7 @@ def vault_section(root: Path) -> VaultConfig:
             outbox="outbox",
             meta="_meta",
             processed="_processed",
-            rejected="_rejected",
+            failed="_failed",
             inflight="_inflight",
             state="state",
             manifests="manifests",

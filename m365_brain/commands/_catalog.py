@@ -44,7 +44,7 @@ def catalog() -> None:
 
 def _query(
     extension: str | None,
-    source: str | None,
+    extractor: str | None,
     status: str | None,
     modified_after: str | None,
     name_contains: str | None,
@@ -52,7 +52,7 @@ def _query(
 ) -> CatalogQuery:
     return CatalogQuery(
         extension=extension,
-        source=source,
+        extractor=extractor,
         status=status,
         modified_after=modified_after,
         name_contains=name_contains,
@@ -62,7 +62,7 @@ def _query(
 
 @catalog.command("list")
 @click.option("--ext", "extension", type=str, default=None, help="e.g. .pdf")
-@click.option("--source", type=str, default=None, help="Where the file came from")
+@click.option("--extractor", type=str, default=None, help="The extractor that registered it, e.g. email")
 @click.option("--status", type=str, default=None, help="A value from index.catalog.conversion_states")
 @click.option("--modified-after", type=str, default=None, help="ISO timestamp")
 @click.option("--limit", type=int, default=100)
@@ -72,7 +72,7 @@ def _query(
 def list_entries(
     ctx: click.Context,
     extension: str | None,
-    source: str | None,
+    extractor: str | None,
     status: str | None,
     modified_after: str | None,
     limit: int,
@@ -80,7 +80,7 @@ def list_entries(
     as_json: bool,
 ) -> None:
     """Catalogued files, filtered."""
-    if stats and any(filter_ is not None for filter_ in (extension, source, status, modified_after)):
+    if stats and any(filter_ is not None for filter_ in (extension, extractor, status, modified_after)):
         # `stats()` counts the whole table. Accepting filters beside it would
         # answer a question nobody asked and look like an answer to the one
         # they did -- which is only detectable once the table has rows.
@@ -92,7 +92,7 @@ def list_entries(
             counts = store.stats()
             emit(as_json, counts, [f"{state}\t{count}" for state, count in sorted(counts.items())])
             return
-        entries = store.search(_query(extension, source, status, modified_after, None, limit))
+        entries = store.search(_query(extension, extractor, status, modified_after, None, limit))
     _emit_entries(entries, config.storage, as_json)
 
 
@@ -256,7 +256,7 @@ def _emit_entries(entries: list[CatalogEntry], storage: StorageConfig, as_json: 
             "file_name": entry.file_name,
             "original_path": resolve_key(storage, entry.original_path),
             "extension": entry.extension,
-            "source": entry.source,
+            "extractor": entry.extractor,
             "size_bytes": entry.size_bytes,
             "modified_at": entry.modified_at,
             "conversion_status": entry.conversion_status,

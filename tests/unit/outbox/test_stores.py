@@ -114,7 +114,7 @@ class TestArchive:
         just because it did not succeed."""
         place("abc")
         store.claim("email.draft", "abc")
-        store.archive("abc", _receipt("abc", outcome="rejected"))
+        store.archive("abc", _receipt("abc", outcome="failed"))
 
         assert store.already_dispatched("abc") is True
 
@@ -155,7 +155,7 @@ class TestArchive:
 
 class TestDispatchedReceipts:
     def test_only_dispatched_receipts_are_walked(self, store, place):
-        for uuid, outcome in (("a", "dispatched"), ("b", "rejected"), ("c", "dispatched")):
+        for uuid, outcome in (("a", "dispatched"), ("b", "failed"), ("c", "dispatched")):
             place(uuid)
             store.claim("email.draft", uuid)
             store.archive(uuid, _receipt(uuid, outcome=outcome))

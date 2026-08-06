@@ -80,5 +80,4 @@ def build_email_frontmatter(data: EmailData) -> dict:
             "extracted_at": now_iso(),
             "extractor": "m365-brain/email/1.3",
         },
-        "status": "raw",
     }

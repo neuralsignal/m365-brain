@@ -127,7 +127,14 @@ class CatalogEntry:
     original_path: str
     file_name: str
     extension: str
-    source: str
+    extractor: str
+    """The extractor that registered it -- `email`, `teams_chats`, `teams_channels`.
+
+    Not `source`. That word already names the provenance dict every frontmatter
+    builder writes (`{system, service, id, url, ...}`), whose `service` values
+    are `exchange`, `teams`, `onedrive` -- a different vocabulary entirely. An
+    operator reading `service: exchange` in an email and typing
+    `--source exchange` got zero rows while the answer was `email`."""
     size_bytes: int
     modified_at: str
     conversion_status: str
@@ -140,7 +147,7 @@ class CatalogQuery:
     """Catalog filters as one value, so no caller assembles SQL."""
 
     extension: str | None
-    source: str | None
+    extractor: str | None
     status: str | None
     modified_after: str | None
     name_contains: str | None

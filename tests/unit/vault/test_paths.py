@@ -95,16 +95,16 @@ class TestOutboxAndMeta:
     def test_archive_paths_live_under_meta(self, paths):
         assert paths.inflight("abc") == "dot-meta/claimed/abc.md"
         assert paths.processed("abc") == "dot-meta/done/abc.md"
-        assert paths.rejected("abc") == "dot-meta/refused/abc.md"
+        assert paths.failed("abc") == "dot-meta/refused/abc.md"
 
     def test_the_receipt_is_a_sidecar_beside_the_intent_in_either_archive(self, paths):
         """A sidecar, not injected frontmatter: the archived intent must still
         parse under its own `extra="forbid"` when re-read. Both archives get
-        one, because a rejection has to say why as much as a dispatch does."""
+        one, because a non-dispatch has to say why as much as a dispatch does."""
         assert paths.processed_receipt("abc") == "dot-meta/done/abc.receipt.json"
-        assert paths.rejected_receipt("abc") == "dot-meta/refused/abc.receipt.json"
+        assert paths.failed_receipt("abc") == "dot-meta/refused/abc.receipt.json"
         assert paths.processed_receipt("abc") != paths.processed("abc")
-        assert paths.rejected_receipt("abc") != paths.rejected("abc")
+        assert paths.failed_receipt("abc") != paths.failed("abc")
 
     def test_state_and_manifests_sit_under_meta(self, paths):
         assert paths.state("sync.json") == "dot-meta/cursors/sync.json"

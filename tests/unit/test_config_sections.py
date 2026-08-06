@@ -214,7 +214,7 @@ def _vault_section() -> dict:
             "outbox": "outbox",
             "meta": "_meta",
             "processed": "_processed",
-            "rejected": "_rejected",
+            "failed": "_failed",
             "inflight": "_inflight",
             "state": "state",
             "manifests": "manifests",
@@ -243,7 +243,7 @@ def _outboxes_section() -> dict:
     return {
         "attachment_root": "./attachments",
         "forbidden_send_scopes": ["Mail.Send"],
-        "definitions": {"email.draft": {"tier": "draft_only", "auth_profile": "mail"}},
+        "definitions": {"email.draft": {"authority": "draft_only", "auth_profile": "mail"}},
         "email": {
             "signature": {"html_path": None, "logo_path": None, "logo_content_id": "logo"},
         },
@@ -383,7 +383,7 @@ class TestCompleteConfig:
     def test_outbox_tier_round_trips(self, tmp_path):
         outboxes = load(tmp_path, full_payload()).outboxes
 
-        assert outboxes.definitions["email.draft"].tier == "draft_only"
+        assert outboxes.definitions["email.draft"].authority == "draft_only"
         assert outboxes.definitions["email.draft"].auth_profile == "mail"
         assert outboxes.email.signature.html_path is None
 
@@ -656,9 +656,9 @@ class TestValidators:
 
     def test_unknown_tier_is_rejected(self, tmp_path):
         payload = full_payload()
-        payload["outboxes"]["definitions"]["email.draft"]["tier"] = "probably_fine"
+        payload["outboxes"]["definitions"]["email.draft"]["authority"] = "probably_fine"
 
-        with pytest.raises(ConfigError, match="tier"):
+        with pytest.raises(ConfigError, match="authority"):
             load(tmp_path, payload)
 
     def test_empty_outbox_definitions_are_rejected(self, tmp_path):
