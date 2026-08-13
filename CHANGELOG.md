@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.2.0](https://github.com/neuralsignal/m365-brain/compare/v1.1.1...v1.2.0) (2026-08-10)
+
+
+### Features
+
+* consolidate five units into m365-brain ([4d7eb21](https://github.com/neuralsignal/m365-brain/commit/4d7eb214c177e5116749edcb1e46b17fd6b1fb26))
+* file catalogue, three silent-config fixes, and publication readiness ([b349830](https://github.com/neuralsignal/m365-brain/commit/b34983070d1af66b7aadecc01a37853baf1912da))
+* knowledge layer, Graph transport, and the vault path contract ([2f587f6](https://github.com/neuralsignal/m365-brain/commit/2f587f6b200e84059985b9f2ca6387e494b8a75d))
+* make the file catalogue real, close three silent-config defects, and scrub for publication ([1968fbd](https://github.com/neuralsignal/m365-brain/commit/1968fbd9111e9704f812818d71445027b2f7d87d))
+* one config root covering every knob the port needs ([83c0a68](https://github.com/neuralsignal/m365-brain/commit/83c0a68b81a0bae1b4cedecb5721b0d7321e6ff0))
+* runtime, CLI, and the three bundled skills ([bf1401a](https://github.com/neuralsignal/m365-brain/commit/bf1401a7bf2de4dce649a0f88f610319f515c07f))
+* the typed outbox, Graph file writes, and auth profiles ([dcaa3a1](https://github.com/neuralsignal/m365-brain/commit/dcaa3a11127dc78cecbc38db2c32ac87dc98e63f))
+
+
+### Bug Fixes
+
+* $top on a delta query is the item budget, not a page size ([#264](https://github.com/neuralsignal/m365-brain/issues/264)) ([81912ca](https://github.com/neuralsignal/m365-brain/commit/81912ca62c9c4cf44bb66442cd697312f82ac291))
+* bump pypdf lower bound to 6.15.0 for CVE-2026-71852 and CVE-2026-71870 ([#277](https://github.com/neuralsignal/m365-brain/issues/277)) ([#281](https://github.com/neuralsignal/m365-brain/issues/281)) ([3cbe17d](https://github.com/neuralsignal/m365-brain/commit/3cbe17def0305412d99574261d0656bd57b9ab9e))
+* drop email lookback_days, a window Graph never applied ([#266](https://github.com/neuralsignal/m365-brain/issues/266)) ([df0a98f](https://github.com/neuralsignal/m365-brain/commit/df0a98f99e8def9d6583cf4c1ae644f8c523d0cc))
+* keep logs off stdout in every verb, not just two ([cf242d9](https://github.com/neuralsignal/m365-brain/commit/cf242d94f4a8d53f94db1b6a9e5306c92486b8d3))
+* make a capped answer say it was capped ([a319694](https://github.com/neuralsignal/m365-brain/commit/a319694389fcb30ea89746ed80c9636e7f6fcfc2))
+* make a contact's address resolvable by ops links ([ce90a00](https://github.com/neuralsignal/m365-brain/commit/ce90a00eb8acc6e541cb0a02654ace2906ed660e))
+* make a contact's address resolvable by ops links ([70e92e7](https://github.com/neuralsignal/m365-brain/commit/70e92e760c9ca551d6bc9d3701f80eb5cf88bf53))
+* make a Teams chat's participants countable by ops tiers ([a94be26](https://github.com/neuralsignal/m365-brain/commit/a94be26eb4f59ec942f8510c818225104289ffb8))
+* make a Teams chat's participants countable by ops tiers ([b64ebd7](https://github.com/neuralsignal/m365-brain/commit/b64ebd74a1002207596f1c6a37bcacd3cda6a335))
+* make every config knob bind, or take it out ([e7ea191](https://github.com/neuralsignal/m365-brain/commit/e7ea1918948f7c308256e57346d66a8fa1a13ba8))
+* resolve every printed path, and accept one back ([36cdb69](https://github.com/neuralsignal/m365-brain/commit/36cdb6908b0a18d33e6a1aa83bff6608a697a491))
+* scope the prune to the roots a run actually walked ([26b8294](https://github.com/neuralsignal/m365-brain/commit/26b8294f0fab3fc7d67d112b2913e0909e5938e3))
+* separate two status vocabularies, give relations spellable types ([#265](https://github.com/neuralsignal/m365-brain/issues/265)) ([83081a4](https://github.com/neuralsignal/m365-brain/commit/83081a41ebf8cf1be10b6868290378d85dda0eb8))
+* stop answering three different questions with exit 3 ([d13236b](https://github.com/neuralsignal/m365-brain/commit/d13236b757677fcf68c0c6505c6e8b3379768c0f))
+* stop four words from carrying two vocabularies each ([a076ba6](https://github.com/neuralsignal/m365-brain/commit/a076ba63ce5a3505e3c4c12f91e4c3a45fc255c6))
+
+
+### Documentation
+
+* add INTENT.md, CONTRACTS.md, and ADRs 0001-0012 ([b335ef0](https://github.com/neuralsignal/m365-brain/commit/b335ef034f10e33cd813e71085a1ec987a74c685))
+* author the deferred backlog ([51d05fd](https://github.com/neuralsignal/m365-brain/commit/51d05fdf35bd58f06f2fb261e2e6e1bbccaed0f9))
+* bring in the knowledge-layer design docs and split the test tree ([215fd50](https://github.com/neuralsignal/m365-brain/commit/215fd50a8f3d5b2b5c21aa9933c07caa6481d647))
+* stop the shipped documents describing a CLI that is not there ([347f01f](https://github.com/neuralsignal/m365-brain/commit/347f01f716a56f75b200364e7014b252624ef524))
+* task for an application-permission auth profile ([4d59fe2](https://github.com/neuralsignal/m365-brain/commit/4d59fe269abb550ac68bc661457e431e19e88c92))
+
 ## [1.1.1](https://github.com/neuralsignal/m365-extract/compare/v1.1.0...v1.1.1) (2026-08-04)
 
 

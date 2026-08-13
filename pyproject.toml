@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "m365-brain"
-version = "1.1.1"
+version = "1.2.0"
 description = "Microsoft 365 data extraction to Obsidian-compatible markdown via Graph API"
 readme = "README.md"
 license = "MIT"
