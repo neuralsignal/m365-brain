@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/neuralsignal/m365-brain/compare/v1.2.0...v1.2.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* enforce attachment_root boundary in resolve_attachment ([#299](https://github.com/neuralsignal/m365-brain/issues/299)) ([#300](https://github.com/neuralsignal/m365-brain/issues/300)) ([4b8d8b6](https://github.com/neuralsignal/m365-brain/commit/4b8d8b63cf3e459e889286542e701075d65dde95))
+
 ## [1.2.0](https://github.com/neuralsignal/m365-brain/compare/v1.1.1...v1.2.0) (2026-08-10)
 
 
