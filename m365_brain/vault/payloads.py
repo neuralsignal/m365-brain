@@ -23,6 +23,7 @@ preferences:
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -36,6 +37,14 @@ PAYLOAD_MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True, strict=True)
 LEGACY_MAPI_ENTRY_ID = re.compile(r"^0{8,}[0-9A-F]{16,}$")
 
 MAX_SUBJECT_LENGTH = 998  # RFC 5322 line-length ceiling for a header
+
+
+def _reject_path_traversal(value: str) -> str:
+    if PurePosixPath(value).is_absolute():
+        raise ValueError(f"absolute attachment path {value!r} is not allowed")
+    if ".." in PurePosixPath(value).parts:
+        raise ValueError(f"attachment path {value!r} contains '..' segments")
+    return value
 
 
 def _reject_legacy_entry_id(value: str) -> str:
@@ -58,12 +67,16 @@ class InlineImage(BaseModel):
     cid: str = Field(min_length=1, max_length=128)
     path: str = Field(min_length=1)
 
+    _check_path = field_validator("path")(_reject_path_traversal)
+
 
 class Attachment(BaseModel):
     """A file to attach, resolved against `outboxes.attachment_root` at dispatch."""
 
     model_config = PAYLOAD_MODEL_CONFIG
     path: str = Field(min_length=1)
+
+    _check_path = field_validator("path")(_reject_path_traversal)
 
 
 class _EmailCommon(BaseModel):
