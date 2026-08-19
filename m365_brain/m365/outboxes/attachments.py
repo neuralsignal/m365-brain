@@ -21,6 +21,7 @@ from typing import Any
 from m365_brain.config import UploadConfig
 from m365_brain.m365.client import GraphClient
 from m365_brain.m365.upload import upload_in_chunks
+from m365_brain.storage.exceptions import PathTraversalError
 
 FILE_ATTACHMENT_TYPE = "#microsoft.graph.fileAttachment"
 FALLBACK_CONTENT_TYPE = "application/octet-stream"
@@ -29,17 +30,14 @@ FALLBACK_CONTENT_TYPE = "application/octet-stream"
 def resolve_attachment(root: str, path: str) -> Path:
     """Resolve one attachment path against `outboxes.attachment_root`.
 
-    An absolute path is taken as given. A relative one is resolved against the
-    configured root rather than the process working directory, so an intent
-    means the same thing whichever shell dispatched it.
-
-    Raises `FileNotFoundError` naming both the written and the resolved path --
-    "not found" without the resolution is unactionable when the two differ.
+    Every resolved path must stay within the root. Absolute paths and `..`
+    traversals that escape the boundary raise `PathTraversalError`.
     """
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        candidate = Path(root) / candidate
+    root_resolved = Path(root).resolve()
+    candidate = root_resolved / Path(path)
     resolved = candidate.resolve()
+    if not resolved.is_relative_to(root_resolved):
+        raise PathTraversalError(f"attachment path {path!r} resolves outside attachment_root {root!r}")
     if not resolved.exists():
         raise FileNotFoundError(f"attachment not found: {path!r} (resolved to {resolved})")
     return resolved

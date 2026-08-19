@@ -9,6 +9,7 @@ import pytest
 
 from m365_brain.config import UploadConfig
 from m365_brain.m365.outboxes.attachments import attach_file, resolve_attachment
+from m365_brain.storage.exceptions import PathTraversalError
 
 from .conftest import LARGE_ATTACHMENT_BYTES
 
@@ -19,10 +20,15 @@ class TestResolution:
 
         assert resolved == (attachment_root / "doc.txt").resolve()
 
-    def test_an_absolute_path_is_taken_as_given(self, attachment_root):
+    def test_an_absolute_path_is_rejected(self, attachment_root):
         absolute = str((attachment_root / "doc.txt").resolve())
 
-        assert resolve_attachment("/somewhere/else", absolute) == (attachment_root / "doc.txt").resolve()
+        with pytest.raises(PathTraversalError):
+            resolve_attachment("/somewhere/else", absolute)
+
+    def test_a_relative_traversal_is_rejected(self, attachment_root):
+        with pytest.raises(PathTraversalError):
+            resolve_attachment(str(attachment_root), "../../etc/passwd")
 
     def test_a_missing_file_names_both_what_was_written_and_what_it_resolved_to(self, attachment_root):
         with pytest.raises(FileNotFoundError) as excinfo:
@@ -30,6 +36,15 @@ class TestResolution:
 
         assert "'deck.pdf'" in str(excinfo.value)
         assert str(attachment_root) in str(excinfo.value)
+
+    def test_a_subdirectory_path_within_root_is_allowed(self, attachment_root):
+        subdir = attachment_root / "sub"
+        subdir.mkdir()
+        (subdir / "nested.txt").write_text("nested")
+
+        resolved = resolve_attachment(str(attachment_root), "sub/nested.txt")
+
+        assert resolved == (subdir / "nested.txt").resolve()
 
 
 class TestInlinePath:

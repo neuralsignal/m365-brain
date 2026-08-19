@@ -174,6 +174,29 @@ class TestNestedModels:
     def test_an_attachment_is_a_path_not_inline_bytes(self):
         assert set(Attachment.model_fields) == {"path"}
 
+    def test_an_absolute_attachment_path_is_rejected(self):
+        with pytest.raises(ValidationError, match="absolute"):
+            Attachment(path="/etc/passwd")
+
+    def test_a_dotdot_attachment_path_is_rejected(self):
+        with pytest.raises(ValidationError, match="\\.\\."):
+            Attachment(path="../../secret.txt")
+
+    def test_an_absolute_inline_image_path_is_rejected(self):
+        with pytest.raises(ValidationError, match="absolute"):
+            InlineImage(kind_of_ref="cid", cid="banner", path="/etc/shadow")
+
+    def test_a_dotdot_inline_image_path_is_rejected(self):
+        with pytest.raises(ValidationError, match="\\.\\."):
+            InlineImage(kind_of_ref="cid", cid="banner", path="../../../etc/passwd")
+
+    def test_a_relative_attachment_path_is_accepted(self):
+        assert Attachment(path="sub/file.pdf").path == "sub/file.pdf"
+
+    def test_a_relative_inline_image_path_is_accepted(self):
+        img = InlineImage(kind_of_ref="cid", cid="logo", path="images/logo.png")
+        assert img.path == "images/logo.png"
+
     def test_payloads_are_frozen(self):
         payload = ADAPTER.validate_python(DRAFT)
         with pytest.raises(ValidationError):
