@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/neuralsignal/m365-brain/compare/v1.2.1...v1.2.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* add missing return type annotations in commands and config_loader ([#303](https://github.com/neuralsignal/m365-brain/issues/303)) ([#306](https://github.com/neuralsignal/m365-brain/issues/306)) ([a4733bf](https://github.com/neuralsignal/m365-brain/commit/a4733bf05b945a47bd162b3104ce224567113fe0))
+
 ## [1.2.1](https://github.com/neuralsignal/m365-brain/compare/v1.2.0...v1.2.1) (2026-08-19)
 
 
