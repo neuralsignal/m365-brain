@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from sqlalchemy import Engine
 from sqlmodel import Session, create_engine
 
 from m365_brain.config import Config, load_config
@@ -61,7 +62,7 @@ def get_config_path() -> str | None:
     return _config_path
 
 
-def get_engine():
+def get_engine() -> Engine:
     """Return the SQLModel engine, creating it on first call.
 
     Runs Alembic migrations to HEAD on first call.
