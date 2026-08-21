@@ -11,6 +11,7 @@ from __future__ import annotations
 import click
 
 from m365_brain.commands._context import config_path, emit, require_config
+from m365_brain.config import Config
 from m365_brain.hooks import resolve_hooks
 
 
@@ -48,7 +49,7 @@ def show(ctx: click.Context, as_json: bool) -> None:
     emit(as_json, payload, _yaml_lines(payload))
 
 
-def _present(loaded) -> list[str]:
+def _present(loaded: Config) -> list[str]:
     return [name for name, value in loaded.model_dump().items() if value is not None]
 
 

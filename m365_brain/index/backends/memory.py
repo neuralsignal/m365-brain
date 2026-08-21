@@ -19,7 +19,7 @@ exclude and a quoted phrase is matched word by word. No test may assume more.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 
 from m365_brain.config.index import IndexConfig
@@ -258,7 +258,7 @@ class InMemoryIndexBackend:
             updated_at=entity.updated_at,
         )
 
-    def _first(self, predicate) -> EntityRef | None:
+    def _first(self, predicate: Callable[[Entity], bool]) -> EntityRef | None:
         for entity_id in sorted(self._entities):
             if predicate(self._entities[entity_id]):
                 return self._ref(entity_id)
