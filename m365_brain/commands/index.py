@@ -20,7 +20,7 @@ from m365_brain.commands._context import (
     require_config,
     row_limit,
 )
-from m365_brain.config import ConfigError, require_section
+from m365_brain.config import ConfigError, IndexConfig, IndexRoot, require_section
 from m365_brain.index.query import parse_metadata_filter
 from m365_brain.index.search import SearchFilters
 from m365_brain.index_step import run_index_step
@@ -68,7 +68,7 @@ def _run_index(ctx: click.Context, roots: tuple[str, ...], full_rebuild: bool) -
         raise SystemExit(EXIT_FAILURE)
 
 
-def _narrow(index, names: tuple[str, ...]):
+def _narrow(index: IndexConfig, names: tuple[str, ...]) -> list[IndexRoot]:
     known = {root.name: root for root in index.roots}
     unknown = sorted(set(names) - set(known))
     if unknown:
