@@ -29,6 +29,7 @@ from m365_brain.index.backends import sqlite_read as read
 from m365_brain.index.backends import sqlite_schema as schema
 from m365_brain.index.backends import sqlite_write as write
 from m365_brain.index.backends.base import TextQuery
+from m365_brain.index.backends.sqlite_connect import sqlite_connection
 from m365_brain.model import (
     CatalogEntry,
     CatalogQuery,
@@ -52,25 +53,14 @@ class SqliteIndexBackend:
     @contextmanager
     def connect(self, readonly: bool) -> Iterator[sqlite3.Connection]:
         """A configured connection. Public so tests can assert the pragmas."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(f"file:{self._path}", uri=True)
-        conn.row_factory = sqlite3.Row
-        if readonly:
-            conn.execute("PRAGMA query_only=ON")
-        else:
-            conn.execute(f"PRAGMA journal_mode={self._config.sqlite.journal_mode}")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute(f"PRAGMA busy_timeout={self._config.sqlite.busy_timeout_ms}")
-        try:
+        with sqlite_connection(
+            path=self._path,
+            journal_mode=self._config.sqlite.journal_mode,
+            busy_timeout_ms=self._config.sqlite.busy_timeout_ms,
+            readonly=readonly,
+            post_connect=None,
+        ) as conn:
             yield conn
-            if not readonly:
-                conn.commit()
-        except Exception:
-            if not readonly:
-                conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def initialize(self) -> None:
         if self._initialized:
