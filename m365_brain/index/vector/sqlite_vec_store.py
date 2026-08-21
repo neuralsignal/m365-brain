@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from m365_brain.config.index import SqliteIndexConfig, VectorConfig
+from m365_brain.index.backends.sqlite_connect import sqlite_connection
 from m365_brain.index.vector.chunking import CHUNK_KEY_PREFIX
 from m365_brain.model import Chunk, PruneStats, VectorHit
 
@@ -55,26 +56,14 @@ class SqliteVecStore:
     @contextmanager
     def connect(self, readonly: bool) -> Iterator[sqlite3.Connection]:
         """A connection with the extension loaded. Public so tests can assert state."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(f"file:{self._path}", uri=True)
-        conn.row_factory = sqlite3.Row
-        if readonly:
-            conn.execute("PRAGMA query_only=ON")
-        else:
-            conn.execute(f"PRAGMA journal_mode={self._journal_mode}")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-        _load_extension(conn)
-        try:
+        with sqlite_connection(
+            path=self._path,
+            journal_mode=self._journal_mode,
+            busy_timeout_ms=self._busy_timeout_ms,
+            readonly=readonly,
+            post_connect=_load_extension,
+        ) as conn:
             yield conn
-            if not readonly:
-                conn.commit()
-        except Exception:
-            if not readonly:
-                conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def initialize(self, dimensions: int) -> None:
         with self.connect(readonly=False) as conn:
