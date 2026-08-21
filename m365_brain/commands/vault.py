@@ -10,7 +10,7 @@ from __future__ import annotations
 import click
 
 from m365_brain.commands._context import emit, require_config
-from m365_brain.config import ConfigError, require_section
+from m365_brain.config import Config, ConfigError, require_section
 from m365_brain.vault.paths import VaultPaths, manifest_directory, state_directory
 
 AREAS = ("inbox", "annotations", "outbox", "meta", "state", "manifests")
@@ -57,7 +57,7 @@ def path(ctx: click.Context, area: str, extractor: str | None, outbox_name: str 
     emit(as_json, {"path": resolved, "relative": relative}, [resolved])
 
 
-def _require_known_outbox(config, name: str) -> None:
+def _require_known_outbox(config: Config, name: str) -> None:
     outboxes = require_section(config.outboxes, "outboxes")
     if name not in outboxes.definitions:
         raise ConfigError(f"no outbox named {name!r}; configured: {sorted(outboxes.definitions)}")

@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 from sqlmodel import Session, select
 
 from m365_brain.config import Config, WorkerConfig
@@ -52,7 +52,7 @@ def _lock_key(user_id: str, extractor_name: str) -> int:
     return struct.unpack(">q", digest[:8])[0]
 
 
-def try_advisory_lock(engine, user_id: str, extractor_name: str) -> bool:
+def try_advisory_lock(engine: Engine, user_id: str, extractor_name: str) -> bool:
     """Try to acquire a PostgreSQL advisory lock. Returns True if acquired."""
     key = _lock_key(user_id, extractor_name)
     with Session(engine) as session:
@@ -60,7 +60,7 @@ def try_advisory_lock(engine, user_id: str, extractor_name: str) -> bool:
         return result.one()[0]
 
 
-def release_advisory_lock(engine, user_id: str, extractor_name: str) -> None:
+def release_advisory_lock(engine: Engine, user_id: str, extractor_name: str) -> None:
     """Release a PostgreSQL advisory lock."""
     key = _lock_key(user_id, extractor_name)
     with Session(engine) as session:
@@ -68,7 +68,7 @@ def release_advisory_lock(engine, user_id: str, extractor_name: str) -> None:
 
 
 def upsert_extractor_status(
-    engine,
+    engine: Engine,
     user_id: str,
     extractor_name: str,
     status: str,
@@ -103,14 +103,14 @@ def upsert_extractor_status(
         session.commit()
 
 
-def get_enabled_users(engine) -> list[User]:
+def get_enabled_users(engine: Engine) -> list[User]:
     """Return all users with enabled=True."""
     with Session(engine) as session:
         statement = select(User).where(User.enabled == True).order_by(User.user_id)  # noqa: E712
         return list(session.exec(statement).all())
 
 
-def get_user_extractors(engine, user_id: str) -> list[str]:
+def get_user_extractors(engine: Engine, user_id: str) -> list[str]:
     """Return extractor names explicitly enabled for a user. No fallback — no preferences = nothing runs."""
     with Session(engine) as session:
         statement = select(ExtractorPreference.extractor_name).where(
@@ -120,7 +120,7 @@ def get_user_extractors(engine, user_id: str) -> list[str]:
         return list(session.exec(statement).all())
 
 
-def get_due_jobs(engine, config: Config) -> list[tuple[User, str]]:
+def get_due_jobs(engine: Engine, config: Config) -> list[tuple[User, str]]:
     """Return (user, extractor_name) pairs that are due for a sync run."""
     users = get_enabled_users(engine)
     due: list[tuple[User, str]] = []
@@ -157,7 +157,7 @@ def get_due_jobs(engine, config: Config) -> list[tuple[User, str]]:
 
 def run_single_extractor(
     config: Config,
-    engine,
+    engine: Engine,
     token_adapter: TokenStoreProtocol,
     user: User,
     extractor_name: str,
@@ -187,7 +187,7 @@ def run_single_extractor(
 
 def _run_cycle(
     config: Config,
-    engine,
+    engine: Engine,
     token_adapter: TokenStoreProtocol,
     state_dir: str,
     max_workers: int,
@@ -227,7 +227,7 @@ def _run_cycle(
                 raise
 
 
-def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
+def worker_loop(config: Config, engine: Engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
     """Main worker loop. Polls for due jobs, submits to thread pool."""
     worker_config = _require_worker_config(config)
     max_workers = worker_config.max_concurrent_jobs
@@ -253,7 +253,7 @@ def worker_loop(config: Config, engine, token_adapter: TokenStoreProtocol, state
 
 def start_worker_thread(
     config: Config,
-    engine,
+    engine: Engine,
     token_adapter: TokenStoreProtocol,
     state_dir: str,
 ) -> threading.Event:

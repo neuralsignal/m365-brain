@@ -32,6 +32,7 @@ from m365_brain.m365.outboxes.messages import (
 from m365_brain.m365.outboxes.rendering import markdown_to_outlook_html
 from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, DispatchResult, GraphOp
 from m365_brain.vault.intent import IntentEnvelope
+from m365_brain.vault.payloads import _EmailCommon
 
 DRAFT_KIND = "email.draft"
 REPLY_KIND = "email.reply"
@@ -83,7 +84,7 @@ class EmailOutbox:
             message_id = self._revise(payload, assets)
         return DispatchResult(graph_message_id=message_id)
 
-    def _resolve(self, payload) -> _Assets:
+    def _resolve(self, payload: _EmailCommon) -> _Assets:
         signature_html = self.signature_html if payload.include_signature else ""
         # The logo is suppressed with the signature: without the signature HTML
         # there is no `cid:` reference for it to resolve, so attaching it would
@@ -103,7 +104,7 @@ class EmailOutbox:
             logo=logo,
         )
 
-    def _create(self, payload, assets: _Assets) -> str:
+    def _create(self, payload: _EmailCommon, assets: _Assets) -> str:
         body_html = markdown_to_outlook_html(payload.body)
         if payload.kind == DRAFT_KIND:
             message_id = create_new_draft(
@@ -130,7 +131,7 @@ class EmailOutbox:
         self._attach(payload.mailbox, message_id, assets)
         return message_id
 
-    def _revise(self, payload, assets: _Assets) -> str:
+    def _revise(self, payload: _EmailCommon, assets: _Assets) -> str:
         """Refresh a draft in place, or recreate it when the target is gone.
 
         A revision of a reply or forward is refused rather than approximated.
@@ -161,7 +162,7 @@ class EmailOutbox:
             assets.signature_html,
         )
 
-    def _action(self, payload) -> str:
+    def _action(self, payload: _EmailCommon) -> str:
         if payload.kind == FORWARD_KIND:
             return FORWARD
         return REPLY_ALL if payload.reply_all else REPLY

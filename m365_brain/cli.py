@@ -55,6 +55,7 @@ from m365_brain.hooks import HookResolutionError
 from m365_brain.logging_config import route_logs_to_stderr
 from m365_brain.m365.auth.profiles import AuthProfileError
 from m365_brain.m365.auth.token_provider import TokenRefreshError
+from m365_brain.manifest import ChangeManifest
 from m365_brain.schedule import read_cursor
 from m365_brain.vault.paths import VaultPathError, VaultPaths
 
@@ -195,7 +196,7 @@ def run(ctx: click.Context, once: bool, only: str | None, resync: bool, delay_st
         raise SystemExit(EXIT_FAILURE)
 
 
-def _cycle_lines(manifest) -> list[str]:
+def _cycle_lines(manifest: ChangeManifest) -> list[str]:
     lines = [
         f"{manifest.cycle_id} ok={manifest.ok} "
         f"changes={len(manifest.paths(kind=None, extractor=None))} "
@@ -275,7 +276,7 @@ def status(ctx: click.Context, as_json: bool) -> None:
         raise SystemExit(EXIT_FAILURE)
 
 
-def _status_lines(cursors: dict[str, dict], latest) -> list[str]:
+def _status_lines(cursors: dict[str, dict], latest: ChangeManifest | None) -> list[str]:
     lines = [f"{'unit':<16} {'last run':<22} {'last success':<22} fails"]
     for name, cursor in cursors.items():
         lines.append(

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import click
 
@@ -44,7 +43,7 @@ _LOCATION = [
 ]
 
 
-def _location(command: Callable[..., Any]) -> Callable[..., Any]:
+def _location[F: Callable[..., object]](command: F) -> F:
     for option in reversed(_LOCATION):
         command = option(command)
     return command

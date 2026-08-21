@@ -5,11 +5,11 @@ from __future__ import annotations
 import click
 
 from m365_brain.commands._context import EXIT_AUTH, emit, require_config
-from m365_brain.config import AuthProfileConfig, ConfigError
+from m365_brain.config import AuthProfileConfig, Config, ConfigError
 from m365_brain.m365.auth.profiles import AuthProfiles, ProfileStatus
 
 
-def _uses_the_bare_section(config) -> bool:
+def _uses_the_bare_section(config: Config) -> bool:
     """True when some consumer resolves its app from `auth:` rather than a name.
 
     `auth_profile: null` is the documented way to say "use the `auth:` section
@@ -22,7 +22,7 @@ def _uses_the_bare_section(config) -> bool:
     return any(getattr(each, "auth_profile", None) is None for each in definitions.values())
 
 
-def _profiles(config) -> AuthProfiles:
+def _profiles(config: Config) -> AuthProfiles:
     """Every named profile, plus the `auth:` section under `default` when it is used.
 
     The single-app deployment names no profile at all, and `auth status` still

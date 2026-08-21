@@ -36,7 +36,7 @@ from m365_brain.outbox.reconcile import (
 from m365_brain.outbox.registry import OutboxRegistry, UnknownOutbox
 from m365_brain.outbox.stores import IntentAlreadyClaimed, IntentStore
 from m365_brain.vault.dispatch import DispatchReceipt, NonDispatchReason
-from m365_brain.vault.intent import IntentParseError
+from m365_brain.vault.intent import IntentEnvelope, IntentParseError
 
 log = structlog.get_logger()
 
@@ -103,7 +103,15 @@ def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) 
     return counts
 
 
-def _dispatch_one(store, registry, router, outbox_name, uuid, envelope, counts) -> None:
+def _dispatch_one(
+    store: IntentStore,
+    registry: OutboxRegistry,
+    router: AuthorityRouter,
+    outbox_name: str,
+    uuid: str,
+    envelope: IntentEnvelope,
+    counts: PushCounts,
+) -> None:
     try:
         outbox = registry.get(outbox_name)
     except UnknownOutbox as exc:
@@ -172,7 +180,9 @@ def _classify_failure(exc: Exception) -> _Failure:
     return _Failure("graph_error", str(exc))
 
 
-def _record(store, uuid: str, kind: str, message_id: str | None, failure: _Failure, counts: PushCounts) -> None:
+def _record(
+    store: IntentStore, uuid: str, kind: str, message_id: str | None, failure: _Failure, counts: PushCounts
+) -> None:
     """Archive a non-dispatch as an outcome. Never raises out of the pass."""
     store.archive(
         uuid,
