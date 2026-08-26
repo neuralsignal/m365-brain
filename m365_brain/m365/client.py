@@ -22,10 +22,10 @@ import structlog
 
 from m365_brain.config import GraphConfig
 
-# All three are raised below AND re-exported: `from m365_brain.m365.client import
-# GraphApiError` is what every extractor writes, and the transport collapse was
-# not allowed to touch extractor code. See `errors` for why they live there.
-from m365_brain.m365.errors import GraphApiError, GraphConflictError, GraphNotFoundError
+# The Graph three are raised below AND re-exported -- `from m365_brain.m365.client import GraphApiError` is what every
+# extractor writes. `AuthTransportError` travels the other way: raised in `m365/auth/`, caught by the retry loop below,
+# because `_headers` calls the token provider from inside it. `errors` carries the reasoning for all four.
+from m365_brain.m365.errors import AuthTransportError, GraphApiError, GraphConflictError, GraphNotFoundError
 from m365_brain.m365.graph_helpers import (
     RETRYABLE_STATUS_CODES,
     _extract_graph_error,
@@ -128,7 +128,7 @@ class GraphClient:
                     params=params,
                     content=body,
                 )
-            except httpx.TransportError as exc:
+            except (httpx.TransportError, AuthTransportError) as exc:
                 if attempt == self._config.max_retries:
                     raise
                 wait = self._backoff_base_seconds * (2**attempt)

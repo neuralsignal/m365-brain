@@ -1,6 +1,12 @@
 """MSAL device code flow authentication for CLI mode.
 
 Acquires, caches, and refreshes Graph API tokens using a public client application.
+
+Every call that leaves the process is wrapped in ``auth_transport_errors`` --
+including the constructor, because MSAL performs authority discovery there and
+a first-use build of this class therefore happens *inside* ``GraphClient``'s
+retry loop. Construction failing is safe to retry: no caller memoises the
+instance until ``__init__`` returns.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from pathlib import Path
 import msal
 
 from m365_brain.config import AuthConfig
+from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
 
 _RESERVED_SCOPES = {"offline_access", "openid", "profile"}
 
@@ -20,14 +27,16 @@ _RESERVED_SCOPES = {"offline_access", "openid", "profile"}
 class DeviceCodeAuth:
     """Device code flow authenticator. Call get_token() to get a valid access token."""
 
-    def __init__(self, auth_config: AuthConfig) -> None:
+    def __init__(self, auth_config: AuthConfig, timeout_seconds: int) -> None:
         self._config = auth_config
         self._cache = self._load_cache()
-        self._app = msal.PublicClientApplication(
-            auth_config.client_id,
-            authority=f"https://login.microsoftonline.com/{auth_config.tenant_id}",
-            token_cache=self._cache,
-        )
+        with auth_transport_errors():
+            self._app = msal.PublicClientApplication(
+                auth_config.client_id,
+                authority=f"https://login.microsoftonline.com/{auth_config.tenant_id}",
+                token_cache=self._cache,
+                http_client=TimeoutSession(timeout_seconds),
+            )
         self._scopes = [s for s in auth_config.scopes if s not in _RESERVED_SCOPES]
 
     def get_token(self) -> str:
@@ -59,26 +68,37 @@ class DeviceCodeAuth:
 
     def account_names(self) -> list[str]:
         """Usernames MSAL holds in this profile's cache."""
-        return [str(account.get("username", "")) for account in self._app.get_accounts()]
+        with auth_transport_errors():
+            accounts = self._app.get_accounts()
+        return [str(account.get("username", "")) for account in accounts]
 
     def _try_silent(self) -> dict | None:
-        """Try to acquire a token silently from the cache."""
-        accounts = self._app.get_accounts()
-        if not accounts:
-            return None
-        result = self._app.acquire_token_silent(self._scopes, account=accounts[0])
+        """Try to acquire a token silently from the cache.
+
+        ``get_accounts`` is inside the wrapper because it is not the pure cache
+        read it looks like: when the cache holds nothing for this authority,
+        MSAL falls through to instance discovery, which is an HTTP call over
+        ``requests`` like any other.
+        """
+        with auth_transport_errors():
+            accounts = self._app.get_accounts()
+            if not accounts:
+                return None
+            result = self._app.acquire_token_silent(self._scopes, account=accounts[0])
         if result and "access_token" in result:
             return result
         return None
 
     def _device_code_flow(self) -> dict:
         """Acquire a token via device code flow. Blocks until the user authenticates."""
-        flow = self._app.initiate_device_flow(scopes=self._scopes)
+        with auth_transport_errors():
+            flow = self._app.initiate_device_flow(scopes=self._scopes)
         if "user_code" not in flow:
             _fail(f"Failed to initiate device flow: {json.dumps(flow, indent=2)}")
         print(flow["message"])
         sys.stdout.flush()
-        return self._app.acquire_token_by_device_flow(flow)
+        with auth_transport_errors():
+            return self._app.acquire_token_by_device_flow(flow)
 
     def _load_cache(self) -> msal.SerializableTokenCache:
         cache = msal.SerializableTokenCache()

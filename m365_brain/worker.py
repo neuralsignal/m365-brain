@@ -169,7 +169,7 @@ def run_single_extractor(
     upsert_extractor_status(engine, user.user_id, extractor_name, "running", 0, None)
 
     try:
-        token_provider = make_web_token_provider(token_adapter, user.user_id, config.auth)
+        token_provider = make_web_token_provider(token_adapter, user.user_id, config.auth, config.graph.timeout_seconds)
         storage = create_user_storage(config.storage, user.user_id)
 
         state = JsonStateStore(Path(state_dir) / user.user_id)

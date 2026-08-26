@@ -4,6 +4,17 @@
 read verb offers `--json`, and a caller piping that into a parser cannot be
 made to separate log lines from data first.
 
+**Rendered exceptions never carry frame locals.** `ConsoleRenderer` picks its
+traceback formatter from what happens to be installed -- `rich` if present,
+else `better-exceptions`, else `traceback` -- and the first two print the value
+of every local in every frame. In a daemon that is not a debugging nicety: one
+MSAL failure writes the ESTS session cookie, the `X-AnchorMailbox` header
+carrying the user's object and tenant ids, and the `grant_type=refresh_token`
+POST body straight to disk, truncated only by console width. 94 such failures
+put 158 `Cookie` lines and 587 `X-AnchorMailbox` lines into a 38 MB log. Pinning
+`plain_traceback` removes the choice, so no caller can configure this library
+into leaking regardless of what else is in the environment.
+
 `sys.stderr` is looked up when a logger is *created*, not when this function
 runs. `structlog.PrintLoggerFactory(file=sys.stderr)` captures the stream
 object at configuration time, which makes the destination whatever stderr
@@ -64,7 +75,7 @@ def configure_logging(log_level: str, json_output: bool) -> None:
         processors.append(structlog.processors.format_exc_info)
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer())
+        processors.append(structlog.dev.ConsoleRenderer(exception_formatter=structlog.dev.plain_traceback))
 
     structlog.configure(
         processors=processors,

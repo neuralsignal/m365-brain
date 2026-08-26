@@ -162,7 +162,7 @@ def _make_token_service() -> TokenService:
 def _make_auth() -> AuthCodeAuth:
     """Create an AuthCodeAuth from config."""
     config = get_config()
-    return AuthCodeAuth(auth_config=config.auth)
+    return AuthCodeAuth(auth_config=config.auth, timeout_seconds=config.graph.timeout_seconds)
 
 
 class AuthState(rx.State):

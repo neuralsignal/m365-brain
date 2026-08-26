@@ -13,11 +13,13 @@ from pytest_httpx import HTTPXMock
 
 import m365_brain.m365.pagination as pagination_module
 from m365_brain.config import GraphConfig
+from m365_brain.m365.auth.token_provider import TokenRefreshError
 from m365_brain.m365.client import (
     GRAPH_BASE_URL,
     GraphApiError,
     GraphClient,
 )
+from m365_brain.m365.errors import AuthTransportError
 from m365_brain.m365.graph_helpers import (
     ALLOWED_DOWNLOAD_DOMAINS,
     _extract_graph_error,
@@ -863,3 +865,70 @@ class TestIsAllowedDownloadDomainProperty:
         if any(hostname == s.lstrip(".") or hostname.endswith(s) for s in ALLOWED_DOWNLOAD_DOMAINS):
             return  # Skip if randomly generated host happens to match
         assert _is_allowed_download_domain(url) is False
+
+
+class TestTokenTransportErrorRetry:
+    """A token failure takes the same envelope as a data failure.
+
+    These two calls leave the process over different transports -- Graph over
+    `httpx`, the identity provider over `requests` via MSAL -- so one DNS
+    outage used to produce two behaviours. On 2026-08-25 a cycle that faulted
+    on a data call retried three times and recovered; twenty minutes later the
+    same fault landed on a token call and killed all five extractors at once.
+    The asymmetry, not the outage, is what these tests pin down.
+    """
+
+    def test_retries_then_succeeds(self, graph_config, token_provider, httpx_mock: HTTPXMock, monkeypatch):
+        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", json={"ok": True})
+        calls = 0
+
+        def flaky_token():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise AuthTransportError("ConnectionError: getaddrinfo failed")
+            return "test-token-abc"
+
+        client = GraphClient(graph_config, flaky_token)
+        assert client.get("/me", params=None)["ok"] is True
+        assert calls == 2
+        client.close()
+
+    def test_exhausts_retries_then_raises_with_the_cause_intact(self, graph_config, monkeypatch):
+        waits: list[float] = []
+        monkeypatch.setattr("m365_brain.m365.client.time.sleep", waits.append)
+        calls = 0
+
+        def dead_idp():
+            nonlocal calls
+            calls += 1
+            raise AuthTransportError("ConnectionError: getaddrinfo failed")
+
+        client = GraphClient(graph_config, dead_idp)
+        with pytest.raises(AuthTransportError, match="getaddrinfo failed"):
+            client.get("/me", params=None)
+
+        # One attempt per retry plus the original, and the configured backoff
+        # doubling between them -- derived from the fixture, not hardcoded.
+        assert calls == graph_config.max_retries + 1
+        base = graph_config.backoff_base_ms / 1000.0
+        assert waits == [base * (2**n) for n in range(graph_config.max_retries)]
+        client.close()
+
+    def test_a_non_transport_auth_failure_is_not_retried(self, graph_config, monkeypatch):
+        """No stored refresh token is not transient; retrying only hides it."""
+        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        calls = 0
+
+        def no_refresh_token():
+            nonlocal calls
+            calls += 1
+            raise TokenRefreshError("No refresh token available for user 'u1'")
+
+        client = GraphClient(graph_config, no_refresh_token)
+        with pytest.raises(TokenRefreshError, match="No refresh token"):
+            client.get("/me", params=None)
+
+        assert calls == 1
+        client.close()

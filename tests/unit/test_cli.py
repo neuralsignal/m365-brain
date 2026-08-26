@@ -92,7 +92,8 @@ def offline_tokens(monkeypatch):
     MSAL uses `requests`, not `httpx`.
     """
     monkeypatch.setattr(
-        "m365_brain.commands._context.make_cli_token_provider", lambda auth_config: lambda: "test-token"
+        "m365_brain.commands._context.make_cli_token_provider",
+        lambda auth_config, timeout_seconds: lambda: "test-token",
     )
 
 

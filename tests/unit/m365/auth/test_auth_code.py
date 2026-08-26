@@ -8,6 +8,10 @@ import pytest
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.auth_code import AuthCodeAuth, AuthCodeError
+from m365_brain.m365.auth.msal_http import TimeoutSession
+
+# `graph.timeout_seconds` in production; MSAL is mocked throughout.
+TIMEOUT_SECONDS = 30
 
 
 @pytest.fixture()
@@ -35,21 +39,24 @@ def auth_config_without_secret(tmp_path):
 class TestAuthCodeAuth:
     def test_raises_without_client_secret(self, auth_config_without_secret):
         with pytest.raises(AuthCodeError, match="client_secret"):
-            AuthCodeAuth(auth_config_without_secret)
+            AuthCodeAuth(auth_config_without_secret, TIMEOUT_SECONDS)
 
     @patch("m365_brain.m365.auth.auth_code.msal.ConfidentialClientApplication")
     def test_creates_confidential_application(self, mock_app_cls, auth_config_with_secret):
-        AuthCodeAuth(auth_config_with_secret)
+        AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
 
-        mock_app_cls.assert_called_once_with(
-            "test-client-id",
-            authority="https://login.microsoftonline.com/test-tenant-id",
-            client_credential="test-client-secret",
-        )
+        # `http_client` is asserted positively rather than allowed through:
+        # MSAL falls back to a bare `requests.Session` with no timeout when it
+        # is absent, which is exactly the hang this argument exists to prevent.
+        assert mock_app_cls.call_args.args == ("test-client-id",)
+        kwargs = mock_app_cls.call_args.kwargs
+        assert kwargs["authority"] == "https://login.microsoftonline.com/test-tenant-id"
+        assert kwargs["client_credential"] == "test-client-secret"
+        assert isinstance(kwargs["http_client"], TimeoutSession)
 
     @patch("m365_brain.m365.auth.auth_code.msal.ConfidentialClientApplication")
     def test_reserved_scopes_excluded(self, mock_app_cls, auth_config_with_secret):
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
 
         assert "offline_access" not in auth._scopes
         assert "openid" not in auth._scopes
@@ -63,7 +70,7 @@ class TestAuthCodeAuth:
         mock_app_cls.return_value = mock_app
         mock_app.get_authorization_request_url.return_value = "https://login.microsoftonline.com/auth?code=abc"
 
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
         url = auth.get_auth_url(redirect_uri="http://localhost:8000/auth/callback", state="random-state")
 
         assert url == "https://login.microsoftonline.com/auth?code=abc"
@@ -83,7 +90,7 @@ class TestAuthCodeAuth:
             "id_token_claims": {"name": "Test User"},
         }
 
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
         result = auth.acquire_token_by_code(
             code="auth-code-123",
             redirect_uri="http://localhost:8000/auth/callback",
@@ -105,7 +112,7 @@ class TestAuthCodeAuth:
             "error_description": "Code expired",
         }
 
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
 
         with pytest.raises(AuthCodeError, match="Code expired"):
             auth.acquire_token_by_code(
@@ -122,7 +129,7 @@ class TestAuthCodeAuth:
             "refresh_token": "new-refresh-token",
         }
 
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
         result = auth.refresh_token(refresh_token_value="old-refresh-token")
 
         assert result["access_token"] == "new-access-token"
@@ -140,7 +147,7 @@ class TestAuthCodeAuth:
             "error_description": "Refresh token expired",
         }
 
-        auth = AuthCodeAuth(auth_config_with_secret)
+        auth = AuthCodeAuth(auth_config_with_secret, TIMEOUT_SECONDS)
 
         with pytest.raises(AuthCodeError, match="Refresh token expired"):
             auth.refresh_token(refresh_token_value="expired-refresh-token")

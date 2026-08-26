@@ -31,7 +31,10 @@ def files_group() -> None:
 
 
 def _client(config: Config, profile: str) -> GraphClient:
-    return GraphClient(config.graph, AuthProfiles(config.auth.profiles or {}).provider(profile))
+    return GraphClient(
+        config.graph,
+        AuthProfiles(config.auth.profiles or {}, config.graph.timeout_seconds).provider(profile),
+    )
 
 
 _LOCATION = [

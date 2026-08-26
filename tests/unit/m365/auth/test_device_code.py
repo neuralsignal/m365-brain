@@ -12,6 +12,9 @@ import pytest
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.device_code import DeviceCodeAuth
 
+# `graph.timeout_seconds` in production; MSAL is mocked in every test here.
+TIMEOUT_SECONDS = 30
+
 
 @pytest.fixture()
 def auth_config(tmp_path):
@@ -32,7 +35,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
         mock_app.acquire_token_silent.return_value = {"access_token": "cached-token"}
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         token = auth.get_token()
 
         assert token == "cached-token"
@@ -51,7 +54,7 @@ class TestDeviceCodeAuth:
             "access_token": "new-token",
         }
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         token = auth.get_token()
 
         assert token == "new-token"
@@ -64,7 +67,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
         mock_app.acquire_token_silent.return_value = {"access_token": "token"}
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         auth.get_token()
 
         # offline_access should be filtered out from the scopes passed to MSAL
@@ -80,7 +83,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.return_value = []
         mock_app.initiate_device_flow.return_value = {"error": "something went wrong"}
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         with pytest.raises(SystemExit):
             auth.get_token()
 
@@ -98,7 +101,7 @@ class TestDeviceCodeAuth:
             "error_description": "User cancelled",
         }
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         with pytest.raises(SystemExit):
             auth.get_token()
 
@@ -109,7 +112,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
         mock_app.acquire_token_silent.return_value = {"access_token": "token"}
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         # Simulate cache state change
         auth._cache.has_state_changed = True
         auth._cache.serialize = MagicMock(return_value='{"cached": true}')
@@ -126,7 +129,7 @@ class TestDeviceCodeAuth:
         mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
         mock_app.acquire_token_silent.return_value = {"access_token": "token"}
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         auth._cache.has_state_changed = True
         auth._cache.serialize = MagicMock(return_value='{"cached": true}')
 
@@ -148,7 +151,7 @@ class TestDeviceCodeAuth:
             "access_token": "login-token",
         }
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         token = auth.login()
 
         assert token == "login-token"
@@ -166,7 +169,7 @@ class TestDeviceCodeAuth:
             "error": "interaction_required",
         }
 
-        auth = DeviceCodeAuth(auth_config)
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         result = auth._try_silent()
 
         assert result is None
@@ -177,6 +180,6 @@ class TestDeviceCodeAuth:
         cache_path.write_text(cache.serialize(), encoding="utf-8")
 
         with patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication"):
-            auth = DeviceCodeAuth(auth_config)
+            auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
 
         assert not auth._cache.has_state_changed

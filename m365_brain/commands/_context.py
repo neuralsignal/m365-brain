@@ -153,9 +153,9 @@ def token_provider(config: Config) -> Callable[[], str]:
         if not built:
             name = config.extractors.auth_profile
             built.append(
-                make_cli_token_provider(config.auth)
+                make_cli_token_provider(config.auth, config.graph.timeout_seconds)
                 if name is None
-                else AuthProfiles(config.auth.profiles or {}).provider(name)
+                else AuthProfiles(config.auth.profiles or {}, config.graph.timeout_seconds).provider(name)
             )
         return built[0]()
 
