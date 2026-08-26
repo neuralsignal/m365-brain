@@ -44,6 +44,7 @@ structlog is the only logging mechanism. No `click.echo`, `print`, or stdlib `lo
 - **Entry points**: the root group calls `route_logs_to_stderr()` before dispatch, and `require_config()` calls `configure_logging()` at the one funnel every config-taking verb passes through. It used to be called by `run` and `extract` alone, so every other verb ran on structlog's stdout-writing default and `outbox list --json` emitted 54 log lines ahead of its JSON
 - **Event naming**: `module.action` (e.g., `email.sync_complete`, `graph.retryable_error`, `cli.dry_run_auth_ok`)
 - **Renderer**: JSON when `service.json_logs: true` (daemon/production), ConsoleRenderer when false (dev/interactive)
+- **Never construct a bare `ConsoleRenderer()`.** Without an explicit `exception_formatter` structlog picks one from a fallback chain — rich → `better_exceptions` → plain — and the first two print **every frame's local variables**. A downstream deployment whose env happened to carry rich wrote MSAL cookies, the tenant and user object IDs, and the `grant_type=refresh_token` body into a 38 MB log on disk. `logging_config.py` pins `structlog.dev.plain_traceback`; leave it pinned. `RichTracebackFormatter(show_locals=False)` is not a substitute: rich is not a dependency here, so its stub raises `ModuleNotFoundError`, and `better_exceptions` is still next in the chain
 - **Log levels**: debug (pagination, internal state), info (sync lifecycle), warning (skipped items, truncation), error (failures that continue), critical (daemon exit)
 - **Exception**: `click.echo` is acceptable in `auth login` and `auth status` commands (user-facing interactive output, not operational logging)
 
@@ -278,6 +279,8 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 - `m365_brain/models.SyncRecord` — replaced by `ExtractorStatus` (per-extractor status)
 
 ### Gotchas
+
+**Two HTTP transports, two exception hierarchies.** Graph goes out over **httpx**; MSAL reaches `login.microsoftonline.com` over **requests**, its own dependency. One network fault therefore raises two unrelated types depending only on which call was in flight, and `GraphClient`'s retry loop speaks httpx. `m365/auth/msal_http.py` is the only module that imports `requests` — it translates to `AuthTransportError` at the edge and supplies the timeout MSAL otherwise omits (`requests` with no `timeout` waits forever). Wrap any new MSAL call in `auth_transport_errors()`, including ones that look like pure cache reads: `get_accounts()` and `PublicClientApplication.__init__` both fall through to instance discovery over the network.
 
 - **`on_load` fires multiple times per page load** — Reflex fires `on_load` handlers during both server-side render and client-side hydration. Any `on_load` handler must be idempotent. In `handle_callback()`, this means: check `user_id` early-return if already authenticated. OAuth state tokens ARE consumed on first successful verification (one-time use per RFC 6749 §10.12) — this is safe because Reflex serializes state events per-session, so the second `on_load` early-returns on `user_id` before reaching CSRF check.
 - **Reflex state vars must be picklable** — Reflex serializes state between requests. Never store `sqlite3.Connection`, file handles, or other unpicklable objects as state class variables. Create fresh service instances per handler call.
