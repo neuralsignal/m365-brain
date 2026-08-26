@@ -22,6 +22,7 @@ from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.paths import VaultPaths
 
 CHAT_ID = "19:chat-1"
+TOMBSTONE_ID = "19:meeting_tombstone@thread.v2"
 
 
 def _chat_dir(paths: VaultPaths, title: str = "Alice, Bob", chat_id: str = CHAT_ID) -> str:
@@ -47,6 +48,25 @@ def _chats_response(chat_id: str = CHAT_ID) -> dict:
                 "members": [{"displayName": "Alice"}, {"displayName": "Bob"}],
             }
         ]
+    }
+
+
+def _tombstone_chat() -> dict:
+    """A chat the account has lost access to, exactly as `/me/chats` reports it.
+
+    Every substantive field is null or `DateTime.MinValue` while the entity
+    itself still answers 200; only its sub-collections 403. Copied from a live
+    probe of two such chats, one of which was caught making the transition six
+    minutes after its meeting ended.
+    """
+    return {
+        "id": TOMBSTONE_ID,
+        "topic": "Introduction call",
+        "chatType": "unknownFutureValue",
+        "createdDateTime": "0001-01-01T00:00:00Z",
+        "tenantId": None,
+        "webUrl": None,
+        "members": [],
     }
 
 
@@ -454,6 +474,43 @@ class TestFiltering:
 
         assert count == 0
         assert CHAT_ID not in state["watermarks"]
+
+
+class TestTombstoneChats:
+    """Chats the account has lost membership of, which `/me/chats` still lists."""
+
+    def test_a_tombstone_chat_is_never_asked_for_messages(self, httpx_mock: HTTPXMock, storage, client, ctx):
+        """Asking costs an error-level `graph.request_failed` every cycle, forever.
+
+        That line comes from the transport, which logs every non-retryable
+        response before raising, so nothing the extractor logs can soften it.
+        Not making the request is the only thing that removes it.
+        """
+        httpx_mock.add_response(url=re.compile(r".*/me/chats\?.*"), json={"value": [_tombstone_chat()]})
+
+        _, count = teams_chats.run(client, storage, {}, _config(), ctx)
+
+        assert count == 0
+        assert [str(r.url) for r in httpx_mock.get_requests() if "/messages" in str(r.url)] == []
+
+    def test_a_readable_chat_beside_a_tombstone_is_still_fetched(self, httpx_mock: HTTPXMock, storage, client, ctx):
+        """The filter has to discriminate, not merely suppress."""
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats\?.*"),
+            json={"value": [_tombstone_chat(), *_chats_response()["value"]]},
+        )
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/chats/.*/messages.*"),
+            json={"value": [_graph_msg("m1", "2026-06-11T09:00:00Z")]},
+        )
+
+        _, count = teams_chats.run(client, storage, {}, _config(), ctx)
+
+        assert count == 1
+        requested = [str(r.url) for r in httpx_mock.get_requests() if "/messages" in str(r.url)]
+        assert len(requested) == 1
+        assert "chat-1" in requested[0]
+        assert "tombstone" not in requested[0]
 
 
 class TestRendering:

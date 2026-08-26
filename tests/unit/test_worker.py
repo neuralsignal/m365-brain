@@ -14,9 +14,11 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from m365_brain.config.errors import ConfigError
 from m365_brain.m365.auth.token_provider import TokenRefreshError
 from m365_brain.m365.client import GraphApiError
+from m365_brain.m365.errors import AuthTransportError
 from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
 from m365_brain.worker import (
+    _KNOWN_ERRORS,
     _lock_key,
     _require_worker_config,
     _run_cycle,
@@ -583,3 +585,103 @@ class TestStartWorkerThreadErrorPaths:
 
         critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
         assert "worker.cycle_unhandled_error" in critical_events
+
+
+class TestAuthTransportErrorIsKnown:
+    """`AuthTransportError` reaches all four of this module's catch sites.
+
+    It was introduced after them and matched none, so a DNS blip at the
+    identity provider — the only thing that raises it, and only after
+    `graph.max_retries` attempts — did four different wrong things: left the
+    status row saying `running` forever with no error recorded, aborted the
+    result-collection loop, killed the standalone worker process, and killed
+    the Reflex-embedded worker thread while the app kept serving as if a sync
+    were still running.
+
+    One tuple, four sites. `run_single_extractor` spelled the tuple out again
+    instead of using the constant, which is exactly how an edit here misses a
+    site, so the literal is gone.
+    """
+
+    def test_the_constant_covers_it(self):
+        assert AuthTransportError in _KNOWN_ERRORS
+
+    def test_the_status_row_records_the_failure(self, seeded_engine, full_config, tmp_path):
+        """The worst of the four: no `failed` row and no `error_message`, so
+        the only record of the outage was a log line and the admin UI showed a
+        job that had been running since the outage started."""
+        user = get_enabled_users(seeded_engine)[0]
+
+        with (
+            patch("m365_brain.worker.make_web_token_provider", return_value=_fake_token_provider),
+            patch("m365_brain.worker.run_extractors", side_effect=AuthTransportError("ConnectionError: no route")),
+            patch("m365_brain.worker.release_advisory_lock"),
+        ):
+            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+
+        with Session(seeded_engine) as session:
+            row = session.exec(
+                select(ExtractorStatus).where(
+                    ExtractorStatus.user_id == UID_1,
+                    ExtractorStatus.extractor_name == "email",
+                )
+            ).first()
+            assert row.status == "failed"
+            assert "no route" in row.error_message
+
+    def test_the_collection_loop_survives_it(self, seeded_engine, full_config, tmp_path):
+        """`future.result()` re-raises on the collecting thread; escaping there
+        aborted `as_completed` and lost every sibling job's outcome."""
+        user = get_enabled_users(seeded_engine)[0]
+
+        with (
+            patch("m365_brain.worker.get_due_jobs", return_value=[(user, "email")]),
+            patch("m365_brain.worker.try_advisory_lock", return_value=True),
+            patch("m365_brain.worker.run_single_extractor", side_effect=AuthTransportError("ReadTimeout: idp")),
+            patch("m365_brain.worker.log") as mock_log,
+        ):
+            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+
+        assert "worker.job_error" in [c.args[0] for c in mock_log.error.call_args_list if c.args]
+
+    def test_the_standalone_loop_survives_it(self, full_config, engine):
+        """It used to take the whole `m365-brain worker` process down."""
+        call_count = 0
+
+        def fake_get_due_jobs(eng, cfg):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise AuthTransportError("ConnectionError: no route")
+            raise KeyboardInterrupt
+
+        with (
+            patch("m365_brain.worker.get_due_jobs", side_effect=fake_get_due_jobs),
+            patch("m365_brain.worker.time.sleep"),
+        ):
+            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+
+        assert call_count == 2
+
+    def test_the_embedded_thread_survives_it(self, full_config, engine, tmp_path):
+        """The silent one: the thread is a daemon nobody joins and the stop
+        event is never set, so the Reflex app kept serving with a dead sync."""
+        seen = threading.Event()
+
+        def fake_run_cycle(*args, **kwargs):
+            seen.set()
+            raise AuthTransportError("ConnectionError: no route")
+
+        with (
+            patch("m365_brain.worker._run_cycle", side_effect=fake_run_cycle),
+            patch("m365_brain.worker.log") as mock_log,
+        ):
+            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            assert seen.wait(timeout=5), "mocked cycle was never called"
+            alive = [t for t in threading.enumerate() if t.name == "sync-worker" and t.is_alive()]
+            stop.set()
+            for thread in alive:
+                thread.join(timeout=5)
+
+        assert alive, "the loop must still be running after a token-transport fault"
+        assert "worker.cycle_failed" in [c.args[0] for c in mock_log.error.call_args_list if c.args]

@@ -205,3 +205,45 @@ class TestRevision:
 
         assert "quoted original" in str(excinfo.value)
         assert recorded == []
+
+
+class TestPointOfNoReturn:
+    """A failure *after* the draft exists must not read as retryable.
+
+    `outbox/runner.py` puts an intent back in its outbox when the exception
+    carries a truthy `transient`, on the stated ground that a raising handler
+    reached no message id and therefore sent nothing. That holds for a
+    single-request handler and not for this one: `_create` is a draft POST
+    followed by one POST per attachment, so between them the draft is already
+    in the mailbox and a release would create a second one on the next pass --
+    the one failure mode worse than a dropped draft.
+    """
+
+    class Transient(Exception):
+        transient = True
+
+    def _raise_transient(self, *_args, **_kwargs):
+        raise self.Transient("identity provider unreachable")
+
+    def test_a_transient_failure_after_the_draft_exists_is_terminal(self, outbox, recorded, monkeypatch):
+        monkeypatch.setattr("m365_brain.m365.outboxes.email.attach_file", self._raise_transient)
+        payload = {**DRAFT, "attachments": [{"path": "doc.txt"}]}
+
+        with pytest.raises(self.Transient) as excinfo:
+            outbox().execute(parse("u1", payload))
+
+        assert excinfo.value.transient is False, "releasing here would draft the mail twice"
+        assert [r.url.path for r in recorded] == ["/v1.0/me/messages"], "the draft POST did land"
+
+    def test_the_exception_type_survives_so_classification_still_works(self, outbox, recorded, monkeypatch):
+        """`_classify_failure` reads the type and `status_code` off this same
+        exception, so the downgrade sets an attribute rather than wrapping."""
+
+        def _vanished(*_args, **_kwargs):
+            raise FileNotFoundError("doc.txt went away after it was resolved")
+
+        monkeypatch.setattr("m365_brain.m365.outboxes.email.attach_file", _vanished)
+        payload = {**DRAFT, "attachments": [{"path": "doc.txt"}]}
+
+        with pytest.raises(FileNotFoundError):
+            outbox().execute(parse("u1", payload))

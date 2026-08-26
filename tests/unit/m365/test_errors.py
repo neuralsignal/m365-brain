@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from m365_brain.m365 import client as client_module
-from m365_brain.m365.errors import GraphApiError, GraphConflictError, GraphNotFoundError
+from m365_brain.m365.errors import AuthTransportError, GraphApiError, GraphConflictError, GraphNotFoundError
 
 SUBCLASSES = (GraphNotFoundError, GraphConflictError)
 
@@ -50,3 +50,18 @@ def test_status_code_may_be_none_for_a_logical_failure():
 def test_client_re_exports_every_exception(name):
     """`from m365_brain.m365.client import GraphApiError` is what the extractors write."""
     assert getattr(client_module, name) is globals()[name]
+
+
+def test_auth_transport_error_declares_itself_transient():
+    """`outbox/runner.py` reads this attribute by name -- it may not import
+    this module -- to decide whether a failed dispatch goes back in its outbox
+    or is archived as permanently failed. Dropping the attribute turns a
+    network blip into a silently, permanently dropped email draft."""
+    assert AuthTransportError("ConnectionError: boom").transient is True
+
+
+def test_nothing_else_reads_as_transient():
+    """The duck-type is `getattr(exc, "transient", False)`, so every other
+    exception must answer False for the same read."""
+    assert getattr(GraphApiError("boom", 500), "transient", False) is False
+    assert getattr(RuntimeError("boom"), "transient", False) is False

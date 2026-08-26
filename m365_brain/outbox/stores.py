@@ -70,6 +70,25 @@ class IntentStore(Protocol):
         a caller cannot half-archive."""
         ...
 
+    def release(self, outbox_name: str, uuid: str) -> None:
+        """Return a claimed intent to its outbox, unarchived. The inverse of
+        `claim`, and the only non-terminal way out of flight.
+
+        Without it the store could take an intent and it could bury one, but it
+        could not put one back -- so a dispatch that failed for a reason that
+        will not still be true in five minutes had to be archived as
+        permanently failed, and `already_dispatched` made that permanent.
+
+        **Only ever called from the `handler.execute()` failure path**, and
+        only when the exception still says `transient` at that point -- a
+        multi-request handler clears the flag once it has mutated Graph, since
+        the absence of a `graph_message_id` on the exception is not by itself
+        evidence that nothing was sent. Releasing otherwise risks a second send
+        of a message already sent, the one failure mode worse than a dropped
+        draft.
+        """
+        ...
+
     def inflight(self) -> list[str]:
         """Uuids claimed with no recorded outcome. Reported, never retried."""
         ...
@@ -143,6 +162,19 @@ class InMemoryIntentStore:
             raise IntentNotClaimed(f"{uuid} is not in flight; claim it before archiving")
         self._archived[uuid] = content
         self._receipts[uuid] = receipt
+
+    def release(self, outbox_name: str, uuid: str) -> None:
+        """Put a claimed intent back in `outbox_name` so a later pass retries it.
+
+        `outbox_name` is taken rather than derived: the pending map is keyed by
+        uuid alone, so nothing here records where the intent came from, and
+        guessing from the payload kind would put it back under the wrong
+        outbox's authority.
+        """
+        content = self._inflight.pop(uuid, None)
+        if content is None:
+            raise IntentNotClaimed(f"{uuid} is not in flight; claim it before releasing")
+        self._pending[uuid] = (outbox_name, content)
 
     def inflight(self) -> list[str]:
         return sorted(self._inflight)

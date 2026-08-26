@@ -291,6 +291,21 @@ consumer keeping its own seen-set file is doing work the manifest already did.
 intent is skipped and a failed one is not retried. Purging `<layout.processed>` re-arms replay —
 a deliberate operator act, not something guarded against.
 
+**One path out of flight is not the archive.** A handler that raises an exception still carrying a
+truthy `transient` attribute — `AuthTransportError` is the one that sets it — has sent nothing, so
+the intent is **released** back into its outbox and counted `deferred` rather than receipted. The
+attribute is read off the instance and a handler owns its own answer: a multi-request handler
+clears it once it has mutated Graph, because the absence of a message id on an exception is not
+evidence that no request landed. `EmailOutbox._create` is that case — draft POST, then one POST per
+attachment — and a release between the two would draft the mail twice.
+
+Archiving anything else would make it permanent: the ledger cannot tell "the identity provider was
+unreachable for ninety seconds" from "this draft is undeliverable", and `claim` has already deleted
+the source file. The attribute is duck-typed: `outbox` and `m365` are
+peers and neither imports the other, exactly as `_classify_failure` reads `status_code` without
+importing `GraphConflictError`. Release is reachable **only** from that failure path — releasing an
+intent that did reach Graph would send it twice.
+
 ```
 <meta>/<inflight>/<uuid>.md              claimed, outcome unknown — never auto-retried (ADR 0017)
 <meta>/<processed>/<uuid>.md             the intent, byte-identical to what was submitted
@@ -397,7 +412,7 @@ the root they hang off, so nothing is missing.
 | `index catalog resolve` | `QUERY` — a file name, or a path this family printed · `--json` | one source path, resolved; ambiguity is an error | 0 / 3 / 5 |
 | `index catalog read` | `PATH` — absolute, or relative to the vault root; never to the CWD | the converted markdown on stdout; writes nothing | 0 / 2 / 3 |
 | `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, authority, status | 0 / 3 |
-| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / failed / replayed / contended / inflight | 0 / 1 / 3 / 4 |
+| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / failed / deferred / replayed / contended / inflight | 0 / 1 / 3 / 4 |
 | `outbox reconcile` | `--outbox NAME` · `--json` | per-intent verdict | 0 / 1 / 3 / 4 |
 | `files pull` | `--profile` · `--site-hostname` · `--site-path` · `--library` · `--item-path` · `--out` · `--json` | bytes written and the eTag | 0 / 1 / 3 / 4 |
 | `files push` | the same, plus `--in` · `--content-type` · `--if-match` (required) | the new eTag; **raises on 412, never overwrites** | 0 / 1 / 3 / 4 |
@@ -540,6 +555,13 @@ The seam set. One implementation each today, each shipping an in-memory fake (AD
 | `OutboxHandler` | `m365_brain/vault/dispatch.py` | **Present** | `EmailOutbox`, `TeamsPostOutbox`, `FileUpdateOutbox` |
 | `StateStore` | `m365_brain/state.py` | **Present** | `JsonStateStore` under the meta directory, plus `InMemoryStateStore` |
 
+`IntentStore` today: `put(outbox_name, uuid, content)`, `pending()`, `claim(outbox_name, uuid)`,
+`release(outbox_name, uuid)`, `already_dispatched(uuid)`, `archive(uuid, receipt)`, `inflight()`,
+`receipt(uuid)`, `dispatched_receipts()`, `archived_intent(uuid)`, `reconciled_verdict(uuid)`,
+`mark_reconciled(uuid, verdict)`. `release` takes the outbox name rather than inferring it from the
+payload kind: the two coincide in every shipped config and nothing enforces that they must, and a
+release into the wrong directory would re-dispatch the intent under another outbox's authority.
+
 `StorageBackend` today: `write_file(path, content)`, `read_file(path)`, `file_exists(path)`,
 `list_files(prefix)`, `delete_file(path)`, `write_bytes(path, content)`. All paths are relative to
 the backend root.
@@ -591,7 +613,13 @@ carries a `needs_converters` flag, because there is no longer a second call shap
   **injected**, so no module imports both `outbox` and `m365` (ADR 0014).
 - `m365_brain.outbox.runner.push(store, registry, router) -> PushCounts` and
   `reconcile(store, fetch, markers) -> list[ReconcileOutcome]`. The reconciliation Graph fetch is a
-  `(mailbox, message_id, select) -> dict | None` callable supplied by the caller.
+  `(mailbox, message_id, select) -> dict | None` callable supplied by the caller, and that `None` is
+  an **obligation on the caller**, not merely a permitted return: a message Graph no longer holds
+  must arrive as `None`, because it is the only signal that produces the `rejected` verdict. An
+  adapter that raises instead ends the pass — and since a receipt is marked only *after* its fetch
+  returns, that one receipt then ends every later pass at the same point, which is a stalled
+  backlog rather than a flaky run. Only the missing message converts; every other Graph failure
+  propagates, because `rejected` is terminal and an outage must never be filed as a human decision.
 
 `ReconcileOutcome` carries `uuid`, `verdict` (`sent` | `amended` | `rejected` | `pending`),
 `graph_message_id`, `conversation_id`, `sent_at`, `sent_body_html`, `original_body`. The sent HTML

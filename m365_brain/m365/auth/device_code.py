@@ -14,12 +14,15 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import msal
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
+from m365_brain.m365.errors import TokenCacheError
 
 _RESERVED_SCOPES = {"offline_access", "openid", "profile"}
 
@@ -104,16 +107,18 @@ class DeviceCodeAuth:
         cache = msal.SerializableTokenCache()
         cache_path = Path(self._config.token_cache_path)
         if cache_path.exists():
-            cache.deserialize(cache_path.read_text(encoding="utf-8"))
+            with _cache_io(cache_path):
+                cache.deserialize(cache_path.read_text(encoding="utf-8"))
         return cache
 
     def _save_cache(self) -> None:
         if self._cache.has_state_changed:
             cache_path = Path(self._config.token_cache_path)
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(str(cache_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(self._cache.serialize())
+            with _cache_io(cache_path):
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                fd = os.open(str(cache_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(self._cache.serialize())
 
     def _extract_token(self, result: dict) -> str:
         if "access_token" in result:
@@ -121,6 +126,25 @@ class DeviceCodeAuth:
         error = result.get("error_description", result.get("error", "unknown error"))
         _fail(f"Token acquisition failed: {error}")
         return ""  # pragma: no cover
+
+
+@contextmanager
+def _cache_io(path: Path) -> Iterator[None]:
+    """Translate token-cache file I/O into ``TokenCacheError``.
+
+    The sibling of ``auth_transport_errors``, and here for the same reason: a
+    foreign exception type crossing a boundary that reads it as its own. Both
+    cache calls sit inside the token provider, so an ``OSError`` from either
+    passes the transport retry envelope untouched and is caught by the next
+    ``except OSError`` it meets -- an attachment download's, which skips the
+    item and lets the sync report success. The translation has to happen at
+    the I/O, because those three handlers are right to catch a genuine disk
+    error of their own.
+    """
+    try:
+        yield
+    except OSError as exc:
+        raise TokenCacheError(f"token cache {path}: {exc}") from exc
 
 
 def _fail(message: str) -> None:

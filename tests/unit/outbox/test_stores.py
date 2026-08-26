@@ -193,3 +193,55 @@ class TestIdentityChecks:
             store.claim("email.draft", "stem")
 
         assert "does not match the filename stem" in str(excinfo.value)
+
+
+class TestRelease:
+    """The inverse of `claim`, and the only way out of flight that is not terminal.
+
+    Without it the store could take an intent and it could bury one, but it
+    could not put one back -- so a dispatch that failed for a reason that will
+    not still be true in five minutes had to be archived as permanently failed.
+    """
+
+    def test_a_released_intent_is_pending_again(self, store, place):
+        place("abc")
+        store.claim("email.draft", "abc")
+
+        store.release("email.draft", "abc")
+
+        assert list(store.pending()) == [("email.draft", "abc")]
+        assert store.inflight() == []
+
+    def test_a_released_intent_is_not_dispatched(self, store, place):
+        """The ledger must not hold it: `already_dispatched` is what stops a
+        retry, and the whole point of a release is that a retry is wanted."""
+        place("abc")
+        store.claim("email.draft", "abc")
+        store.release("email.draft", "abc")
+
+        assert store.already_dispatched("abc") is False
+        assert store.receipt("abc") is None
+
+    def test_the_released_content_is_byte_identical(self, store, place):
+        content = place("abc", body="Original body text.")
+        store.claim("email.draft", "abc")
+        store.release("email.draft", "abc")
+
+        envelope = store.claim("email.draft", "abc")
+
+        assert envelope.payload.body.strip() == "Original body text."
+        assert content
+
+    def test_a_release_returns_it_to_its_own_outbox(self, store, place):
+        """Not to the first configured one: a release that lost track of the
+        outbox would re-dispatch under another outbox's authority."""
+        place("xyz", "email.reply")
+        store.claim("email.reply", "xyz")
+
+        store.release("email.reply", "xyz")
+
+        assert list(store.pending()) == [("email.reply", "xyz")]
+
+    def test_releasing_something_not_in_flight_raises(self, store):
+        with pytest.raises(IntentNotClaimed):
+            store.release("email.draft", "abc")

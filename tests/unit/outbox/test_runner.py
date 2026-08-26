@@ -187,6 +187,66 @@ class TestFailSafe:
         assert store.already_dispatched("bad") is True, "a rejection must not be retried"
 
 
+class TestTransientFailure:
+    """A fault that will not still be true in five minutes must not be terminal.
+
+    The exception is recognised by a documented `transient` attribute, not by
+    class: `AuthTransportError` lives in the Microsoft 365 half of the package,
+    which this layer may not import -- the same reason `_classify_failure`
+    duck-types on `status_code`.
+    """
+
+    class Transient(Exception):
+        transient = True
+
+    def test_a_transient_failure_leaves_the_intent_pending(self, store, place, registry, handler):
+        handler.raises = self.Transient("identity provider unreachable")
+        place("abc")
+
+        counts = push(store, registry, ROUTER)
+
+        assert counts.deferred == 1
+        assert counts.failed == 0
+        assert list(store.pending()) == [("email.draft", "abc")]
+        assert store.inflight() == [], "a deferred intent is retryable, not stranded"
+
+    def test_a_transient_failure_writes_no_receipt(self, store, place, registry, handler):
+        """`already_dispatched` reads the archive, so a receipt here would be
+        the thing that makes the draft unretryable -- forever."""
+        handler.raises = self.Transient("identity provider unreachable")
+        place("abc")
+
+        push(store, registry, ROUTER)
+
+        assert store.already_dispatched("abc") is False
+        assert store.receipt("abc") is None
+
+    def test_the_next_pass_dispatches_it(self, store, place, registry, handler):
+        handler.raises = self.Transient("identity provider unreachable")
+        place("abc")
+        push(store, registry, ROUTER)
+        handler.raises = None
+
+        counts = push(store, registry, ROUTER)
+
+        assert counts.dispatched == 1
+        assert store.receipt("abc").outcome == "dispatched"
+
+    def test_a_transient_flag_that_is_false_is_still_terminal(self, store, place, registry, handler):
+        """`getattr(exc, "transient", False)` reads a value, not a presence."""
+
+        class NotTransient(Exception):
+            transient = False
+
+        handler.raises = NotTransient("boom")
+        place("abc")
+
+        counts = push(store, registry, ROUTER)
+
+        assert counts.failed == 1
+        assert store.receipt("abc").reason == "graph_error"
+
+
 class TestInflight:
     def test_an_in_flight_intent_is_counted_and_never_retried(self, store, place, registry, handler):
         place("abc")

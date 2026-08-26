@@ -37,9 +37,16 @@ _ERROR_HINTS: dict[str, str] = {
         "The app lacks the required permission. "
         "Go to Entra > App registrations > API permissions and grant the missing scope, then re-consent."
     ),
+    # Graph spends this one code on two unrelated conditions, and the membership
+    # one is the common case: a Teams chat or meeting thread the signed-in user
+    # is no longer a member of returns it on every sub-collection while the
+    # parent entity still reads 200. Naming only consent sent the reader to the
+    # wrong tenant's admin -- and for an externally-hosted meeting, to an admin
+    # they cannot reach.
     "InsufficientPrivileges": (
-        "Admin consent is required for this permission. "
-        "Ask your tenant admin to grant consent in Entra > App registrations > API permissions."
+        "Either the signed-in user is not a member of this resource, or the app lacks admin consent "
+        "for the permission -- Graph returns the same code for both. Check membership first; if that "
+        "is not it, grant consent in Entra > App registrations > API permissions."
     ),
     "InvalidAuthenticationToken": (
         "The access token is invalid or expired. Run: m365-brain --config config.yaml auth login"

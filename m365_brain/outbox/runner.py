@@ -53,11 +53,18 @@ reconciliation pass is testable with no transport in sight.
 
 @dataclass
 class PushCounts:
-    """What one push pass did. Every intent lands in exactly one bucket."""
+    """What one push pass did. Every intent lands in exactly one bucket.
+
+    `deferred` is the only bucket that is not an outcome: the intent is back in
+    its outbox and the next pass will try it again. It exists so a transient
+    identity-provider fault is visible in the pass summary rather than looking
+    like an intent that quietly went nowhere.
+    """
 
     dispatched: int = 0
     blocked: int = 0
     failed: int = 0
+    deferred: int = 0
     replayed: int = 0
     contended: int = 0
     inflight: int = 0
@@ -67,6 +74,7 @@ class PushCounts:
             "dispatched": self.dispatched,
             "blocked": self.blocked,
             "failed": self.failed,
+            "deferred": self.deferred,
             "replayed": self.replayed,
             "contended": self.contended,
             "inflight": self.inflight,
@@ -145,6 +153,17 @@ def _dispatch_one(
     try:
         result = outbox.handler.execute(envelope)
     except Exception as exc:  # noqa: BLE001 -- one bad intent must not stop the pass
+        if getattr(exc, "transient", False):
+            # A receipt is permanent and `already_dispatched` reads the
+            # archive, so recording a network blip as a failure drops the
+            # draft for good. Put it back instead. `transient` is read off the
+            # *instance*: a handler that has already mutated Graph -- an email
+            # draft that exists but is still gathering attachments -- clears it
+            # before re-raising, because releasing there would draft twice.
+            store.release(outbox_name, uuid)
+            counts.deferred += 1
+            log.warning("outbox.dispatch_deferred", uuid=uuid, outbox=outbox_name, error=str(exc))
+            return
         log.error("outbox.dispatch_failed", uuid=uuid, outbox=outbox_name, error=str(exc), exc_info=True)
         _record(store, uuid, envelope.kind, None, _classify_failure(exc), counts)
         return
