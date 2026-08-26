@@ -71,6 +71,11 @@ class AuthTransportError(Exception):
     attribute or setting it False silently makes a network blip drop an email
     draft for good; ``tests/unit/m365/test_errors.py`` pins it for that reason.
 
+    It is read off the **instance**, which is what lets a handler that has
+    already mutated Graph veto its own retry: ``EmailOutbox._create`` clears it
+    on the way out once the draft exists, because a release after that point
+    would put a second draft in the mailbox.
+
     **Deliberately not a ``GraphApiError``.** Twelve per-item handlers across
     the extractors catch ``(GraphApiError, httpx.TransportError)`` so one
     unreadable chat or unfetchable attachment cannot kill a whole extractor.

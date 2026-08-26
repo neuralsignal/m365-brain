@@ -8,7 +8,7 @@ tags:
 
 # ADR 0017 — An in-flight intent is never auto-retried
 
-**Status:** Accepted (2026-08-05)
+**Status:** Accepted (2026-08-05) — amended 2026-08-26, see Amendment below.
 
 ## Context
 
@@ -47,3 +47,20 @@ That is a deliberate operator act and it is stated in `CONTRACTS.md` rather than
   returns the uuids; a `status` verb surfaces them when the CLI lands.
 - **The cost is a manual step after a crash.** Accepted deliberately: fail loud beats fail
   convenient when the thing being repeated is an email somebody already received.
+
+## Amendment (2026-08-26) — a live transient failure is released, not stranded
+
+"Moving one back is a human act" was written for the only case that existed: an intent found in
+flight by a *later* process, with no record of whether Graph was called. That case is unchanged and
+still needs a human.
+
+`IntentStore.release(outbox_name, uuid)` adds a second, narrower case that is not that one. It runs
+**in-process, in the same pass that claimed the intent**, on the `handler.execute()` failure path,
+and only when the exception still carries a truthy `transient` — which a handler clears once it has
+mutated Graph. So the uncertainty ADR 0017 refuses to gamble on is absent by construction: the
+handler is the one thing that knows whether a request landed, and it is answering.
+
+Without it the alternative was not "wait for a human". `claim()` has already deleted the source
+file and `already_dispatched()` reads the archive, so an identity-provider blip archived the intent
+as permanently `failed` and the draft could never be re-attempted — a silent drop, which is the
+failure ADR 0017 exists to prevent, arriving by the other door.

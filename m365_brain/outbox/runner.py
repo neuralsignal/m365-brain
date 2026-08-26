@@ -156,9 +156,10 @@ def _dispatch_one(
         if getattr(exc, "transient", False):
             # A receipt is permanent and `already_dispatched` reads the
             # archive, so recording a network blip as a failure drops the
-            # draft for good. Put it back instead. Safe only here: the
-            # handler raised, so no `graph_message_id` exists and nothing
-            # reached Graph -- releasing after a send would send twice.
+            # draft for good. Put it back instead. `transient` is read off the
+            # *instance*: a handler that has already mutated Graph -- an email
+            # draft that exists but is still gathering attachments -- clears it
+            # before re-raising, because releasing there would draft twice.
             store.release(outbox_name, uuid)
             counts.deferred += 1
             log.warning("outbox.dispatch_deferred", uuid=uuid, outbox=outbox_name, error=str(exc))

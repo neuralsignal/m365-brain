@@ -128,7 +128,17 @@ class EmailOutbox:
                 list(payload.cc or []),
                 list(payload.to) if payload.kind == FORWARD_KIND else None,
             )
-        self._attach(payload.mailbox, message_id, assets)
+        try:
+            self._attach(payload.mailbox, message_id, assets)
+        except Exception as exc:
+            # Point of no return. The draft is in the mailbox; a retry would
+            # create a second one. `outbox/runner.py` reads `transient` off the
+            # *instance*, so clearing it here downgrades a would-be retry to a
+            # terminal failure without changing the exception's type -- which
+            # `_classify_failure` still reads for `attachment_missing` and
+            # `etag_conflict`.
+            exc.transient = False  # type: ignore[attr-defined]
+            raise
         return message_id
 
     def _revise(self, payload: _EmailCommon, assets: _Assets) -> str:

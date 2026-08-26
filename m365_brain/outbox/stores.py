@@ -79,10 +79,13 @@ class IntentStore(Protocol):
         will not still be true in five minutes had to be archived as
         permanently failed, and `already_dispatched` made that permanent.
 
-        **Only ever called from the `handler.execute()` failure path**, where
-        no `graph_message_id` exists and therefore nothing reached Graph.
-        Releasing anywhere else risks a second send of a message already sent,
-        which is the one failure mode worse than a dropped draft.
+        **Only ever called from the `handler.execute()` failure path**, and
+        only when the exception still says `transient` at that point -- a
+        multi-request handler clears the flag once it has mutated Graph, since
+        the absence of a `graph_message_id` on the exception is not by itself
+        evidence that nothing was sent. Releasing otherwise risks a second send
+        of a message already sent, the one failure mode worse than a dropped
+        draft.
         """
         ...
 
