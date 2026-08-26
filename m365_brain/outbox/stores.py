@@ -164,6 +164,13 @@ class InMemoryIntentStore:
         self._receipts[uuid] = receipt
 
     def release(self, outbox_name: str, uuid: str) -> None:
+        """Put a claimed intent back in `outbox_name` so a later pass retries it.
+
+        `outbox_name` is taken rather than derived: the pending map is keyed by
+        uuid alone, so nothing here records where the intent came from, and
+        guessing from the payload kind would put it back under the wrong
+        outbox's authority.
+        """
         content = self._inflight.pop(uuid, None)
         if content is None:
             raise IntentNotClaimed(f"{uuid} is not in flight; claim it before releasing")

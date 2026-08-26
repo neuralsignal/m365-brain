@@ -297,9 +297,11 @@ the intent is **released** back into its outbox and counted `deferred` rather th
 attribute is read off the instance and a handler owns its own answer: a multi-request handler
 clears it once it has mutated Graph, because the absence of a message id on an exception is not
 evidence that no request landed. `EmailOutbox._create` is that case — draft POST, then one POST per
-attachment — and a release between the two would draft the mail twice. Anything else archived would be permanent, because the ledger cannot tell
-"the identity provider was unreachable for ninety seconds" from "this draft is undeliverable", and
-`claim` has already deleted the source file. The attribute is duck-typed: `outbox` and `m365` are
+attachment — and a release between the two would draft the mail twice.
+
+Archiving anything else would make it permanent: the ledger cannot tell "the identity provider was
+unreachable for ninety seconds" from "this draft is undeliverable", and `claim` has already deleted
+the source file. The attribute is duck-typed: `outbox` and `m365` are
 peers and neither imports the other, exactly as `_classify_failure` reads `status_code` without
 importing `GraphConflictError`. Release is reachable **only** from that failure path — releasing an
 intent that did reach Graph would send it twice.
