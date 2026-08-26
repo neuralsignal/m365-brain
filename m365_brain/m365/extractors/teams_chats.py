@@ -49,6 +49,18 @@ log = structlog.get_logger()
 name = "teams_chats"
 required_scopes = ["Chat.Read", "Files.Read.All"]
 
+# `chatType` values whose message collection cannot be read. `unknownFutureValue`
+# is Graph's evolvable-enum sentinel, and on `/me/chats` it marks a tombstone: a
+# roster entry for a thread the account has lost membership of, where the chat
+# still answers 200 but `/messages` answers 403 InsufficientPrivileges. An
+# externally-hosted meeting under an in-meeting-only chat policy joins this class
+# the moment the meeting ends, so it grows, and the request has to not be made --
+# the error-level `graph.request_failed` comes from the transport, not from here.
+# Filtered statelessly rather than cached the way `failed_attachments` is: a
+# recurring series is one thread id that is readable during each occurrence, so a
+# negative cache keyed on it would blind the sync to every future occurrence.
+_SKIPPED_CHAT_TYPES: frozenset[str] = frozenset({"unknownFutureValue"})
+
 
 def run(
     client: GraphClient,
@@ -74,6 +86,9 @@ def run(
 
     written = 0
     for chat in chats:
+        if chat.get("chatType") in _SKIPPED_CHAT_TYPES:
+            log.debug("teams_chats.chat_skipped_unreadable", chat_id=chat.get("id", ""))
+            continue
         _, chat_dir, _ = _chat_title_and_dir(chat, ctx.paths)
         teams_ctx = TeamsContext(
             client=client,
