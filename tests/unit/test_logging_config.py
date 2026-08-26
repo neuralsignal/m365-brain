@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import patch
 
 import pytest
 import structlog
@@ -52,6 +53,22 @@ class TestConfigureLoggingConsoleOutput:
         cfg = structlog.get_config()
         processor_types = [type(p) for p in cfg["processors"]]
         assert structlog.processors.JSONRenderer not in processor_types
+
+    def test_the_exception_formatter_is_pinned(self) -> None:
+        """Left to its default, the renderer prints every frame local.
+
+        `ConsoleRenderer` picks its traceback formatter from whatever happens
+        to be importable -- `rich`, then `better-exceptions`, then plain -- and
+        the first two print the value of every local in every frame. That
+        default is what put 158 ESTS `Cookie` lines and 587 `X-AnchorMailbox`
+        lines into a 38 MB daemon log. Neither package is installed here, so
+        the argument is asserted rather than the rendering: the day one arrives
+        transitively, the choice must already have been taken away.
+        """
+        with patch("structlog.dev.ConsoleRenderer") as renderer_cls:
+            configure_logging("DEBUG", json_output=False)
+
+        assert renderer_cls.call_args.kwargs["exception_formatter"] is structlog.dev.plain_traceback
 
 
 class TestConfigureLoggingSetsLogLevel:

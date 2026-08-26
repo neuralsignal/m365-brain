@@ -21,6 +21,10 @@ from m365_brain.m365.auth.profiles import AuthProfileError, AuthProfiles
 # is what keeps the identity assertions below meaningful.
 MSAL_APP = "m365_brain.m365.auth.device_code.msal.PublicClientApplication"
 
+# `graph.timeout_seconds` in production. Any int does here -- the assertion
+# that it reaches MSAL lives in `test_msal_http.py`.
+TIMEOUT_SECONDS = 30
+
 
 def _profile(client_id: str, cache: str, scopes: list[str], secret: str | None) -> AuthProfileConfig:
     return AuthProfileConfig(
@@ -42,7 +46,7 @@ def two_profiles(tmp_path):
 
 class TestResolution:
     def test_unknown_profile_names_itself_and_the_alternatives(self, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         with pytest.raises(AuthProfileError) as excinfo:
             profiles.provider("teams")
@@ -52,13 +56,13 @@ class TestResolution:
         assert "['files', 'mail']" in message
 
     def test_names_and_scopes_come_from_config(self, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         assert profiles.names() == ["files", "mail"]
         assert profiles.scopes("mail") == ["Mail.ReadWrite", "offline_access"]
 
     def test_scopes_returns_a_copy_so_a_caller_cannot_widen_the_grant(self, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         profiles.scopes("mail").append("Mail.Send")
 
@@ -68,7 +72,7 @@ class TestResolution:
 class TestIsolation:
     @patch(MSAL_APP, side_effect=lambda *a, **k: MagicMock())
     def test_each_profile_gets_its_own_msal_app_and_cache(self, msal_app, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         mail = profiles._app("mail")
         files = profiles._app("files")
@@ -82,14 +86,14 @@ class TestIsolation:
 
     @patch(MSAL_APP, side_effect=lambda *a, **k: MagicMock())
     def test_the_app_is_memoised_per_profile(self, msal_app, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         assert profiles._app("mail") is profiles._app("mail")
         assert msal_app.call_count == 1
 
     @patch(MSAL_APP, side_effect=lambda *a, **k: MagicMock())
     def test_the_provider_is_bound_to_that_profiles_app(self, msal_app, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         provider = profiles.provider("mail")
 
@@ -103,7 +107,7 @@ class TestIsolation:
         }
 
         with pytest.raises(AuthProfileError) as excinfo:
-            AuthProfiles(profiles)
+            AuthProfiles(profiles, TIMEOUT_SECONDS)
 
         assert "share" in str(excinfo.value)
         assert shared in str(excinfo.value)
@@ -111,7 +115,9 @@ class TestIsolation:
 
 class TestConfidentialClients:
     def test_a_client_secret_profile_refuses_to_hand_out_a_cli_provider(self, tmp_path):
-        profiles = AuthProfiles({"web": _profile("web-app", str(tmp_path / "web.json"), ["Mail.Read"], "s3cret")})
+        profiles = AuthProfiles(
+            {"web": _profile("web-app", str(tmp_path / "web.json"), ["Mail.Read"], "s3cret")}, TIMEOUT_SECONDS
+        )
 
         with pytest.raises(AuthProfileError) as excinfo:
             profiles.provider("web")
@@ -121,7 +127,7 @@ class TestConfidentialClients:
 
 class TestStatus:
     def test_no_cache_file_reports_never_authenticated_without_touching_msal(self, two_profiles):
-        profiles = AuthProfiles(two_profiles)
+        profiles = AuthProfiles(two_profiles, TIMEOUT_SECONDS)
 
         status = profiles.status("mail")
 
@@ -136,7 +142,7 @@ class TestStatus:
         msal_app.return_value.get_accounts.return_value = [{"username": "a@example.com"}]
         msal_app.return_value.acquire_token_silent.return_value = None
 
-        status = AuthProfiles(two_profiles).status("mail")
+        status = AuthProfiles(two_profiles, TIMEOUT_SECONDS).status("mail")
 
         assert status.state == "expired"
         assert status.accounts == ("a@example.com",)
@@ -147,4 +153,4 @@ class TestStatus:
         msal_app.return_value.get_accounts.return_value = [{"username": "a@example.com"}]
         msal_app.return_value.acquire_token_silent.return_value = {"access_token": "tok"}
 
-        assert AuthProfiles(two_profiles).status("mail").state == "authenticated"
+        assert AuthProfiles(two_profiles, TIMEOUT_SECONDS).status("mail").state == "authenticated"

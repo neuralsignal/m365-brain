@@ -41,7 +41,7 @@ def _profiles(config: Config) -> AuthProfiles:
     named = dict(config.auth.profiles or {})
     if not named or _uses_the_bare_section(config):
         named.setdefault("default", AuthProfileConfig(**config.auth.model_dump(exclude={"profiles"})))
-    return AuthProfiles(named)
+    return AuthProfiles(named, config.graph.timeout_seconds)
 
 
 @click.group()

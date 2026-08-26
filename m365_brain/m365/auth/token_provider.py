@@ -29,9 +29,15 @@ class TokenRefreshError(Exception):
     """Raised when a web token cannot be refreshed."""
 
 
-def make_cli_token_provider(auth_config: AuthConfig) -> Callable[[], str]:
-    """Create a token provider for CLI mode (device code flow)."""
-    auth = DeviceCodeAuth(auth_config)
+def make_cli_token_provider(auth_config: AuthConfig, timeout_seconds: int) -> Callable[[], str]:
+    """Create a token provider for CLI mode (device code flow).
+
+    ``timeout_seconds`` is ``graph.timeout_seconds`` -- the same ceiling the
+    Graph transport runs under, because a call to the identity provider is a
+    Microsoft 365 HTTP call too. No default: a caller that cannot say how long
+    to wait must crash rather than pick a number on the caller's behalf.
+    """
+    auth = DeviceCodeAuth(auth_config, timeout_seconds)
     return auth.get_token
 
 
@@ -39,14 +45,18 @@ def make_web_token_provider(
     token_store: TokenStoreProtocol,
     user_id: str,
     auth_config: AuthConfig,
+    timeout_seconds: int,
 ) -> Callable[[], str]:
     """Create a token provider for web mode (auth code flow with auto-refresh).
 
     Thread-safe: concurrent calls are serialized via a lock.
+
+    ``timeout_seconds`` is ``graph.timeout_seconds``; see
+    ``make_cli_token_provider`` for why it is required rather than defaulted.
     """
     from m365_brain.m365.auth.auth_code import AuthCodeAuth
 
-    auth = AuthCodeAuth(auth_config)
+    auth = AuthCodeAuth(auth_config, timeout_seconds)
     lock = threading.Lock()
 
     def _get_token() -> str:

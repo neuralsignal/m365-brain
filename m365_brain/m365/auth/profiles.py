@@ -57,8 +57,13 @@ class TokenProvider(Protocol):
 class AuthProfiles:
     """Resolves profile names to MSAL apps, one app and one cache per name."""
 
-    def __init__(self, profiles: dict[str, AuthProfileConfig]) -> None:
+    def __init__(self, profiles: dict[str, AuthProfileConfig], timeout_seconds: int) -> None:
+        """``timeout_seconds`` is ``graph.timeout_seconds``, handed to every
+        MSAL app this registry builds. One value for all profiles: they differ
+        in client id and scopes, never in how long the identity provider may
+        take to answer."""
         self._profiles = dict(profiles)
+        self._timeout_seconds = timeout_seconds
         self._apps: dict[str, DeviceCodeAuth] = {}
         self._reject_shared_caches()
 
@@ -149,6 +154,6 @@ class AuthProfiles:
             )
         cached = self._apps.get(name)
         if cached is None:
-            cached = DeviceCodeAuth(profile)
+            cached = DeviceCodeAuth(profile, self._timeout_seconds)
             self._apps[name] = cached
         return cached

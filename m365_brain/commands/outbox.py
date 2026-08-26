@@ -53,7 +53,7 @@ def _names(config: Config, only: str | None) -> tuple[str, ...]:
 def _clients(config: Config) -> Iterator[dict[str, GraphClient]]:
     """One Graph client per auth profile an outbox names, closed on exit."""
     outboxes = require_section(config.outboxes, "outboxes")
-    profiles = AuthProfiles(config.auth.profiles or {})
+    profiles = AuthProfiles(config.auth.profiles or {}, config.graph.timeout_seconds)
     wanted = sorted({definition.auth_profile for definition in outboxes.definitions.values()})
     opened: dict[str, GraphClient] = {}
     try:

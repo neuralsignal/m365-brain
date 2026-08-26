@@ -10,6 +10,9 @@ import pytest
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.token_provider import TokenRefreshError, make_cli_token_provider, make_web_token_provider
 
+# `graph.timeout_seconds` in production; MSAL is mocked throughout.
+TIMEOUT_SECONDS = 30
+
 
 def _auth_config() -> AuthConfig:
     return AuthConfig(
@@ -33,7 +36,7 @@ def _web_auth_config() -> AuthConfig:
 
 @patch("m365_brain.m365.auth.token_provider.DeviceCodeAuth")
 def test_returns_callable(mock_device_code_auth: MagicMock) -> None:
-    result = make_cli_token_provider(_auth_config())
+    result = make_cli_token_provider(_auth_config(), TIMEOUT_SECONDS)
     assert callable(result)
 
 
@@ -42,7 +45,7 @@ def test_returns_get_token_bound_method(mock_device_code_auth: MagicMock) -> Non
     mock_instance = MagicMock()
     mock_device_code_auth.return_value = mock_instance
 
-    result = make_cli_token_provider(_auth_config())
+    result = make_cli_token_provider(_auth_config(), TIMEOUT_SECONDS)
 
     assert result is mock_instance.get_token
 
@@ -50,9 +53,9 @@ def test_returns_get_token_bound_method(mock_device_code_auth: MagicMock) -> Non
 @patch("m365_brain.m365.auth.token_provider.DeviceCodeAuth")
 def test_passes_auth_config_to_device_code_auth(mock_device_code_auth: MagicMock) -> None:
     config = _auth_config()
-    make_cli_token_provider(config)
+    make_cli_token_provider(config, TIMEOUT_SECONDS)
 
-    mock_device_code_auth.assert_called_once_with(config)
+    mock_device_code_auth.assert_called_once_with(config, TIMEOUT_SECONDS)
 
 
 @patch("m365_brain.m365.auth.auth_code.msal.ConfidentialClientApplication")
@@ -69,6 +72,7 @@ class TestWebTokenProvider:
             token_store=mock_store,
             user_id="user-1",
             auth_config=_web_auth_config(),
+            timeout_seconds=TIMEOUT_SECONDS,
         )
         token = provider()
 
@@ -94,6 +98,7 @@ class TestWebTokenProvider:
             token_store=mock_store,
             user_id="user-1",
             auth_config=_web_auth_config(),
+            timeout_seconds=TIMEOUT_SECONDS,
         )
         token = provider()
 
@@ -109,6 +114,7 @@ class TestWebTokenProvider:
             token_store=mock_store,
             user_id="user-1",
             auth_config=_web_auth_config(),
+            timeout_seconds=TIMEOUT_SECONDS,
         )
 
         with pytest.raises(TokenRefreshError, match="No tokens stored"):
@@ -125,6 +131,7 @@ class TestWebTokenProvider:
             token_store=mock_store,
             user_id="user-1",
             auth_config=_web_auth_config(),
+            timeout_seconds=TIMEOUT_SECONDS,
         )
 
         with pytest.raises(TokenRefreshError, match="No refresh token"):

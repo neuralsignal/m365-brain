@@ -559,15 +559,30 @@ traverse one retry, backoff and 401-refresh policy whose thresholds come from `g
 before the retry branch, so an existing `except GraphApiError` still catches them and a conditional
 write never degrades into an unconditional one.
 
+That retry policy covers the **token** call as well as the data call, because the Authorization
+header is built inside the retry branch. MSAL reaches the identity provider over `requests` rather
+than `httpx`, so the auth adapter translates a transport fault into
+`m365_brain.m365.errors.AuthTransportError` and `GraphClient` retries it under the same
+`graph.max_retries` / `graph.backoff_base_ms` policy. Surviving that many attempts means the
+identity provider is unreachable, so the exception that finally escapes is deliberately **not** a
+`GraphApiError`: the per-item handlers that let an extractor survive one unreadable item must not
+survive a dead IdP by skipping every remaining item and reporting a clean sync. A caller that means
+"any failure of this call" catches `(GraphApiError, httpx.TransportError, AuthTransportError)`.
+
 Every extractor takes `run(client, storage, state, config, ctx)` where `ctx` is an
 `ExtractorContext(paths, converters, removal)`. One shape for all eight — `EXTRACTORS` no longer
 carries a `needs_converters` flag, because there is no longer a second call shape to dispatch to.
 
 **Present** for the outbox half:
 
-- `m365_brain.m365.auth.profiles.AuthProfiles(profiles)` — `provider(name)`, `login(name)`,
-  `status(name)`, `scopes(name)`. One MSAL app and one token cache per named profile; two profiles
-  sharing a `token_cache_path` is refused at construction.
+- `m365_brain.m365.auth.profiles.AuthProfiles(profiles, timeout_seconds)` — `provider(name)`,
+  `login(name)`, `status(name)`, `scopes(name)`. One MSAL app and one token cache per named
+  profile; two profiles sharing a `token_cache_path` is refused at construction.
+  `timeout_seconds` is `graph.timeout_seconds` and is **required** — MSAL passes no timeout of its
+  own, so `requests` would otherwise wait forever on a black-holed connection to the identity
+  provider. There is one such ceiling for M365 HTTP, not one per transport. The same required
+  parameter is carried by `DeviceCodeAuth`, `AuthCodeAuth`, `make_cli_token_provider` and
+  `make_web_token_provider`.
 - `m365_brain.m365.files` — `resolve_site_id`, `resolve_drive_id`, `resolve_default_drive_id`,
   `list_children`, `get_file`, `item_etag`, `download_file_bytes`, `create_file`, `update_file`.
 - `m365_brain.m365.outboxes.build_handlers(outboxes_config, upload_config, clients)` — one handler
