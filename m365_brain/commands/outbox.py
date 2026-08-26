@@ -18,6 +18,7 @@ from m365_brain.commands._context import EXIT_FAILURE, emit, require_config
 from m365_brain.config import Config, ConfigError, require_section
 from m365_brain.m365.auth.profiles import AuthProfiles
 from m365_brain.m365.client import GraphClient
+from m365_brain.m365.errors import GraphNotFoundError
 from m365_brain.m365.outboxes import build_handlers
 from m365_brain.outbox.authority import AuthorityRouter
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
@@ -134,8 +135,24 @@ def reconcile(ctx: click.Context, only: str | None, as_json: bool) -> None:
         client = next(iter(clients.values()))
 
         def fetch(mailbox: str, message_id: str, select: list[str]) -> dict | None:
+            """Translate "the draft is gone" into the `None` `classify` reads.
+
+            The adapter owes the outbox core this: `reconcile()` takes a
+            callable so it never imports a Graph error type, so a 404 that is
+            not converted here escapes the pass entirely -- and because the
+            receipt is marked only *after* the fetch, the same receipt poisons
+            every subsequent run. Narrowly `GraphNotFoundError`: `None` becomes
+            the terminal verdict `rejected`, and widening this to
+            `GraphApiError` would file a permanent "the user deleted it" every
+            time Graph returned a 500.
+            """
             base = "/me" if mailbox == "me" else f"/users/{mailbox}"
-            return client.get(f"{base}/messages/{message_id}", params={"$select": ",".join(select or RECONCILE_SELECT)})
+            try:
+                return client.get(
+                    f"{base}/messages/{message_id}", params={"$select": ",".join(select or RECONCILE_SELECT)}
+                )
+            except GraphNotFoundError:
+                return None
 
         outcomes = reconcile_pass(store, fetch, markers)
 

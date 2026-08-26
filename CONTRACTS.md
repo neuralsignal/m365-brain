@@ -591,7 +591,13 @@ carries a `needs_converters` flag, because there is no longer a second call shap
   **injected**, so no module imports both `outbox` and `m365` (ADR 0014).
 - `m365_brain.outbox.runner.push(store, registry, router) -> PushCounts` and
   `reconcile(store, fetch, markers) -> list[ReconcileOutcome]`. The reconciliation Graph fetch is a
-  `(mailbox, message_id, select) -> dict | None` callable supplied by the caller.
+  `(mailbox, message_id, select) -> dict | None` callable supplied by the caller, and that `None` is
+  an **obligation on the caller**, not merely a permitted return: a message Graph no longer holds
+  must arrive as `None`, because it is the only signal that produces the `rejected` verdict. An
+  adapter that raises instead ends the pass — and since a receipt is marked only *after* its fetch
+  returns, that one receipt then ends every later pass at the same point, which is a stalled
+  backlog rather than a flaky run. Only the missing message converts; every other Graph failure
+  propagates, because `rejected` is terminal and an outage must never be filed as a human decision.
 
 `ReconcileOutcome` carries `uuid`, `verdict` (`sent` | `amended` | `rejected` | `pending`),
 `graph_message_id`, `conversation_id`, `sent_at`, `sent_body_html`, `original_body`. The sent HTML
