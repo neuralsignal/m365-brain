@@ -12,8 +12,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from pydantic import SecretStr
 
 from m365_brain.config import AuthConfig
+from m365_brain.m365.auth.auth_code import AuthCodeAuth
 from m365_brain.m365.auth.device_code import DeviceCodeAuth
 from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
 from m365_brain.m365.errors import AuthTransportError
@@ -112,6 +114,24 @@ class TestTranslation:
             pytest.raises(AuthTransportError, match="ConnectionError"),
         ):
             DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
+
+    def test_a_transport_fault_building_the_confidential_app_is_translated(self, auth_config):
+        """The web flow's app has the same constructor-does-network property.
+
+        `ConfidentialClientApplication` runs the same authority discovery as its
+        public sibling, and `make_web_token_provider` builds it per request, so
+        leaving this path untranslated would reopen the gap on the multi-user
+        side only -- the half with no interactive user to notice.
+        """
+        config = auth_config.model_copy(update={"client_secret": SecretStr("test-secret")})
+        with (
+            patch(
+                "m365_brain.m365.auth.auth_code.msal.ConfidentialClientApplication",
+                side_effect=requests.exceptions.ConnectionError("getaddrinfo failed"),
+            ),
+            pytest.raises(AuthTransportError, match="ConnectionError"),
+        ):
+            AuthCodeAuth(config, TIMEOUT_SECONDS)
 
     def test_a_transport_fault_listing_accounts_is_translated(self, auth_config):
         """`get_accounts()` looks like a cache read and is not one.
