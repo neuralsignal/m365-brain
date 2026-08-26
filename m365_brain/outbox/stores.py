@@ -70,6 +70,22 @@ class IntentStore(Protocol):
         a caller cannot half-archive."""
         ...
 
+    def release(self, outbox_name: str, uuid: str) -> None:
+        """Return a claimed intent to its outbox, unarchived. The inverse of
+        `claim`, and the only non-terminal way out of flight.
+
+        Without it the store could take an intent and it could bury one, but it
+        could not put one back -- so a dispatch that failed for a reason that
+        will not still be true in five minutes had to be archived as
+        permanently failed, and `already_dispatched` made that permanent.
+
+        **Only ever called from the `handler.execute()` failure path**, where
+        no `graph_message_id` exists and therefore nothing reached Graph.
+        Releasing anywhere else risks a second send of a message already sent,
+        which is the one failure mode worse than a dropped draft.
+        """
+        ...
+
     def inflight(self) -> list[str]:
         """Uuids claimed with no recorded outcome. Reported, never retried."""
         ...
@@ -143,6 +159,12 @@ class InMemoryIntentStore:
             raise IntentNotClaimed(f"{uuid} is not in flight; claim it before archiving")
         self._archived[uuid] = content
         self._receipts[uuid] = receipt
+
+    def release(self, outbox_name: str, uuid: str) -> None:
+        content = self._inflight.pop(uuid, None)
+        if content is None:
+            raise IntentNotClaimed(f"{uuid} is not in flight; claim it before releasing")
+        self._pending[uuid] = (outbox_name, content)
 
     def inflight(self) -> list[str]:
         return sorted(self._inflight)

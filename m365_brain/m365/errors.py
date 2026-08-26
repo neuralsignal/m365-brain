@@ -61,6 +61,14 @@ class AuthTransportError(Exception):
     the retry loop has a single domain exception to catch and never learns that
     ``requests`` exists.
 
+    ``transient = True`` is a **contract read from outside this package half**.
+    ``outbox/runner.py`` may not import this module -- ``outbox`` and ``m365``
+    are peers -- so it duck-types on this attribute to decide whether a failed
+    dispatch is put back or archived as permanently failed, exactly as
+    ``_classify_failure`` already duck-types on ``status_code``. Removing the
+    attribute or setting it False silently makes a network blip drop an email
+    draft for good; ``tests/unit/m365/test_errors.py`` pins it for that reason.
+
     **Deliberately not a ``GraphApiError``.** Twelve per-item handlers across
     the extractors catch ``(GraphApiError, httpx.TransportError)`` so one
     unreadable chat or unfetchable attachment cannot kill a whole extractor.
@@ -70,3 +78,5 @@ class AuthTransportError(Exception):
     silently missing data. Sitting outside that hierarchy is what keeps those
     twelve handlers correct without editing any of them.
     """
+
+    transient = True

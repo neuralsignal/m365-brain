@@ -94,6 +94,20 @@ class FilesystemIntentStore:
         self._storage.write_file(sidecar, receipt.model_dump_json(indent=2))
         self._storage.delete_file(inflight)
 
+    def release(self, outbox_name: str, uuid: str) -> None:
+        """Write the in-flight intent back to its outbox and clear the claim.
+
+        The outbox name is taken from the caller rather than inferred from the
+        payload kind: the two are equal in every shipped config but nothing
+        enforces it, and a release into the wrong directory would re-dispatch
+        the intent under another outbox's authority.
+        """
+        inflight = self._paths.inflight(uuid)
+        if not self._storage.file_exists(inflight):
+            raise IntentNotClaimed(f"{uuid} is not in flight; claim it before releasing")
+        self._storage.write_file(self._paths.outbox_intent(outbox_name, uuid), self._storage.read_file(inflight))
+        self._storage.delete_file(inflight)
+
     def inflight(self) -> list[str]:
         root = self._paths.meta(self._paths.vault.layout.inflight)
         return sorted(_stem(key, MARKDOWN_SUFFIX) for key in self._storage.list_files(root))

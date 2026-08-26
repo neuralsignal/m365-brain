@@ -291,6 +291,16 @@ consumer keeping its own seen-set file is doing work the manifest already did.
 intent is skipped and a failed one is not retried. Purging `<layout.processed>` re-arms replay —
 a deliberate operator act, not something guarded against.
 
+**One path out of flight is not the archive.** A handler that raises an exception carrying a truthy
+`transient` attribute — `AuthTransportError` is the one that does — has reached no message id and
+therefore sent nothing, so the intent is **released** back into its outbox and counted `deferred`
+rather than receipted. Anything else archived would be permanent, because the ledger cannot tell
+"the identity provider was unreachable for ninety seconds" from "this draft is undeliverable", and
+`claim` has already deleted the source file. The attribute is duck-typed: `outbox` and `m365` are
+peers and neither imports the other, exactly as `_classify_failure` reads `status_code` without
+importing `GraphConflictError`. Release is reachable **only** from that failure path — releasing an
+intent that did reach Graph would send it twice.
+
 ```
 <meta>/<inflight>/<uuid>.md              claimed, outcome unknown — never auto-retried (ADR 0017)
 <meta>/<processed>/<uuid>.md             the intent, byte-identical to what was submitted
@@ -397,7 +407,7 @@ the root they hang off, so nothing is missing.
 | `index catalog resolve` | `QUERY` — a file name, or a path this family printed · `--json` | one source path, resolved; ambiguity is an error | 0 / 3 / 5 |
 | `index catalog read` | `PATH` — absolute, or relative to the vault root; never to the CWD | the converted markdown on stdout; writes nothing | 0 / 2 / 3 |
 | `outbox list` | `--outbox NAME` · `--json` | intents with uuid, outbox, authority, status | 0 / 3 |
-| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / failed / replayed / contended / inflight | 0 / 1 / 3 / 4 |
+| `outbox push` | `--outbox NAME` · `--json` | dispatched / blocked / failed / deferred / replayed / contended / inflight | 0 / 1 / 3 / 4 |
 | `outbox reconcile` | `--outbox NAME` · `--json` | per-intent verdict | 0 / 1 / 3 / 4 |
 | `files pull` | `--profile` · `--site-hostname` · `--site-path` · `--library` · `--item-path` · `--out` · `--json` | bytes written and the eTag | 0 / 1 / 3 / 4 |
 | `files push` | the same, plus `--in` · `--content-type` · `--if-match` (required) | the new eTag; **raises on 412, never overwrites** | 0 / 1 / 3 / 4 |
@@ -539,6 +549,13 @@ The seam set. One implementation each today, each shipping an in-memory fake (AD
 | `IntentStore` | `m365_brain/outbox/stores.py` | **Present** | `FilesystemIntentStore` + `InMemoryIntentStore` |
 | `OutboxHandler` | `m365_brain/vault/dispatch.py` | **Present** | `EmailOutbox`, `TeamsPostOutbox`, `FileUpdateOutbox` |
 | `StateStore` | `m365_brain/state.py` | **Present** | `JsonStateStore` under the meta directory, plus `InMemoryStateStore` |
+
+`IntentStore` today: `put(outbox_name, uuid, content)`, `pending()`, `claim(outbox_name, uuid)`,
+`release(outbox_name, uuid)`, `already_dispatched(uuid)`, `archive(uuid, receipt)`, `inflight()`,
+`receipt(uuid)`, `dispatched_receipts()`, `archived_intent(uuid)`, `reconciled_verdict(uuid)`,
+`mark_reconciled(uuid, verdict)`. `release` takes the outbox name rather than inferring it from the
+payload kind: the two coincide in every shipped config and nothing enforces that they must, and a
+release into the wrong directory would re-dispatch the intent under another outbox's authority.
 
 `StorageBackend` today: `write_file(path, content)`, `read_file(path)`, `file_exists(path)`,
 `list_files(prefix)`, `delete_file(path)`, `write_bytes(path, content)`. All paths are relative to
