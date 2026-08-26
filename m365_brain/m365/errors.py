@@ -14,6 +14,8 @@ they subclass it.
 ``AuthTransportError`` lives here for the same leaf reason and for the
 opposite inheritance reason: ``client`` catches it, ``m365/auth/`` raises it,
 and it is pointedly *not* a ``GraphApiError``. Its own docstring says why.
+``TokenCacheError`` is here because it is raised from the same place and is
+*not* an ``OSError``, which is likewise the whole point of it.
 """
 
 from __future__ import annotations
@@ -80,3 +82,23 @@ class AuthTransportError(Exception):
     """
 
     transient = True
+
+
+class TokenCacheError(Exception):
+    """Reading or writing the MSAL token cache file failed.
+
+    **Deliberately not an ``OSError``**, which is what the code it replaces
+    raised. The token cache is read on first use of ``DeviceCodeAuth`` and
+    written after every acquisition, both inside the token provider -- and
+    ``GraphClient._headers`` calls that provider from *within* the retry
+    envelope, which catches transport errors and not filesystem ones. A bare
+    ``OSError`` therefore travelled straight through the transport and into
+    ``_attachment_helpers.py``'s ``except (..., OSError)`` arm, where a full
+    disk read as an unreadable attachment: warned, skipped, next one tried,
+    and the extractor recorded a **successful** sync missing every attachment.
+    ``_file_helpers.py`` and ``commands/_catalog.py`` have the same arm.
+
+    Nothing catches this. A broken token cache is not a per-item condition and
+    not retryable -- it stops the unit and reaches ``cycle.py``'s recorder,
+    which is the loud outcome the silent skip was hiding.
+    """
