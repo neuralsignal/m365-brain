@@ -24,6 +24,7 @@ from m365_brain.config import Config, WorkerConfig
 from m365_brain.config.errors import ConfigError
 from m365_brain.m365.auth.token_provider import TokenRefreshError, TokenStoreProtocol, make_web_token_provider
 from m365_brain.m365.client import GraphApiError
+from m365_brain.m365.errors import AuthTransportError
 from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
 from m365_brain.state import JsonStateStore
@@ -43,7 +44,11 @@ def _require_worker_config(config: Config) -> WorkerConfig:
 
 # Exceptions that worker jobs are known to raise.
 # Used in catch blocks to distinguish expected failures from unexpected ones.
-_KNOWN_ERRORS = (GraphApiError, ExtractorError, ConfigError, TokenRefreshError)
+# Every site catches this constant and none spells it out again: `AuthTransportError`
+# was added to the tuple long after the four sites existed, and the one that had
+# re-spelled it kept saying `running` forever while the other three had already
+# been fixed by the edit.
+_KNOWN_ERRORS = (GraphApiError, ExtractorError, ConfigError, TokenRefreshError, AuthTransportError)
 
 
 def _lock_key(user_id: str, extractor_name: str) -> int:
@@ -178,7 +183,7 @@ def run_single_extractor(
 
         upsert_extractor_status(engine, user.user_id, extractor_name, "success", total_items, None)
         log.info("worker.job_completed", user_id=user.user_id, extractor=extractor_name, items=total_items)
-    except (GraphApiError, ExtractorError, ConfigError, TokenRefreshError) as exc:
+    except _KNOWN_ERRORS as exc:
         upsert_extractor_status(engine, user.user_id, extractor_name, "failed", 0, str(exc))
         log.error("worker.job_failed", user_id=user.user_id, extractor=extractor_name, error=str(exc))
     finally:
