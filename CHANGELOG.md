@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.3](https://github.com/neuralsignal/m365-brain/compare/v1.2.2...v1.2.3) (2026-08-27)
+
+
+### Bug Fixes
+
+* close four recurring sync failures and an unretryable-draft path ([#311](https://github.com/neuralsignal/m365-brain/issues/311)) ([b85200f](https://github.com/neuralsignal/m365-brain/commit/b85200f8a6f7f325eaaddbdf113afd3dc31426ac))
+* retry token-transport faults and bound MSAL calls with a timeout ([#309](https://github.com/neuralsignal/m365-brain/issues/309)) ([fd95a72](https://github.com/neuralsignal/m365-brain/commit/fd95a728dd87bdc131790375c45fc46e5c9d467a))
+* token acquisition never prompts ([#312](https://github.com/neuralsignal/m365-brain/issues/312)) ([d3cdb2c](https://github.com/neuralsignal/m365-brain/commit/d3cdb2cea2979e174d1888a79b973929b0a39adb))
+
 ## [1.2.2](https://github.com/neuralsignal/m365-brain/compare/v1.2.1...v1.2.2) (2026-08-21)
 
 
