@@ -150,18 +150,22 @@ class TestTranslation:
                 auth.get_token()
 
     def test_msal_error_dicts_pass_through_untouched(self, auth_config):
-        """A revoked consent is not transient; it must not be retried."""
+        """A revoked consent is not transient; it must not be retried.
+
+        Through `login`, because that is now the only route to the device
+        flow -- `get_token` raises `AuthRequiredError` before reaching it. The
+        claim under test is unchanged: MSAL's own error dict is not laundered
+        into an `AuthTransportError` and so never looks retryable.
+        """
         with patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication") as app_cls:
             app = MagicMock()
             app_cls.return_value = app
-            app.get_accounts.return_value = [{"username": "user@example.com"}]
-            app.acquire_token_silent.return_value = None
             app.initiate_device_flow.return_value = {"user_code": "A", "message": "go"}
             app.acquire_token_by_device_flow.return_value = {"error": "invalid_grant"}
 
             auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
             with pytest.raises(SystemExit):
-                auth.get_token()
+                auth.login()
 
     def test_a_dns_failure_during_silent_refresh_is_translated(self, auth_config):
         """The exact 2026-08-25 shape: DNS dies while refreshing a cached token."""

@@ -11,7 +11,7 @@ import pytest
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.device_code import DeviceCodeAuth
-from m365_brain.m365.errors import TokenCacheError
+from m365_brain.m365.errors import AuthRequiredError, TokenCacheError
 
 # `graph.timeout_seconds` in production; MSAL is mocked in every test here.
 TIMEOUT_SECONDS = 30
@@ -43,23 +43,47 @@ class TestDeviceCodeAuth:
         mock_app.acquire_token_silent.assert_called_once()
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
-    def test_get_token_device_flow_when_no_cache(self, mock_app_cls, auth_config):
+    def test_get_token_raises_rather_than_prompting_when_no_cache(self, mock_app_cls, auth_config, tmp_path):
+        """The whole fix. `get_token` is the daemon's provider too, and a
+        device-code prompt in a process with no terminal blocks until the code
+        expires and then keeps blocking."""
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
         mock_app.get_accounts.return_value = []
-        mock_app.initiate_device_flow.return_value = {
-            "user_code": "ABC123",
-            "message": "Go to https://microsoft.com/devicelogin and enter ABC123",
-        }
-        mock_app.acquire_token_by_device_flow.return_value = {
-            "access_token": "new-token",
-        }
 
         auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
-        token = auth.get_token()
+        with pytest.raises(AuthRequiredError) as excinfo:
+            auth.get_token()
 
-        assert token == "new-token"
-        mock_app.initiate_device_flow.assert_called_once()
+        mock_app.initiate_device_flow.assert_not_called()
+        mock_app.acquire_token_by_device_flow.assert_not_called()
+        assert str(tmp_path / "token_cache.json") in str(excinfo.value)
+        assert "auth login" in str(excinfo.value)
+
+    @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
+    def test_get_token_raises_when_the_refresh_token_is_dead(self, mock_app_cls, auth_config):
+        """An account exists but MSAL cannot silently renew it -- the other
+        route into the old prompt, and the one a laptop actually hits."""
+        mock_app = MagicMock()
+        mock_app_cls.return_value = mock_app
+        mock_app.get_accounts.return_value = [{"username": "user@example.com"}]
+        mock_app.acquire_token_silent.return_value = {"error": "interaction_required"}
+
+        auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
+        with pytest.raises(AuthRequiredError):
+            auth.get_token()
+
+        mock_app.initiate_device_flow.assert_not_called()
+
+    def test_the_error_is_not_a_graph_error_and_not_transient(self):
+        """Per-item extractor handlers catch GraphApiError; swallowing "no
+        credentials" per item would skip every item and report success. And a
+        retry cannot mint a refresh token, so the outbox must not put the
+        intent back the way it does for AuthTransportError."""
+        from m365_brain.m365.errors import GraphApiError
+
+        assert not issubclass(AuthRequiredError, GraphApiError)
+        assert getattr(AuthRequiredError("boom"), "transient", False) is False
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
     def test_reserved_scopes_excluded(self, mock_app_cls, auth_config):
@@ -86,7 +110,7 @@ class TestDeviceCodeAuth:
 
         auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         with pytest.raises(SystemExit):
-            auth.get_token()
+            auth.login()
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
     def test_token_acquisition_failure_exits(self, mock_app_cls, auth_config):
@@ -104,7 +128,7 @@ class TestDeviceCodeAuth:
 
         auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
         with pytest.raises(SystemExit):
-            auth.get_token()
+            auth.login()
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
     def test_cache_saved_on_state_change(self, mock_app_cls, auth_config, tmp_path):

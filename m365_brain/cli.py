@@ -55,6 +55,7 @@ from m365_brain.hooks import HookResolutionError
 from m365_brain.logging_config import route_logs_to_stderr
 from m365_brain.m365.auth.profiles import AuthProfileError
 from m365_brain.m365.auth.token_provider import TokenRefreshError
+from m365_brain.m365.errors import AuthRequiredError
 from m365_brain.manifest import ChangeManifest
 from m365_brain.schedule import read_cursor
 from m365_brain.vault.paths import VaultPathError, VaultPaths
@@ -84,7 +85,7 @@ class ExitCodeGroup(click.Group):
         except (ConfigError, HookResolutionError, VaultPathError) as exc:
             click.echo(f"config error: {exc}", err=True)
             raise SystemExit(EXIT_CONFIG) from exc
-        except (AuthProfileError, TokenRefreshError) as exc:
+        except (AuthProfileError, AuthRequiredError, TokenRefreshError) as exc:
             click.echo(f"authentication required: {exc}", err=True)
             raise SystemExit(EXIT_AUTH) from exc
 

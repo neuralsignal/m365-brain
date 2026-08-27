@@ -30,7 +30,12 @@ class TokenRefreshError(Exception):
 
 
 def make_cli_token_provider(auth_config: AuthConfig, timeout_seconds: int) -> Callable[[], str]:
-    """Create a token provider for CLI mode (device code flow).
+    """Create a token provider for the device-code (public client) app.
+
+    Named for the CLI, held by the daemon too -- `commands/_context.py` builds
+    exactly one provider and `run` gets the same one `index search` does. That
+    is why `DeviceCodeAuth.get_token` must never prompt: there is no separate
+    headless provider to route a daemon through.
 
     ``timeout_seconds`` is ``graph.timeout_seconds`` -- the same ceiling the
     Graph transport runs under, because a call to the identity provider is a

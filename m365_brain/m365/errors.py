@@ -107,3 +107,33 @@ class TokenCacheError(Exception):
     not retryable -- it stops the unit and reaches ``cycle.py``'s recorder,
     which is the loud outcome the silent skip was hiding.
     """
+
+
+class AuthRequiredError(Exception):
+    """The cache holds no usable token and nobody can be asked for one.
+
+    ``get_token`` used to answer this case by starting the interactive
+    device-code flow. Every token provider in the process is that method, so
+    the *daemon* held one too: ``m365-brain run`` printed a device code to a
+    tmux pane with no reader and then blocked in
+    ``acquire_token_by_device_flow`` until the code expired -- and stayed
+    blocked. Observed 2026-08-26: DNS died with the laptop asleep, one refresh
+    failed, and a sync that had completed 77 clean cycles sat frozen for twelve
+    hours with the process still alive. A daemon cannot answer a prompt, so
+    being asked one is indistinguishable from being dead.
+
+    Raising instead makes the failure a normal cycle failure: the extractor
+    fails loudly, ``cycle.py`` records it, the loop continues, and the next
+    cycle succeeds on its own once the network returns. Interactive login did
+    not move -- ``auth login`` calls ``login()``, which was always the separate
+    entry point and never routed through here.
+
+    **Deliberately not a ``GraphApiError``**, for the reason spelled out in
+    ``AuthTransportError``: the per-item handlers across the extractors catch
+    that hierarchy, and swallowing "we have no credentials" per item would skip
+    every remaining item and then record a *successful* sync.
+
+    No ``transient`` attribute, which duck-types to False. Unlike
+    ``AuthTransportError`` this does not fix itself on a retry -- the refresh
+    token is dead or absent, and only a human at a terminal changes that.
+    """

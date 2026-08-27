@@ -1,6 +1,11 @@
-"""MSAL device code flow authentication for CLI mode.
+"""MSAL device code flow authentication.
 
 Acquires, caches, and refreshes Graph API tokens using a public client application.
+
+Two entry points, and the split is the point: ``get_token`` reads the cache and
+raises when it cannot, while ``login`` is the only thing that prompts. Both the
+CLI and the sync daemon hold ``get_token``, so a prompt reachable from it is a
+prompt reachable from a process with no terminal.
 
 Every call that leaves the process is wrapped in ``auth_transport_errors`` --
 including the constructor, because MSAL performs authority discovery there and
@@ -22,7 +27,7 @@ import msal
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
-from m365_brain.m365.errors import TokenCacheError
+from m365_brain.m365.errors import AuthRequiredError, TokenCacheError
 
 _RESERVED_SCOPES = {"offline_access", "openid", "profile"}
 
@@ -43,10 +48,21 @@ class DeviceCodeAuth:
         self._scopes = [s for s in auth_config.scopes if s not in _RESERVED_SCOPES]
 
     def get_token(self) -> str:
-        """Acquire a valid Graph API access token. Tries cache first, then device code flow."""
+        """Acquire a Graph access token from the cache. Never prompts.
+
+        This is every token provider in the process -- the daemon's included --
+        so it must not start the interactive device-code flow. It used to, and
+        `m365-brain run` inherited a prompt it could not answer; see
+        `AuthRequiredError` for what that cost. `login()` is the interactive
+        entry point and is what `auth login` calls.
+        """
         result = self._try_silent()
         if not result:
-            result = self._device_code_flow()
+            raise AuthRequiredError(
+                f"no usable cached token at {self._config.token_cache_path}: "
+                "run `m365-brain auth login --profile <name>` for the profile that "
+                "owns this cache. Nothing here prompts -- a daemon has no one to ask."
+            )
         self._save_cache()
         return self._extract_token(result)
 

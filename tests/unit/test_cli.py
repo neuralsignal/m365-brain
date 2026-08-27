@@ -11,13 +11,14 @@ import json
 import re
 from pathlib import Path
 
+import click
 import pytest
 import structlog
 import yaml
 from click.testing import CliRunner
 from pytest_httpx import HTTPXMock
 
-from m365_brain.cli import main
+from m365_brain.cli import ExitCodeGroup, main
 from m365_brain.commands._context import (
     EXIT_AUTH,
     EXIT_CONFIG,
@@ -29,6 +30,7 @@ from m365_brain.commands._context import (
 from m365_brain.commands.teams import parse_channel_url
 from m365_brain.config import ConfigError
 from m365_brain.logging_config import _stderr_logger
+from m365_brain.m365.errors import AuthRequiredError
 from tests.conftest import load_fixture
 
 SECRET = "s3cr3t-value-do-not-print"
@@ -191,6 +193,44 @@ class TestExitCodes:
         result = _run(runner, config_file, "auth", "status", "--json")
         assert result.exit_code == EXIT_AUTH
         assert json.loads(result.stdout)["profiles"][0]["valid"] is False
+
+    def test_a_dead_token_cache_is_four_not_a_traceback(self):
+        """`get_token` raising instead of prompting is only half the fix -- a
+        one-shot command still has to say what to do about it, or the user sees
+        `AuthRequiredError` and a stack trace.
+
+        Exercised on the group rather than through a verb: every Graph-shaped
+        command in this suite runs its work inside `cycle.py`, which records a
+        failed extractor and exits 1 by design (see the next test). The mapping
+        itself lives on `ExitCodeGroup`, so that is what is asserted.
+        """
+
+        @click.group(cls=ExitCodeGroup)
+        def group() -> None: ...
+
+        @group.command("boom")
+        def boom() -> None:
+            raise AuthRequiredError("no usable cached token at /tmp/x.json: run `m365-brain auth login`")
+
+        result = CliRunner().invoke(group, ["boom"])
+
+        assert result.exit_code == EXIT_AUTH
+        assert "authentication required" in result.output
+        assert "auth login" in result.output
+
+    def test_the_daemon_records_it_and_keeps_going_instead(self, runner, config_file, monkeypatch):
+        """The other half, and the reason `get_token` raises at all. Inside a
+        cycle the same error is a per-extractor failure that `cycle.py` records
+        -- exit 1, one bad cycle -- not an abort. The loop lives to retry once
+        the network is back, which the device-code prompt never did."""
+
+        def explode(*_args, **_kwargs):
+            raise AuthRequiredError("no usable cached token")
+
+        monkeypatch.setattr("m365_brain.commands._context.make_cli_token_provider", explode)
+        result = _run(runner, config_file, "run", "--once", "--only", "calendar")
+
+        assert result.exit_code == EXIT_FAILURE
 
     def test_an_unknown_auth_profile_is_three(self, runner, config_file):
         assert _run(runner, config_file, "auth", "status", "--profile", "nope").exit_code == EXIT_CONFIG
