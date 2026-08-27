@@ -85,7 +85,9 @@ moves with the vault it belongs to instead of being a second root to keep in ste
 ### Microsoft Graph
 
 **Present.** Graph v1.0, delegated permissions only, acquired by MSAL device-code flow (CLI) or
-authorization-code flow (admin UI). No application permissions are required or requested. The
+authorization-code flow (admin UI). **Token acquisition never prompts** — the provider reads the
+cache and raises `AuthRequiredError` when it holds nothing usable. `auth login` is the only
+interactive path, because the daemon holds the same provider every command does (ADR 0024). No application permissions are required or requested. The
 scope set is config, and the package requests only what the enabled extractors need — an
 ungranted scope in the list blocks the entire login, so the list is not "everything just in
 case". `README.md` carries the scope → extractor table.
