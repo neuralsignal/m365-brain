@@ -1,13 +1,6 @@
 """The one Microsoft Graph transport: pagination, retry, backoff, write verbs.
 
 Accepts a token_provider callable instead of coupling to a specific auth module.
-
-Two transports used to exist -- a read-only paginating client here and a
-write-only retry shell beside the draft sender. They shared a retry loop,
-disagreed about its constants, and only one of them had an SSRF guard. This is
-the merge: the request shell is method-parametrised, so ``get``, ``post``,
-``patch`` and ``put_bytes`` traverse one retry/backoff/401-refresh policy whose
-every threshold comes from ``GraphConfig`` rather than a module constant.
 """
 
 from __future__ import annotations
@@ -15,6 +8,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -40,6 +34,17 @@ log = structlog.get_logger()
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 JSON_CONTENT_TYPE = "application/json"
+
+
+@dataclass(frozen=True, slots=True)
+class _Request:
+    """Transport-specific fields for a single Graph API call."""
+
+    method: str
+    url: str
+    body: str | bytes | None
+    content_type: str | None
+    if_match: str | None
 
 
 class GraphClient:
@@ -100,14 +105,10 @@ class GraphClient:
 
     def _execute_with_retry(
         self,
-        url: str,
+        req: _Request,
         log_ref: str,
         params: dict[str, Any] | None,
         extract: Callable[[httpx.Response], Any],
-        method: str,
-        body: str | bytes | None,
-        content_type: str | None,
-        if_match: str | None,
     ) -> Any:
         """Execute one Graph request with retry, backoff, and token refresh.
 
@@ -115,18 +116,18 @@ class GraphClient:
         immediately (``GraphNotFoundError`` / ``GraphConflictError``); 401
         refreshes the token once; 429 and 5xx back off.
         """
-        request_url = url
+        request_url = req.url
         if request_url.startswith("https://"):
             request_url = request_url.removeprefix(GRAPH_BASE_URL)
 
         for attempt in range(self._config.max_retries + 1):
             try:
                 response = self._client.request(
-                    method,
+                    req.method,
                     request_url,
-                    headers=self._headers(content_type, if_match),
+                    headers=self._headers(req.content_type, req.if_match),
                     params=params,
-                    content=body,
+                    content=req.body,
                 )
             except (httpx.TransportError, AuthTransportError) as exc:
                 if attempt == self._config.max_retries:
@@ -187,9 +188,7 @@ class GraphClient:
 
     @property
     def config(self) -> GraphConfig:
-        """The transport policy this client runs. Collaborators that need a
-        timeout or a truncation length read it here instead of being handed
-        ``GraphConfig`` a second time alongside the client itself."""
+        """The transport policy this client runs."""
         return self._config
 
     def _read(
@@ -200,14 +199,10 @@ class GraphClient:
         extract: Callable[[httpx.Response], Any],
     ) -> Any:
         return self._execute_with_retry(
-            url=url,
+            _Request(method="GET", url=url, body=None, content_type=None, if_match=None),
             log_ref=log_ref,
             params=params,
             extract=extract,
-            method="GET",
-            body=None,
-            content_type=None,
-            if_match=None,
         )
 
     def get(self, path: str, params: dict[str, Any] | None) -> dict:
@@ -224,14 +219,16 @@ class GraphClient:
 
     def _json_write(self, method: str, path: str, json_body: dict[str, Any] | None) -> httpx.Response:
         return self._execute_with_retry(
-            url=path,
+            _Request(
+                method=method,
+                url=path,
+                body=None if json_body is None else json.dumps(json_body),
+                content_type=None if json_body is None else JSON_CONTENT_TYPE,
+                if_match=None,
+            ),
             log_ref=path,
             params=None,
             extract=lambda r: r,
-            method=method,
-            body=None if json_body is None else json.dumps(json_body),
-            content_type=None if json_body is None else JSON_CONTENT_TYPE,
-            if_match=None,
         )
 
     def put_bytes(
@@ -248,14 +245,16 @@ class GraphClient:
         ``m365/files.py`` owns that policy and never exposes the nullable.
         """
         return self._execute_with_retry(
-            url=path,
+            _Request(
+                method="PUT",
+                url=path,
+                body=content,
+                content_type=content_type,
+                if_match=if_match,
+            ),
             log_ref=path,
             params=None,
             extract=lambda r: r,
-            method="PUT",
-            body=content,
-            content_type=content_type,
-            if_match=if_match,
         )
 
     def get_bytes(self, url: str) -> bytes:
