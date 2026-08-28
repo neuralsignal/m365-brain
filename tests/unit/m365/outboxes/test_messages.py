@@ -10,6 +10,8 @@ from m365_brain.m365.outboxes.messages import (
     FORWARD,
     REPLY,
     REPLY_ALL,
+    DraftSpec,
+    ReplySpec,
     create_new_draft,
     create_reply_like,
     get_message,
@@ -57,9 +59,15 @@ class TestRecipients:
 
 class TestCreateAndUpdate:
     def test_a_new_draft_posts_every_recipient_list(self, client, recorded):
-        message_id = create_new_draft(
-            client, "me", ["a@example.com"], ["c@example.com"], ["b@example.com"], "Subject", "<p>hi</p>", ""
+        spec = DraftSpec(
+            subject="Subject",
+            body_html="<p>hi</p>",
+            signature_html="",
+            to=["a@example.com"],
+            cc=["c@example.com"],
+            bcc=["b@example.com"],
         )
+        message_id = create_new_draft(client, "me", spec)
 
         assert message_id == "MSG-1"
         body = json.loads(recorded[0].content)
@@ -69,27 +77,52 @@ class TestCreateAndUpdate:
         assert body["bccRecipients"] == [{"emailAddress": {"address": "b@example.com"}}]
 
     def test_the_signature_is_composed_into_the_posted_body(self, client, recorded):
-        create_new_draft(client, "me", ["a@example.com"], [], [], "S", "<p>hi</p>", "<p>sig</p>")
+        spec = DraftSpec(
+            subject="S",
+            body_html="<p>hi</p>",
+            signature_html="<p>sig</p>",
+            to=["a@example.com"],
+            cc=[],
+            bcc=[],
+        )
+        create_new_draft(client, "me", spec)
 
         assert json.loads(recorded[0].content)["body"]["content"] == "<p>hi</p><br><br><p>sig</p>"
 
     def test_an_update_patches_the_same_id(self, client, recorded):
-        returned = update_draft(client, "me", "MSG-EXISTING", ["a@example.com"], [], [], "New", "<p>new</p>", "")
+        spec = DraftSpec(
+            subject="New",
+            body_html="<p>new</p>",
+            signature_html="",
+            to=["a@example.com"],
+            cc=[],
+            bcc=[],
+        )
+        returned = update_draft(client, "me", "MSG-EXISTING", spec)
 
         assert returned == "MSG-EXISTING"
         assert recorded[0].method == "PATCH"
         assert recorded[0].url.path.endswith("/messages/MSG-EXISTING")
 
     def test_create_and_update_build_the_same_payload_shape(self, client, recorded):
-        create_new_draft(client, "me", ["a@example.com"], [], [], "S", "<p>x</p>", "<p>sig</p>")
-        update_draft(client, "me", "MSG-1", ["a@example.com"], [], [], "S", "<p>x</p>", "<p>sig</p>")
+        spec = DraftSpec(
+            subject="S",
+            body_html="<p>x</p>",
+            signature_html="<p>sig</p>",
+            to=["a@example.com"],
+            cc=[],
+            bcc=[],
+        )
+        create_new_draft(client, "me", spec)
+        update_draft(client, "me", "MSG-1", spec)
 
         assert json.loads(recorded[0].content) == json.loads(recorded[1].content)
 
 
 class TestThreeStepReply:
     def test_the_sequence_is_post_get_patch(self, client, recorded):
-        create_reply_like(client, "me", "ORIG", REPLY, "<p>mine</p>", "", [], None)
+        spec = ReplySpec(action=REPLY, body_html="<p>mine</p>", signature_html="", extra_cc=[], forward_to=None)
+        create_reply_like(client, "me", "ORIG", spec)
 
         assert [request.method for request in recorded] == ["POST", "GET", "PATCH"]
         assert recorded[0].url.path.endswith("/messages/ORIG/createReply")
@@ -98,31 +131,42 @@ class TestThreeStepReply:
     def test_the_patch_carries_graphs_own_quoted_original(self, client, recorded):
         """The GET exists only to read this back. Skipping it drops the quote
         and the recipient sees a reply with no thread."""
-        create_reply_like(client, "me", "ORIG", REPLY, "<p>mine</p>", "<p>sig</p>", [], None)
+        spec = ReplySpec(
+            action=REPLY, body_html="<p>mine</p>", signature_html="<p>sig</p>", extra_cc=[], forward_to=None
+        )
+        create_reply_like(client, "me", "ORIG", spec)
 
         content = json.loads(recorded[2].content)["body"]["content"]
         assert content == f"<p>mine</p><br><br><p>sig</p><br><br>{QUOTED_ORIGINAL}"
 
     def test_reply_all_uses_a_different_action(self, client, recorded):
-        create_reply_like(client, "me", "ORIG", REPLY_ALL, "<p>x</p>", "", [], None)
+        spec = ReplySpec(action=REPLY_ALL, body_html="<p>x</p>", signature_html="", extra_cc=[], forward_to=None)
+        create_reply_like(client, "me", "ORIG", spec)
 
         assert recorded[0].url.path.endswith("/createReplyAll")
 
     def test_forward_sets_to_recipients_at_the_top_level(self, client, recorded):
-        create_reply_like(client, "me", "ORIG", FORWARD, "<p>x</p>", "", [], ["fwd@example.com"])
+        spec = ReplySpec(
+            action=FORWARD, body_html="<p>x</p>", signature_html="", extra_cc=[], forward_to=["fwd@example.com"]
+        )
+        create_reply_like(client, "me", "ORIG", spec)
 
         patched = json.loads(recorded[2].content)
         assert patched["toRecipients"] == [{"emailAddress": {"address": "fwd@example.com"}}]
         assert "message" not in patched
 
     def test_extra_cc_merges_with_the_list_graph_derived(self, client, recorded):
-        create_reply_like(client, "me", "ORIG", REPLY, "<p>x</p>", "", ["extra@example.com"], None)
+        spec = ReplySpec(
+            action=REPLY, body_html="<p>x</p>", signature_html="", extra_cc=["extra@example.com"], forward_to=None
+        )
+        create_reply_like(client, "me", "ORIG", spec)
 
         addresses = {entry["emailAddress"]["address"] for entry in json.loads(recorded[2].content)["ccRecipients"]}
         assert addresses == {"existing@example.com", "extra@example.com"}
 
     def test_the_shared_mailbox_base_is_used_for_all_three_calls(self, client, recorded):
-        create_reply_like(client, "shared@example.com", "ORIG", REPLY, "<p>x</p>", "", [], None)
+        spec = ReplySpec(action=REPLY, body_html="<p>x</p>", signature_html="", extra_cc=[], forward_to=None)
+        create_reply_like(client, "shared@example.com", "ORIG", spec)
 
         assert all("/users/shared@example.com/" in str(request.url) for request in recorded)
 

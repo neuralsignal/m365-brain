@@ -18,11 +18,13 @@ from pathlib import Path
 
 from m365_brain.config import EmailSignatureConfig, UploadConfig
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.outboxes.attachments import attach_file, resolve_attachment
+from m365_brain.m365.outboxes.attachments import MessageTarget, attach_file, resolve_attachment
 from m365_brain.m365.outboxes.messages import (
     FORWARD,
     REPLY,
     REPLY_ALL,
+    DraftSpec,
+    ReplySpec,
     create_new_draft,
     create_reply_like,
     get_message,
@@ -110,23 +112,27 @@ class EmailOutbox:
             message_id = create_new_draft(
                 self.client,
                 payload.mailbox,
-                list(payload.to),
-                list(payload.cc or []),
-                list(payload.bcc or []),
-                payload.subject,
-                body_html,
-                assets.signature_html,
+                DraftSpec(
+                    subject=payload.subject,
+                    body_html=body_html,
+                    signature_html=assets.signature_html,
+                    to=list(payload.to),
+                    cc=list(payload.cc or []),
+                    bcc=list(payload.bcc or []),
+                ),
             )
         else:
             message_id = create_reply_like(
                 self.client,
                 payload.mailbox,
                 payload.in_reply_to,
-                self._action(payload),
-                body_html,
-                assets.signature_html,
-                list(payload.cc or []),
-                list(payload.to) if payload.kind == FORWARD_KIND else None,
+                ReplySpec(
+                    action=self._action(payload),
+                    body_html=body_html,
+                    signature_html=assets.signature_html,
+                    extra_cc=list(payload.cc or []),
+                    forward_to=list(payload.to) if payload.kind == FORWARD_KIND else None,
+                ),
             )
         try:
             self._attach(payload.mailbox, message_id, assets)
@@ -164,12 +170,14 @@ class EmailOutbox:
             self.client,
             payload.mailbox,
             payload.revises_message_id,
-            list(payload.to),
-            list(payload.cc or []),
-            list(payload.bcc or []),
-            payload.subject,
-            markdown_to_outlook_html(payload.body),
-            assets.signature_html,
+            DraftSpec(
+                subject=payload.subject,
+                body_html=markdown_to_outlook_html(payload.body),
+                signature_html=assets.signature_html,
+                to=list(payload.to),
+                cc=list(payload.cc or []),
+                bcc=list(payload.bcc or []),
+            ),
         )
 
     def _action(self, payload: _EmailCommon) -> str:
@@ -181,13 +189,13 @@ class EmailOutbox:
         """User files, then the signature logo, then inline images -- the order
         the working sender used, and therefore the order the parity fixtures
         recorded."""
-        base = mailbox_base(mailbox)
+        target = MessageTarget(mailbox_base(mailbox), message_id)
         for path in assets.attachments:
-            attach_file(self.client, self.upload, base, message_id, path, False, None)
+            attach_file(self.client, self.upload, target, path, False, None)
         if assets.logo is not None:
-            attach_file(self.client, self.upload, base, message_id, assets.logo, True, self.signature.logo_content_id)
+            attach_file(self.client, self.upload, target, assets.logo, True, self.signature.logo_content_id)
         for cid, path in assets.inline_images:
-            attach_file(self.client, self.upload, base, message_id, path, True, cid)
+            attach_file(self.client, self.upload, target, path, True, cid)
 
 
 def load_signature_html(signature: EmailSignatureConfig) -> str:

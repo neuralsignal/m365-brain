@@ -19,6 +19,7 @@ property of the signatures rather than of remembering to pass an argument.
 from __future__ import annotations
 
 import urllib.parse
+from dataclasses import dataclass
 
 import structlog
 
@@ -28,6 +29,14 @@ from m365_brain.m365.errors import GraphApiError, GraphConflictError, GraphNotFo
 from m365_brain.m365.upload import upload_in_chunks
 
 log = structlog.get_logger()
+
+
+@dataclass(frozen=True)
+class FilePayload:
+    """The bytes and their MIME type, bundled so write callsites carry one object."""
+
+    content: bytes
+    content_type: str
 
 
 class ETagRequired(ValueError):
@@ -150,8 +159,7 @@ def create_file(
     upload: UploadConfig,
     drive_id: str,
     item_path: str,
-    content: bytes,
-    content_type: str,
+    payload: FilePayload,
 ) -> str:
     """Create an item that must not already exist. Returns the new eTag.
 
@@ -170,7 +178,7 @@ def create_file(
             f"(eTag {existing}); use update_file with that eTag to overwrite it",
             412,
         )
-    return _write(client, upload, drive_id, item_path, content, content_type, None)
+    return _write(client, upload, drive_id, item_path, payload, None)
 
 
 def update_file(
@@ -178,8 +186,7 @@ def update_file(
     upload: UploadConfig,
     drive_id: str,
     item_path: str,
-    content: bytes,
-    content_type: str,
+    payload: FilePayload,
     etag: str,
 ) -> str:
     """Overwrite an existing item under `If-Match`. Returns the new eTag.
@@ -194,7 +201,7 @@ def update_file(
             f"update_file({item_path!r}) needs the eTag read at fetch time. "
             "Pass it, or call create_file if the item is new -- there is no unconditional write."
         )
-    return _write(client, upload, drive_id, item_path, content, content_type, etag)
+    return _write(client, upload, drive_id, item_path, payload, etag)
 
 
 def _write(
@@ -202,16 +209,15 @@ def _write(
     upload: UploadConfig,
     drive_id: str,
     item_path: str,
-    content: bytes,
-    content_type: str,
+    payload: FilePayload,
     if_match: str | None,
 ) -> str:
     """The one write path. Private, so `if_match: str | None` never escapes."""
     ref = _item_ref(drive_id, item_path)
-    if len(content) <= upload.simple_upload_max_bytes:
-        response = client.put_bytes(f"{ref}:/content", content, content_type, if_match)
+    if len(payload.content) <= upload.simple_upload_max_bytes:
+        response = client.put_bytes(f"{ref}:/content", payload.content, payload.content_type, if_match)
         return str(response.json().get("eTag", ""))
-    return _write_session(client, upload, drive_id, item_path, content, if_match)
+    return _write_session(client, upload, drive_id, item_path, payload.content, if_match)
 
 
 def _write_session(

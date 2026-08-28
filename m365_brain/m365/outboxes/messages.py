@@ -19,6 +19,7 @@ on the whole sequence.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -63,20 +64,39 @@ def merge_cc(existing: list[dict[str, dict[str, str]]] | None, extra: list[str])
     return merged
 
 
+@dataclass(frozen=True)
+class DraftSpec:
+    """The content fields shared by create and update: everything that goes
+    into the message payload and nothing about routing or identity."""
+
+    subject: str
+    body_html: str
+    signature_html: str
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+@dataclass(frozen=True)
+class ReplySpec:
+    """The content fields for a reply, reply-all, or forward."""
+
+    action: str
+    body_html: str
+    signature_html: str
+    extra_cc: list[str]
+    forward_to: list[str] | None
+
+
 def create_new_draft(
     client: GraphClient,
     mailbox: str,
-    to: list[str],
-    cc: list[str],
-    bcc: list[str],
-    subject: str,
-    body_html: str,
-    signature_html: str,
+    spec: DraftSpec,
 ) -> str:
     """POST a new draft. Returns the Graph message id."""
     response = client.post(
         f"{mailbox_base(mailbox)}/messages",
-        _message_payload(subject, body_html, signature_html, to, cc, bcc),
+        _draft_payload(spec),
     )
     message_id = str(response.json()["id"])
     log.info("outbox.email.draft_created", mailbox=mailbox, message_id=message_id[:20])
@@ -87,12 +107,7 @@ def update_draft(
     client: GraphClient,
     mailbox: str,
     message_id: str,
-    to: list[str],
-    cc: list[str],
-    bcc: list[str],
-    subject: str,
-    body_html: str,
-    signature_html: str,
+    spec: DraftSpec,
 ) -> str:
     """PATCH an existing unsent draft in place. Returns `message_id`.
 
@@ -102,7 +117,7 @@ def update_draft(
     """
     client.patch(
         f"{mailbox_base(mailbox)}/messages/{message_id}",
-        _message_payload(subject, body_html, signature_html, to, cc, bcc),
+        _draft_payload(spec),
     )
     log.info("outbox.email.draft_updated", mailbox=mailbox, message_id=message_id[:20])
     return message_id
@@ -112,33 +127,29 @@ def create_reply_like(
     client: GraphClient,
     mailbox: str,
     original_message_id: str,
-    action: str,
-    body_html: str,
-    signature_html: str,
-    extra_cc: list[str],
-    forward_to: list[str] | None,
+    spec: ReplySpec,
 ) -> str:
     """The three-step reply/reply-all/forward pattern. Returns the new id."""
     base = mailbox_base(mailbox)
-    created = client.post(f"{base}/messages/{original_message_id}/{action}", None)
+    created = client.post(f"{base}/messages/{original_message_id}/{spec.action}", None)
     new_id = str(created.json()["id"])
 
     stub = client.get(f"{base}/messages/{new_id}", None)
     quoted = stub.get("body", {}).get("content", "")
-    merged_cc = merge_cc(stub.get("ccRecipients") or [], extra_cc)
+    merged_cc = merge_cc(stub.get("ccRecipients") or [], spec.extra_cc)
 
     payload: dict[str, Any] = {
-        "body": {"contentType": "html", "content": merge_reply_body(quoted, body_html, signature_html)},
+        "body": {"contentType": "html", "content": merge_reply_body(quoted, spec.body_html, spec.signature_html)},
     }
     if merged_cc:
         payload["ccRecipients"] = merged_cc
-    if forward_to is not None:
-        payload["toRecipients"] = recipient_list(forward_to)
+    if spec.forward_to is not None:
+        payload["toRecipients"] = recipient_list(spec.forward_to)
     client.patch(f"{base}/messages/{new_id}", payload)
 
     log.info(
         "outbox.email.reply_like_created",
-        action=action,
+        action=spec.action,
         mailbox=mailbox,
         original_message_id=original_message_id[:20],
         message_id=new_id[:20],
@@ -165,19 +176,12 @@ def get_message(client: GraphClient, mailbox: str, message_id: str, select: list
         return None
 
 
-def _message_payload(
-    subject: str,
-    body_html: str,
-    signature_html: str,
-    to: list[str],
-    cc: list[str],
-    bcc: list[str],
-) -> dict[str, Any]:
+def _draft_payload(spec: DraftSpec) -> dict[str, Any]:
     """One payload builder, so create and update cannot drift apart."""
     return {
-        "subject": subject,
-        "body": {"contentType": "html", "content": compose_with_signature(body_html, signature_html)},
-        "toRecipients": recipient_list(to),
-        "ccRecipients": recipient_list(cc),
-        "bccRecipients": recipient_list(bcc),
+        "subject": spec.subject,
+        "body": {"contentType": "html", "content": compose_with_signature(spec.body_html, spec.signature_html)},
+        "toRecipients": recipient_list(spec.to),
+        "ccRecipients": recipient_list(spec.cc),
+        "bccRecipients": recipient_list(spec.bcc),
     }

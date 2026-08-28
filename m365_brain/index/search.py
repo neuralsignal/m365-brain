@@ -36,6 +36,18 @@ class SearchFilters:
     metadata: tuple[MetadataFilter, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _SearchContext:
+    """Validated query-execution state shared by the vector and hybrid paths."""
+
+    config: IndexConfig
+    backend: IndexBackend
+    provider: EmbeddingProvider
+    store: VectorStore
+    text: str
+    filters: SearchFilters
+
+
 def search(
     config: IndexConfig,
     backend: IndexBackend,
@@ -61,10 +73,11 @@ def search(
     provider, store = _require_vectors(config, provider, store, mode)
     _reject_unsupported_filters(filters, mode)
 
+    ctx = _SearchContext(config, backend, provider, store, text, filters)
     if mode == "vector":
-        return _vector_page(config, backend, provider, store, text, filters, page, page_size)
+        return _vector_page(ctx, page, page_size)
     if mode == "hybrid":
-        return _hybrid_page(config, backend, provider, store, text, filters, page, page_size)
+        return _hybrid_page(ctx, page, page_size)
     raise ValueError(f"unknown search mode {mode!r}; expected text, vector or hybrid")
 
 
@@ -85,17 +98,8 @@ def _text_query(text: str | None, filters: SearchFilters, page: int, page_size: 
 # -- vector ---------------------------------------------------------------
 
 
-def _vector_page(
-    config: IndexConfig,
-    backend: IndexBackend,
-    provider: EmbeddingProvider,
-    store: VectorStore,
-    text: str,
-    filters: SearchFilters,
-    page: int,
-    page_size: int,
-) -> SearchPage:
-    ranked = _vector_candidates(config, backend, provider, store, text, filters)
+def _vector_page(ctx: _SearchContext, page: int, page_size: int) -> SearchPage:
+    ranked = _vector_candidates(ctx)
     start = (page - 1) * page_size
     hits = [
         SearchHit(entity=entity, score=_similarity(distance), snippet=None)
@@ -104,32 +108,25 @@ def _vector_page(
     return SearchPage(hits=hits, total=len(ranked), page=page, page_size=page_size)
 
 
-def _vector_candidates(
-    config: IndexConfig,
-    backend: IndexBackend,
-    provider: EmbeddingProvider,
-    store: VectorStore,
-    text: str,
-    filters: SearchFilters,
-) -> list[tuple[EntityRef, float]]:
+def _vector_candidates(ctx: _SearchContext) -> list[tuple[EntityRef, float]]:
     """Nearest chunks, thresholded, collapsed to one row per entity.
 
     A long document contributes many chunks and would otherwise fill the page
     with itself; its best chunk is the one that says how well it matches.
     """
-    floor = config.search.min_similarity
+    floor = ctx.config.search.min_similarity
     best: dict[int, float] = {}
-    for hit in store.query(provider.embed_query(text), config.search.vector_candidates):
+    for hit in ctx.store.query(ctx.provider.embed_query(ctx.text), ctx.config.search.vector_candidates):
         if _similarity(hit.distance) < floor:
             continue
         if hit.entity_id not in best or hit.distance < best[hit.entity_id]:
             best[hit.entity_id] = hit.distance
 
-    entities = backend.hydrate(sorted(best))
+    entities = ctx.backend.hydrate(sorted(best))
     ranked = [
         (entities[entity_id], distance)
         for entity_id, distance in best.items()
-        if entity_id in entities and _passes(entities[entity_id], filters)
+        if entity_id in entities and _passes(entities[entity_id], ctx.filters)
     ]
     ranked.sort(key=lambda pair: (pair[1], pair[0].entity_id))
     return ranked
@@ -138,27 +135,17 @@ def _vector_candidates(
 # -- hybrid ---------------------------------------------------------------
 
 
-def _hybrid_page(
-    config: IndexConfig,
-    backend: IndexBackend,
-    provider: EmbeddingProvider,
-    store: VectorStore,
-    text: str,
-    filters: SearchFilters,
-    page: int,
-    page_size: int,
-) -> SearchPage:
-    depth = config.search.vector_candidates
-    text_page = backend.text_search(_text_query(text, filters, page=1, page_size=depth))
+def _hybrid_page(ctx: _SearchContext, page: int, page_size: int) -> SearchPage:
+    depth = ctx.config.search.vector_candidates
+    text_page = ctx.backend.text_search(_text_query(ctx.text, ctx.filters, page=1, page_size=depth))
     text_ranked = [(hit.entity.entity_id, hit.score) for hit in text_page.hits]
-    vector_ranked = [
-        (entity.entity_id, distance)
-        for entity, distance in _vector_candidates(config, backend, provider, store, text, filters)
-    ]
+    vector_ranked = [(entity.entity_id, distance) for entity, distance in _vector_candidates(ctx)]
 
-    fused = reciprocal_rank_fusion(text_ranked, vector_ranked, config.search.rrf_k, config.search.rrf_min_weight)
+    fused = reciprocal_rank_fusion(
+        text_ranked, vector_ranked, ctx.config.search.rrf_k, ctx.config.search.rrf_min_weight
+    )
     known: dict[int, SearchHit] = {hit.entity.entity_id: hit for hit in text_page.hits}
-    hydrated = backend.hydrate([entity_id for entity_id, _score in fused if entity_id not in known])
+    hydrated = ctx.backend.hydrate([entity_id for entity_id, _score in fused if entity_id not in known])
 
     start = (page - 1) * page_size
     hits = [
