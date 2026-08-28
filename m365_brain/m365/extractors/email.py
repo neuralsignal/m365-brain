@@ -20,6 +20,7 @@ deltaLink as if the folder were complete.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import structlog
@@ -49,6 +50,13 @@ required_scopes = ["Mail.Read"]
 _ME = "me"
 
 
+@dataclass
+class _SyncState:
+    seen_keys: set[tuple[str, str]] = field(default_factory=set)
+    folder_cache: dict[tuple[str, str], str] = field(default_factory=dict)
+    path_map: dict[str, str] = field(default_factory=dict)
+
+
 def _endpoint_base(address: str) -> str:
     """Return the Graph API root path for a mailbox.
 
@@ -72,12 +80,10 @@ def run(
     Returns (updated_state, total_items_written).
     """
     total_written = 0
-    seen_keys: set[tuple[str, str]] = set()
-    folder_cache: dict[tuple[str, str], str] = {}
-    path_map: dict[str, str] = state.setdefault(PATH_MAP_STATE_KEY, {})
+    ss = _SyncState(path_map=state.setdefault(PATH_MAP_STATE_KEY, {}))
 
     for mailbox in config.mailboxes:
-        folders = _folders_for_mailbox(client, mailbox, folder_cache)
+        folders = _folders_for_mailbox(client, mailbox, ss.folder_cache)
 
         for folder in folders:
             state_key = f"delta_link_{mailbox.address}_{folder}"
@@ -92,9 +98,7 @@ def run(
                 delta_link,
                 config,
                 ctx,
-                seen_keys,
-                folder_cache,
-                path_map,
+                ss,
             )
 
             if new_delta_link:
@@ -135,13 +139,11 @@ def _sync_folder(
     delta_link: str | None,
     config: EmailExtractorConfig,
     ctx: ExtractorContext,
-    seen_keys: set[tuple[str, str]],
-    folder_cache: dict[tuple[str, str], str],
-    path_map: dict[str, str],
+    ss: _SyncState,
 ) -> tuple[int, str | None]:
     """Sync a single (mailbox, folder). Returns (items_written, new_delta_link)."""
     endpoint_base = _endpoint_base(address)
-    folder_id = resolve_folder_id(client, endpoint_base, address, folder, folder_cache)
+    folder_id = resolve_folder_id(client, endpoint_base, address, folder, ss.folder_cache)
     path = f"{endpoint_base}/mailFolders/{folder_id}/messages/delta"
 
     sync_type = "incremental" if delta_link else "initial"
@@ -174,7 +176,7 @@ def _sync_folder(
         # The delta endpoint has always emitted @removed; nothing read it, so a
         # deleted mail stayed in the vault forever.
         if "@removed" in msg:
-            ctx.removal.remove(extractor=name, upstream_id=msg.get("id", ""), path_map=path_map)
+            ctx.removal.remove(extractor=name, upstream_id=msg.get("id", ""), path_map=ss.path_map)
             continue
         if _write_email(
             storage,
@@ -185,8 +187,7 @@ def _sync_folder(
             output_subdir,
             config,
             ctx,
-            seen_keys,
-            path_map,
+            ss,
         ):
             written += 1
 
@@ -210,8 +211,7 @@ def _write_email(
     output_subdir: str,
     config: EmailExtractorConfig,
     ctx: ExtractorContext,
-    seen_keys: set[tuple[str, str]],
-    path_map: dict[str, str],
+    ss: _SyncState,
 ) -> bool:
     """Write a single email to storage. Returns True if written."""
     message_id = msg.get("id", "")
@@ -225,10 +225,10 @@ def _write_email(
 
     slug = slugify(subject, 80)
     key = (received[:16], slug)
-    if key in seen_keys:
+    if key in ss.seen_keys:
         log.info("email.skipped_duplicate", slug=slug, received=received[:16])
         return False
-    seen_keys.add(key)
+    ss.seen_keys.add(key)
 
     from_field = (msg.get("from") or {}).get("emailAddress", {})
     sender_address = from_field.get("address", "")
@@ -284,7 +284,7 @@ def _write_email(
     storage.write_file(file_path, content)
     # The directory, not the entry file: attachments and their conversions
     # live beside it and must be removed with it.
-    path_map[message_id] = email_dir
+    ss.path_map[message_id] = email_dir
 
     if config.download_attachments and msg.get("hasAttachments"):
         download_attachments(
