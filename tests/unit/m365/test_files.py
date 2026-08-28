@@ -25,6 +25,7 @@ from m365_brain.m365.client import GRAPH_BASE_URL, GraphClient
 from m365_brain.m365.errors import GraphApiError, GraphConflictError, GraphNotFoundError
 from m365_brain.m365.files import (
     ETagRequired,
+    FilePayload,
     create_file,
     download_file_bytes,
     encode_path,
@@ -210,7 +211,7 @@ class TestCreateFile:
         respx.get(ITEM).mock(return_value=_not_found("itemNotFound"))
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(201, json={"eTag": '"e-new"'}))
 
-        etag = create_file(client, upload, DRIVE, "folder/report.md", b"body", "text/markdown")
+        etag = create_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"body", "text/markdown"))
 
         assert etag == '"e-new"'
         assert put.calls[0].request.content == b"body"
@@ -222,7 +223,7 @@ class TestCreateFile:
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(200, json={"eTag": '"e2"'}))
 
         with pytest.raises(GraphConflictError) as excinfo:
-            create_file(client, upload, DRIVE, "folder/report.md", b"body", "text/markdown")
+            create_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"body", "text/markdown"))
 
         assert put.call_count == 0, "create_file must never overwrite"
         assert "update_file" in str(excinfo.value)
@@ -233,7 +234,7 @@ class TestUpdateFileIsTheOnlyOverwrite:
     def test_sends_if_match_and_returns_the_new_etag(self, client, upload):
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(200, json={"eTag": '"e2"'}))
 
-        etag = update_file(client, upload, DRIVE, "folder/report.md", b"new", "text/markdown", '"e1"')
+        etag = update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), '"e1"')
 
         assert etag == '"e2"'
         assert put.calls[0].request.headers["If-Match"] == '"e1"'
@@ -246,7 +247,7 @@ class TestUpdateFileIsTheOnlyOverwrite:
         )
 
         with pytest.raises(GraphConflictError) as excinfo:
-            update_file(client, upload, DRIVE, "folder/report.md", b"new", "text/markdown", '"stale"')
+            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), '"stale"')
 
         assert excinfo.value.status_code == 412
         assert put.call_count == 1, "a 412 must not be retried into an overwrite"
@@ -260,7 +261,7 @@ class TestUpdateFileIsTheOnlyOverwrite:
         meta = respx.get(ITEM).mock(return_value=httpx.Response(200, json={"eTag": '"e1"'}))
 
         with pytest.raises(ETagRequired):
-            update_file(client, upload, DRIVE, "folder/report.md", b"new", "text/markdown", "")
+            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), "")
 
         assert route.call_count == 0
         assert meta.call_count == 0
@@ -293,7 +294,7 @@ class TestLargeUploads:
         )
         respx.get(ITEM).mock(return_value=_not_found("itemNotFound"))
 
-        etag = create_file(client, upload, DRIVE, "folder/report.md", content, "text/markdown")
+        etag = create_file(client, upload, DRIVE, "folder/report.md", FilePayload(content, "text/markdown"))
 
         assert etag == '"e-big"'
         assert chunks.calls[0].request.headers["Content-Range"] == "bytes 0-299/300"
@@ -307,6 +308,6 @@ class TestLargeUploads:
         )
 
         with pytest.raises(GraphConflictError):
-            update_file(client, upload, DRIVE, "folder/report.md", b"y" * 300, "text/markdown", '"e1"')
+            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"y" * 300, "text/markdown"), '"e1"')
 
         assert session.call_count == 0

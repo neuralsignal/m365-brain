@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,14 @@ from m365_brain.storage.exceptions import PathTraversalError
 
 FILE_ATTACHMENT_TYPE = "#microsoft.graph.fileAttachment"
 FALLBACK_CONTENT_TYPE = "application/octet-stream"
+
+
+@dataclass(frozen=True)
+class MessageTarget:
+    """The draft message an attachment belongs to: endpoint base and message id."""
+
+    base: str
+    message_id: str
 
 
 def resolve_attachment(root: str, path: str) -> Path:
@@ -46,8 +55,7 @@ def resolve_attachment(root: str, path: str) -> Path:
 def attach_file(
     client: GraphClient,
     upload: UploadConfig,
-    base: str,
-    message_id: str,
+    target: MessageTarget,
     file_path: Path,
     is_inline: bool,
     content_id: str | None,
@@ -60,7 +68,7 @@ def attach_file(
     """
     raw = file_path.read_bytes()
     content_type = mimetypes.guess_type(str(file_path))[0] or FALLBACK_CONTENT_TYPE
-    endpoint = f"{base}/messages/{message_id}/attachments"
+    endpoint = f"{target.base}/messages/{target.message_id}/attachments"
 
     if len(raw) <= upload.inline_attachment_max_bytes:
         payload: dict[str, Any] = {

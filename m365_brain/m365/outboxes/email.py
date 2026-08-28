@@ -18,7 +18,7 @@ from pathlib import Path
 
 from m365_brain.config import EmailSignatureConfig, UploadConfig
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.outboxes.attachments import attach_file, resolve_attachment
+from m365_brain.m365.outboxes.attachments import MessageTarget, attach_file, resolve_attachment
 from m365_brain.m365.outboxes.messages import (
     FORWARD,
     REPLY,
@@ -181,13 +181,13 @@ class EmailOutbox:
         """User files, then the signature logo, then inline images -- the order
         the working sender used, and therefore the order the parity fixtures
         recorded."""
-        base = mailbox_base(mailbox)
+        target = MessageTarget(mailbox_base(mailbox), message_id)
         for path in assets.attachments:
-            attach_file(self.client, self.upload, base, message_id, path, False, None)
+            attach_file(self.client, self.upload, target, path, False, None)
         if assets.logo is not None:
-            attach_file(self.client, self.upload, base, message_id, assets.logo, True, self.signature.logo_content_id)
+            attach_file(self.client, self.upload, target, assets.logo, True, self.signature.logo_content_id)
         for cid, path in assets.inline_images:
-            attach_file(self.client, self.upload, base, message_id, path, True, cid)
+            attach_file(self.client, self.upload, target, path, True, cid)
 
 
 def load_signature_html(signature: EmailSignatureConfig) -> str:
