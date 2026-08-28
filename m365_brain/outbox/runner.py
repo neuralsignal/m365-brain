@@ -51,6 +51,15 @@ reconciliation pass is testable with no transport in sight.
 """
 
 
+@dataclass(frozen=True)
+class PushServices:
+    """The three collaborators every push pass threads through."""
+
+    store: IntentStore
+    registry: OutboxRegistry
+    router: AuthorityRouter
+
+
 @dataclass
 class PushCounts:
     """What one push pass did. Every intent lands in exactly one bucket.
@@ -90,6 +99,7 @@ class _Failure:
 
 def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) -> PushCounts:
     """Claim, route, dispatch, receipt, archive -- once per pending intent."""
+    services = PushServices(store, registry, router)
     counts = PushCounts()
     for outbox_name, uuid in list(store.pending()):
         if store.already_dispatched(uuid):
@@ -104,7 +114,7 @@ def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) 
         except IntentParseError as exc:
             _record(store, uuid, "", None, _Failure("parse_error", str(exc)), counts)
             continue
-        _dispatch_one(store, registry, router, outbox_name, uuid, envelope, counts)
+        _dispatch_one(services, outbox_name, uuid, envelope, counts)
     counts.inflight = len(store.inflight())
     if counts.inflight:
         log.warning("outbox.inflight_intents", uuids=store.inflight())
@@ -112,24 +122,22 @@ def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) 
 
 
 def _dispatch_one(
-    store: IntentStore,
-    registry: OutboxRegistry,
-    router: AuthorityRouter,
+    services: PushServices,
     outbox_name: str,
     uuid: str,
     envelope: IntentEnvelope,
     counts: PushCounts,
 ) -> None:
     try:
-        outbox = registry.get(outbox_name)
+        outbox = services.registry.get(outbox_name)
     except UnknownOutbox as exc:
-        _record(store, uuid, envelope.kind, None, _Failure("unknown_outbox", str(exc)), counts)
+        _record(services.store, uuid, envelope.kind, None, _Failure("unknown_outbox", str(exc)), counts)
         return
 
-    action = router.next_action(outbox.authority, "pending")
+    action = services.router.next_action(outbox.authority, "pending")
     if action == "await_admin":
         _record(
-            store,
+            services.store,
             uuid,
             envelope.kind,
             None,
@@ -138,10 +146,8 @@ def _dispatch_one(
         )
         return
     if action == "await_approval":
-        # No approval surface exists, so this is where a human_approval intent
-        # ends. Visible and terminal beats a queue nothing drains.
         _record(
-            store,
+            services.store,
             uuid,
             envelope.kind,
             None,
@@ -154,21 +160,15 @@ def _dispatch_one(
         result = outbox.handler.execute(envelope)
     except Exception as exc:  # noqa: BLE001 -- one bad intent must not stop the pass
         if getattr(exc, "transient", False):
-            # A receipt is permanent and `already_dispatched` reads the
-            # archive, so recording a network blip as a failure drops the
-            # draft for good. Put it back instead. `transient` is read off the
-            # *instance*: a handler that has already mutated Graph -- an email
-            # draft that exists but is still gathering attachments -- clears it
-            # before re-raising, because releasing there would draft twice.
-            store.release(outbox_name, uuid)
+            services.store.release(outbox_name, uuid)
             counts.deferred += 1
             log.warning("outbox.dispatch_deferred", uuid=uuid, outbox=outbox_name, error=str(exc))
             return
         log.error("outbox.dispatch_failed", uuid=uuid, outbox=outbox_name, error=str(exc), exc_info=True)
-        _record(store, uuid, envelope.kind, None, _classify_failure(exc), counts)
+        _record(services.store, uuid, envelope.kind, None, _classify_failure(exc), counts)
         return
 
-    store.archive(
+    services.store.archive(
         uuid,
         DispatchReceipt(
             uuid=uuid,

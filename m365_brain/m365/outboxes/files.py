@@ -16,7 +16,7 @@ import structlog
 
 from m365_brain.config import UploadConfig
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.files import create_file, resolve_drive_id, resolve_site_id, update_file
+from m365_brain.m365.files import FilePayload, create_file, resolve_drive_id, resolve_site_id, update_file
 from m365_brain.vault.dispatch import DispatchResult, GraphOp
 from m365_brain.vault.intent import IntentEnvelope
 
@@ -49,15 +49,13 @@ class FileUpdateOutbox:
         # A library that is a folder inside the default drive needs its name
         # back on the front of the item path; one that is its own drive does not.
         item_path = f"{payload.library_name}/{payload.item_path}" if library_is_folder else payload.item_path
-        content = payload.body.encode("utf-8")
+        file_payload = FilePayload(payload.body.encode("utf-8"), payload.content_type)
 
         if payload.etag is None:
-            etag = create_file(self.client, self.upload, drive_id, item_path, content, payload.content_type)
+            etag = create_file(self.client, self.upload, drive_id, item_path, file_payload)
             log.info("outbox.files.created", item_path=item_path, etag=etag)
         else:
-            etag = update_file(
-                self.client, self.upload, drive_id, item_path, content, payload.content_type, payload.etag
-            )
+            etag = update_file(self.client, self.upload, drive_id, item_path, file_payload, payload.etag)
             log.info("outbox.files.updated", item_path=item_path, etag=etag)
 
         # A drive item has no message id. The new eTag is what a caller needs

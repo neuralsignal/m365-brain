@@ -22,7 +22,7 @@ from m365_brain.commands._context import emit, require_config
 from m365_brain.config import Config, require_section
 from m365_brain.m365.auth.profiles import AuthProfiles
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.files import get_file, resolve_drive_id, resolve_site_id, update_file
+from m365_brain.m365.files import FilePayload, get_file, resolve_drive_id, resolve_site_id, update_file
 
 
 @click.group("files")
@@ -110,12 +110,6 @@ def push(
         site_id = resolve_site_id(client, site_hostname, site_path)
         drive_id, _ = resolve_drive_id(client, site_id, library_name)
         new_etag = update_file(
-            client,
-            upload,
-            drive_id,
-            item_path,
-            in_path.read_bytes(),
-            content_type,
-            etag,
+            client, upload, drive_id, item_path, FilePayload(in_path.read_bytes(), content_type), etag
         )
     emit(as_json, {"etag": new_etag}, [f"etag: {new_etag}"])
