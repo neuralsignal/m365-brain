@@ -1,13 +1,6 @@
 """The one Microsoft Graph transport: pagination, retry, backoff, write verbs.
 
 Accepts a token_provider callable instead of coupling to a specific auth module.
-
-Two transports used to exist -- a read-only paginating client here and a
-write-only retry shell beside the draft sender. They shared a retry loop,
-disagreed about its constants, and only one of them had an SSRF guard. This is
-the merge: the request shell is method-parametrised, so ``get``, ``post``,
-``patch`` and ``put_bytes`` traverse one retry/backoff/401-refresh policy whose
-every threshold comes from ``GraphConfig`` rather than a module constant.
 """
 
 from __future__ import annotations
@@ -195,9 +188,7 @@ class GraphClient:
 
     @property
     def config(self) -> GraphConfig:
-        """The transport policy this client runs. Collaborators that need a
-        timeout or a truncation length read it here instead of being handed
-        ``GraphConfig`` a second time alongside the client itself."""
+        """The transport policy this client runs."""
         return self._config
 
     def _read(
