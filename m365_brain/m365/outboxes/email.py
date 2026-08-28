@@ -23,6 +23,8 @@ from m365_brain.m365.outboxes.messages import (
     FORWARD,
     REPLY,
     REPLY_ALL,
+    DraftSpec,
+    ReplySpec,
     create_new_draft,
     create_reply_like,
     get_message,
@@ -110,23 +112,27 @@ class EmailOutbox:
             message_id = create_new_draft(
                 self.client,
                 payload.mailbox,
-                list(payload.to),
-                list(payload.cc or []),
-                list(payload.bcc or []),
-                payload.subject,
-                body_html,
-                assets.signature_html,
+                DraftSpec(
+                    subject=payload.subject,
+                    body_html=body_html,
+                    signature_html=assets.signature_html,
+                    to=list(payload.to),
+                    cc=list(payload.cc or []),
+                    bcc=list(payload.bcc or []),
+                ),
             )
         else:
             message_id = create_reply_like(
                 self.client,
                 payload.mailbox,
                 payload.in_reply_to,
-                self._action(payload),
-                body_html,
-                assets.signature_html,
-                list(payload.cc or []),
-                list(payload.to) if payload.kind == FORWARD_KIND else None,
+                ReplySpec(
+                    action=self._action(payload),
+                    body_html=body_html,
+                    signature_html=assets.signature_html,
+                    extra_cc=list(payload.cc or []),
+                    forward_to=list(payload.to) if payload.kind == FORWARD_KIND else None,
+                ),
             )
         try:
             self._attach(payload.mailbox, message_id, assets)
@@ -164,12 +170,14 @@ class EmailOutbox:
             self.client,
             payload.mailbox,
             payload.revises_message_id,
-            list(payload.to),
-            list(payload.cc or []),
-            list(payload.bcc or []),
-            payload.subject,
-            markdown_to_outlook_html(payload.body),
-            assets.signature_html,
+            DraftSpec(
+                subject=payload.subject,
+                body_html=markdown_to_outlook_html(payload.body),
+                signature_html=assets.signature_html,
+                to=list(payload.to),
+                cc=list(payload.cc or []),
+                bcc=list(payload.bcc or []),
+            ),
         )
 
     def _action(self, payload: _EmailCommon) -> str:
