@@ -16,6 +16,8 @@ from m365_brain.m365.errors import GraphApiError
 
 log = structlog.get_logger()
 
+GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
+
 # Domains trusted for binary downloads (e.g., @microsoft.graph.downloadUrl CDN URLs).
 ALLOWED_DOWNLOAD_DOMAINS: frozenset[str] = frozenset(
     {

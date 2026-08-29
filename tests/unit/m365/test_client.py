@@ -526,7 +526,7 @@ class TestDefensiveBehavior:
     def test_429_retry_after_capped_at_maximum(self, httpx_mock: HTTPXMock, client, monkeypatch):
         """429 with excessively large Retry-After should be capped at _MAX_RETRY_AFTER_SECONDS."""
         sleep_calls: list[float] = []
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: sleep_calls.append(s))
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: sleep_calls.append(s))
         httpx_mock.add_response(
             url=f"{GRAPH_BASE_URL}/me/messages",
             status_code=429,
@@ -543,7 +543,7 @@ class TestDefensiveBehavior:
     def test_429_retry_after_non_numeric_falls_back_to_backoff(self, httpx_mock: HTTPXMock, client, monkeypatch):
         """429 with non-numeric Retry-After (e.g. HTTP-date) should fall back to exponential backoff."""
         sleep_calls: list[float] = []
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: sleep_calls.append(s))
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: sleep_calls.append(s))
         httpx_mock.add_response(
             url=f"{GRAPH_BASE_URL}/me/messages",
             status_code=429,
@@ -699,7 +699,7 @@ class TestContextManager:
 
 class TestTransportErrorRetry:
     def test_retries_on_transport_error_then_succeeds(self, graph_config, token_provider, monkeypatch):
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: None)
         call_count = 0
 
         def mock_get(*args, **kwargs):
@@ -717,7 +717,7 @@ class TestTransportErrorRetry:
         client.close()
 
     def test_raises_on_final_transport_error(self, graph_config, token_provider, monkeypatch):
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: None)
 
         def always_fail(*args, **kwargs):
             raise httpx.ConnectError("connection refused")
@@ -732,7 +732,7 @@ class TestTransportErrorRetry:
 class TestMaxRetriesExhausted:
     def test_raises_after_all_retries_loop_fallthrough(self, graph_config, token_provider, monkeypatch):
         """Cover lines 237-238: GraphApiError after loop falls through without raising."""
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: None)
         # Use max_retries=0 so the loop runs once (attempt=0).
         # A 401 on attempt 0 does a silent retry (continue), but with max_retries=0
         # the loop ends after one iteration, falling through to line 237.
@@ -879,7 +879,7 @@ class TestTokenTransportErrorRetry:
     """
 
     def test_retries_then_succeeds(self, graph_config, token_provider, httpx_mock: HTTPXMock, monkeypatch):
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: None)
         httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", json={"ok": True})
         calls = 0
 
@@ -897,7 +897,7 @@ class TestTokenTransportErrorRetry:
 
     def test_exhausts_retries_then_raises_with_the_cause_intact(self, graph_config, monkeypatch):
         waits: list[float] = []
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", waits.append)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", waits.append)
         calls = 0
 
         def dead_idp():
@@ -918,7 +918,7 @@ class TestTokenTransportErrorRetry:
 
     def test_a_non_transport_auth_failure_is_not_retried(self, graph_config, monkeypatch):
         """No stored refresh token is not transient; retrying only hides it."""
-        monkeypatch.setattr("m365_brain.m365.client.time.sleep", lambda s: None)
+        monkeypatch.setattr("m365_brain.m365._retry.time.sleep", lambda s: None)
         calls = 0
 
         def no_refresh_token():
