@@ -642,6 +642,34 @@ class TestTriage:
         with pytest.raises(ValueError, match="m-broken"):
             triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
 
+    def test_rejected_references_skips_missing_envelope(self):
+        store = InMemoryIntentStore()
+        rejected_reply(store, "intent-purged", "m-target")
+        store._archived.pop("intent-purged")
+        assert rejected_references(store) == frozenset()
+
+    def test_message_invalid_timestamp(self, backend):
+        corpus = loaded(
+            backend,
+            [
+                entity(
+                    "m-bad-date",
+                    "Bad date",
+                    "email",
+                    [
+                        observation("folder", "Inbox"),
+                        observation("conversation", "conv-x"),
+                        observation("graph_id", "m-bad-date"),
+                        observation("sender", "alice@example.com"),
+                        observation("to", "owner@example.com"),
+                        observation("date", "not-a-date"),
+                    ],
+                )
+            ],
+        )
+        with pytest.raises(ValueError, match=r"m-bad-date.*date.*not a.*ISO timestamp.*not-a-date"):
+            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+
     def test_a_blank_conversation_id_is_refused_rather_than_grouped(self, backend):
         """An empty thread id is worse than a missing one: it collides.
 
