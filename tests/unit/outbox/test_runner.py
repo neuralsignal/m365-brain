@@ -9,6 +9,7 @@ fail-safe, in-flight reporting -- is exercisable without a mocked HTTP layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 
@@ -16,12 +17,19 @@ from m365_brain.outbox.authority import AuthorityRouter
 from m365_brain.outbox.reconcile import QuoteMarkers
 from m365_brain.outbox.registry import build_registry
 from m365_brain.outbox.runner import push, reconcile
-from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, DispatchResult, GraphOp
+from m365_brain.outbox.stores import IntentAlreadyClaimed
+from m365_brain.vault.dispatch import DRAFT_ONLY_OPS, DispatchReceipt, DispatchResult, GraphOp
 from m365_brain.vault.intent import IntentEnvelope
 
 from .conftest import DRAFT_PAYLOAD, QUOTE_MARKERS, intent_markdown
 
 ROUTER = AuthorityRouter()
+
+TEAMS_PAYLOAD = {
+    "kind": "teams.post_message",
+    "team_id": "team-1",
+    "channel_id": "chan-1",
+}
 
 
 @dataclass
@@ -186,6 +194,17 @@ class TestFailSafe:
         assert store.receipt("bad").reason == "parse_error"
         assert store.already_dispatched("bad") is True, "a rejection must not be retried"
 
+    def test_dispatch_unknown_outbox(self, store, place, registry):
+        place("abc", outbox_name="email.reply")
+
+        counts = push(store, registry, ROUTER)
+
+        assert counts.failed == 1
+        receipt = store.receipt("abc")
+        assert receipt.outcome == "failed"
+        assert receipt.reason == "unknown_outbox"
+        assert "email.reply" in receipt.detail
+
 
 class TestTransientFailure:
     """A fault that will not still be true in five minutes must not be terminal.
@@ -259,6 +278,21 @@ class TestInflight:
         assert handler.calls == [], "an unknown dispatch outcome must not be repeated"
 
 
+class TestContention:
+    def test_push_contended_intent(self, store, place, registry):
+        place("abc")
+
+        def contended_claim(outbox_name: str, uuid: str) -> IntentEnvelope:
+            raise IntentAlreadyClaimed(f"{uuid} claimed by another runner")
+
+        store.claim = contended_claim
+
+        counts = push(store, registry, ROUTER)
+
+        assert counts.contended == 1
+        assert counts.dispatched == 0
+
+
 class TestReconcile:
     @pytest.fixture()
     def markers(self):
@@ -329,3 +363,36 @@ class TestReconcile:
 
         assert seen[0][0] == "me"
         assert "conversationId" in seen[0][1]
+
+    def test_reconcile_skips_null_graph_message_id(self, store, markers):
+        content = intent_markdown("abc", DRAFT_PAYLOAD, "Hello.")
+        store.put("email.draft", "abc", content)
+        store.claim("email.draft", "abc")
+        store.archive(
+            "abc",
+            DispatchReceipt(
+                uuid="abc",
+                kind="email.draft",
+                outcome="dispatched",
+                dispatched_at=datetime(2026, 8, 5, tzinfo=UTC),
+                graph_message_id=None,
+                reason=None,
+                detail=None,
+            ),
+        )
+        calls: list[str] = []
+
+        outcomes = reconcile(store, lambda m, mid, s: calls.append(mid), markers)
+
+        assert outcomes == []
+        assert calls == [], "a receipt with no graph_message_id must not be fetched"
+
+    def test_reconcile_skips_non_mailbox_envelope(self, store, place, registry, markers):
+        place("abc", outbox_name="teams.post_message", payload=TEAMS_PAYLOAD, body="<p>Hello</p>")
+        push(store, registry, ROUTER)
+        calls: list[str] = []
+
+        outcomes = reconcile(store, lambda m, mid, s: calls.append(mid), markers)
+
+        assert outcomes == []
+        assert calls == [], "a non-mailbox intent must not be fetched"
