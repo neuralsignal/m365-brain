@@ -954,6 +954,74 @@ class TestResolveAttachment:
         assert result is None
         assert failed == {}
 
+    def test_storage_error_on_write_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
+        from unittest.mock import MagicMock
+
+        from m365_brain.storage.exceptions import StorageError
+
+        mock_storage = MagicMock()
+        mock_storage.write_bytes.side_effect = StorageError("disk full")
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "size": 64,
+            "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl",
+        }
+        client.get_bytes.return_value = b"%PDF fake"
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://contoso.sharepoint.com/x"}
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            result = helpers._resolve_attachment(
+                _ctx(
+                    client, mock_storage, vault_paths, settings=_config(), converters_config={}, failed_attachments={}
+                ),
+                att,
+                "msg-1",
+                100 * 1024 * 1024,
+            )
+
+        assert result is None
+        assert len(warnings) == 1
+        assert warnings[0]["event"] == "teams_attachments.attachment_write_failed"
+        assert warnings[0]["msg_id"] == "msg-1"
+        assert warnings[0]["name"] == "spec.pdf"
+
+    def test_os_error_on_write_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
+        from unittest.mock import MagicMock
+
+        mock_storage = MagicMock()
+        mock_storage.write_bytes.side_effect = OSError("permission denied")
+        client = MagicMock(spec=GraphClient)
+        client.get.return_value = {
+            "size": 64,
+            "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl",
+        }
+        client.get_bytes.return_value = b"%PDF fake"
+        att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://contoso.sharepoint.com/x"}
+        warnings: list[dict] = []
+
+        def capture(event, **kwargs):
+            warnings.append({"event": event, **kwargs})
+
+        with patch.object(helpers.log, "warning", side_effect=capture):
+            result = helpers._resolve_attachment(
+                _ctx(
+                    client, mock_storage, vault_paths, settings=_config(), converters_config={}, failed_attachments={}
+                ),
+                att,
+                "msg-1",
+                100 * 1024 * 1024,
+            )
+
+        assert result is None
+        assert len(warnings) == 1
+        assert warnings[0]["event"] == "teams_attachments.attachment_write_failed"
+        assert warnings[0]["msg_id"] == "msg-1"
+        assert warnings[0]["name"] == "spec.pdf"
+
 
 class TestEncodeShareUrlProperty:
     @given(url=st.text(min_size=1))
