@@ -71,7 +71,7 @@ def _is_valid_token(state_token: str) -> bool:
 def _token_path(state_dir: Path, state_token: str) -> Path:
     """Return the per-token file path, guarding against path traversal."""
     candidate = (state_dir / state_token).resolve()
-    if not str(candidate).startswith(str(state_dir.resolve())):
+    if not candidate.is_relative_to(state_dir.resolve()):
         msg = f"Invalid token path: {state_token}"
         raise ValueError(msg)
     return candidate
