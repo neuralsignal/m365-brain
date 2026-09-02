@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4](https://github.com/neuralsignal/m365-brain/compare/v1.2.3...v1.2.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* use is_relative_to instead of startswith for path-traversal guard ([#341](https://github.com/neuralsignal/m365-brain/issues/341)) ([#343](https://github.com/neuralsignal/m365-brain/issues/343)) ([8c35fbf](https://github.com/neuralsignal/m365-brain/commit/8c35fbf132edde7e97a83dac0e69b63f90add111))
+
 ## [1.2.3](https://github.com/neuralsignal/m365-brain/compare/v1.2.2...v1.2.3) (2026-08-27)
 
 
