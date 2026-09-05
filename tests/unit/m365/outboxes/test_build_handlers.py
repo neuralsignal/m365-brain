@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from m365_brain.config import (
@@ -28,7 +30,7 @@ def upload():
 def signature():
     return EmailSignatureConfig(
         html_path=None,
-        logo_path="logo.png",
+        logo_path=None,
         logo_content_id="brand_logo",
     )
 
@@ -47,18 +49,18 @@ def _make_config(
     )
 
 
-def test_build_handlers_missing_client(tmp_path, upload, signature, client):
+def test_build_handlers_missing_client(tmp_path, upload, signature):
     config = _make_config(
         attachment_root=str(tmp_path),
         signature=signature,
         definitions={
             "email.draft": OutboxDefinitionConfig(
                 authority="draft_only",
-                auth_profile="nonexistent_profile",
+                auth_profile="missing_profile",
             ),
         },
     )
-    with pytest.raises(KeyError, match="nonexistent_profile"):
+    with pytest.raises(KeyError, match=re.escape("missing_profile")):
         build_handlers(config, upload, clients={})
 
 
@@ -73,5 +75,5 @@ def test_handler_unknown_kind(tmp_path, upload, signature, client):
             ),
         },
     )
-    with pytest.raises(KeyError, match="carrier.pigeon"):
+    with pytest.raises(KeyError, match=re.escape("carrier.pigeon")):
         build_handlers(config, upload, clients={"main": client})
