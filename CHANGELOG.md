@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4](https://github.com/neuralsignal/m365-brain/compare/v1.2.3...v1.2.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* bump mkdocs-material to &gt;=9.7.7 for CVE-2026-73295 ([#349](https://github.com/neuralsignal/m365-brain/issues/349)) ([#352](https://github.com/neuralsignal/m365-brain/issues/352)) ([2f95ccd](https://github.com/neuralsignal/m365-brain/commit/2f95ccde234cb0fc8ccb9b649fdaee5685d3ff2f))
+* use is_relative_to instead of startswith for path-traversal guard ([#341](https://github.com/neuralsignal/m365-brain/issues/341)) ([#343](https://github.com/neuralsignal/m365-brain/issues/343)) ([8c35fbf](https://github.com/neuralsignal/m365-brain/commit/8c35fbf132edde7e97a83dac0e69b63f90add111))
+
 ## [1.2.3](https://github.com/neuralsignal/m365-brain/compare/v1.2.2...v1.2.3) (2026-08-27)
 
 
