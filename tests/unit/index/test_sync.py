@@ -7,6 +7,8 @@ property of where the result is stored.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from m365_brain.config.index import IndexConfig
@@ -224,3 +226,43 @@ def test_a_scoped_run_does_not_prune_the_roots_it_did_not_walk(index_payload, tm
 
     assert stats.pruned == 0, "a scoped run pruned a root it never walked"
     assert set(backend.indexed_files()) == {"first/a.md", "second/b.md"}
+
+
+def test_oserror_on_checksum_counts_as_error(run, corpus_root):
+    """A file that vanishes between scan and checksum is recorded as an error."""
+    write(corpus_root, "a.md", "# A\n")
+    write(corpus_root, "b.md", "# B\n")
+    run(full_rebuild=False)
+
+    original_checksum = __import__("m365_brain.parsers.text", fromlist=["file_checksum"]).file_checksum
+
+    def _exploding_checksum(path):
+        if path.name == "b.md":
+            raise OSError("gone")
+        return original_checksum(path)
+
+    with patch("m365_brain.index.sync.file_checksum", side_effect=_exploding_checksum):
+        stats = run(full_rebuild=False)
+
+    assert stats.errors == 1
+    assert set(run.backend.indexed_files()) == {"corpus/a.md", "corpus/b.md"}
+
+
+def test_unparseable_file_counts_as_error(run, corpus_root):
+    """A file that parse_markdown_file cannot parse is recorded as an error."""
+    write(corpus_root, "good.md", "# Good\n")
+    write(corpus_root, "bad.md", "# Bad\n")
+
+    def _selective_parse(path, root, config):
+        if path.name == "bad.md":
+            return None
+        from m365_brain.parsers.document import parse_markdown_file
+
+        return parse_markdown_file(path, root, config)
+
+    with patch("m365_brain.index.sync.parse_markdown_file", side_effect=_selective_parse):
+        stats = run(full_rebuild=False)
+
+    assert stats.errors == 1
+    assert stats.indexed == 1
+    assert set(run.backend.indexed_files()) == {"corpus/good.md"}
