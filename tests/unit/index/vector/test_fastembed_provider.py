@@ -10,6 +10,8 @@ so a workspace that is opened and never searched must not construct one.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from m365_brain.index.vector import create_embedding_provider
@@ -82,3 +84,27 @@ def test_a_wrong_width_query_is_rejected_too(provider, index_config):
     provider._model = FakeModel(index_config.vector.dimensions - 1)
     with pytest.raises(ValueError, match="index.vector.dimensions"):
         provider.embed_query("a")
+
+
+def test_load_constructs_text_embedding_with_config(provider, index_config):
+    """First call to _load() imports and constructs TextEmbedding with config values."""
+    sentinel = FakeModel(index_config.vector.dimensions)
+
+    with patch("fastembed.TextEmbedding", return_value=sentinel) as mock_cls:
+        provider.embed_query("hello")
+
+    mock_cls.assert_called_once_with(
+        model_name=index_config.vector.model,
+        threads=index_config.vector.threads,
+    )
+
+
+def test_load_memoises_the_model(provider, index_config):
+    """Second call must reuse the model, not construct another."""
+    sentinel = FakeModel(index_config.vector.dimensions)
+
+    with patch("fastembed.TextEmbedding", return_value=sentinel) as mock_cls:
+        provider.embed_query("first")
+        provider.embed_query("second")
+
+    mock_cls.assert_called_once()
