@@ -17,7 +17,14 @@ from hypothesis import strategies as st
 
 from m365_brain.config import AzureBlobStorageConfig, LocalStorageConfig, StorageConfig
 from m365_brain.config.errors import ConfigError
-from m365_brain.storage import create_storage, create_user_storage, local_base_path, resolve_key, storage_key
+from m365_brain.storage import (
+    _address_base,
+    create_storage,
+    create_user_storage,
+    local_base_path,
+    resolve_key,
+    storage_key,
+)
 from m365_brain.storage.local import LocalBackend
 
 AZURITE_CONNECTION_STRING = (
@@ -219,3 +226,15 @@ class TestAddressing:
     def test_a_blob_vault_says_why_it_cannot_hand_back_a_file(self):
         with pytest.raises(ConfigError, match="read_bytes"):
             local_base_path(BLOB_VAULT)
+
+
+class TestAddressBaseErrors:
+    def test_azure_blob_without_config_section_raises(self):
+        config = StorageConfig(backend="azure_blob", local=None, azure_blob=None)
+        with pytest.raises(ConfigError, match="azure_blob"):
+            _address_base(config)
+
+    def test_unknown_backend_raises(self):
+        config = StorageConfig(backend="s3", local=None, azure_blob=None)
+        with pytest.raises(ConfigError, match="unknown storage backend"):
+            _address_base(config)

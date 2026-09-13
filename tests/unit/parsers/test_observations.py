@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from m365_brain.config.index import IndexConfig
-from m365_brain.parsers.observations import parse_observations
+from m365_brain.parsers.observations import _split_context, parse_observations
 
 
 def test_well_formed(observation_config):
@@ -65,3 +65,14 @@ def test_default_category_comes_from_config(index_payload):
     config = IndexConfig.model_validate(index_payload).observations
     result = parse_observations("- [] Something", config)
     assert result[0].category == "Fact"
+
+
+def test_paren_at_start_is_not_context(observation_config):
+    result = parse_observations("- [Note] (entire thing in parens)", observation_config)
+    assert len(result) == 1
+    assert result[0].context is None
+    assert "(entire thing in parens)" in result[0].content
+
+
+def test_split_context_open_paren_at_position_zero():
+    assert _split_context("(all parens)") == ("(all parens)", None)
