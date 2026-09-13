@@ -46,3 +46,6 @@ def takes_varargs(*args) -> None:
 
 
 not_callable = "this is a string"
+
+uninspectable = type
+"""A callable whose signature ``inspect.signature`` cannot read."""

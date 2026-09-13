@@ -10,7 +10,7 @@ from m365_brain.config.errors import ConfigError
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.state import EXTRACTOR_STATE, InMemoryStateStore
-from m365_brain.sync import EXTRACTORS, run_extractors
+from m365_brain.sync import EXTRACTORS, UnknownExtractor, run_extractors, run_one
 
 
 def _make_mock_extractor(return_value: tuple = ({}, 0), side_effect: Exception | None = None) -> MagicMock:
@@ -173,3 +173,9 @@ class TestRunExtractors:
     def test_extractor_entries_are_module_and_config_getter_pairs(self):
         """Two elements, not three — the `needs_converters` flag was removed."""
         assert all(len(entry) == 2 for entry in EXTRACTORS.values())
+
+
+class TestRunOne:
+    def test_unknown_extractor_raises(self, vaulted_config):
+        with pytest.raises(UnknownExtractor, match="nonexistent"):
+            run_one(vaulted_config, MagicMock(), MagicMock(), MagicMock(), {}, "nonexistent")

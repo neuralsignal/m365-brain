@@ -105,6 +105,10 @@ class TestRejections:
         with pytest.raises(IntentParseError):
             parse_intent(content, "ref", "abc")
 
+    def test_broken_yaml_raises_intent_parse_error(self):
+        with pytest.raises(IntentParseError, match="frontmatter did not parse"):
+            parse_intent("---\nkey: :\x00\n---\nbody", "ref", "abc")
+
     def test_the_source_ref_is_always_in_the_message(self):
         with pytest.raises(IntentParseError) as excinfo:
             parse_intent("---\nuuid: abc\n---\nbody", "pending/email.draft/abc.md", "abc")

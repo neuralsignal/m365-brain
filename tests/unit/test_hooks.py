@@ -75,6 +75,10 @@ class TestResolution:
         """A C builtin has no signature; refusing it would be a guess."""
         assert len(resolve_hooks(["builtins:print"])) == 1
 
+    def test_a_callable_whose_signature_raises_is_allowed_through(self):
+        """`type` raises ValueError in inspect.signature; the except branch passes."""
+        assert len(resolve_hooks([f"{MODULE}:uninspectable"])) == 1
+
     def test_the_first_bad_spec_stops_resolution(self):
         with pytest.raises(HookResolutionError):
             resolve_hooks([f"{MODULE}:on_cycle", "no_such_package:x", f"{MODULE}:also_on_cycle"])
