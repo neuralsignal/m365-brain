@@ -22,14 +22,16 @@ class AdminState(AuthState):
         session = get_session()
         try:
             rows = session.exec(select(User).order_by(User.user_id)).all()
+
+            all_statuses = session.exec(select(ExtractorStatus).order_by(desc(ExtractorStatus.last_run_at))).all()
+            latest_by_user: dict[str, ExtractorStatus] = {}
+            for s in all_statuses:
+                if s.user_id not in latest_by_user:
+                    latest_by_user[s.user_id] = s
+
             self.users = []
             for u in rows:
-                latest_status = session.exec(
-                    select(ExtractorStatus)
-                    .where(ExtractorStatus.user_id == u.user_id)
-                    .order_by(desc(ExtractorStatus.last_run_at))
-                ).first()
-
+                latest_status = latest_by_user.get(u.user_id)
                 self.users.append(
                     {
                         "user_id": u.user_id,
