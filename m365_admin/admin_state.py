@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import desc
+from sqlalchemy import func
 from sqlmodel import select
 
 from m365_admin.auth_state import AuthState
@@ -16,35 +16,51 @@ class AdminState(AuthState):
     users: list[dict] = []
 
     def load_users(self) -> None:
-        """Load all users from DB."""
+        """Load all users with latest sync status in a single query."""
         if not self.is_admin:
             return
         session = get_session()
         try:
-            rows = session.exec(select(User).order_by(User.user_id)).all()
-
-            all_statuses = session.exec(select(ExtractorStatus).order_by(desc(ExtractorStatus.last_run_at))).all()
-            latest_by_user: dict[str, ExtractorStatus] = {}
-            for s in all_statuses:
-                if s.user_id not in latest_by_user:
-                    latest_by_user[s.user_id] = s
-
-            self.users = []
-            for u in rows:
-                latest_status = latest_by_user.get(u.user_id)
-                self.users.append(
-                    {
-                        "user_id": u.user_id,
-                        "display_name": u.display_name,
-                        "email": u.email,
-                        "enabled": u.enabled,
-                        "created_at": u.created_at.isoformat() if u.created_at else "",
-                        "last_sync": latest_status.last_run_at.isoformat()
-                        if latest_status and latest_status.last_run_at
-                        else "Never",
-                        "last_sync_status": latest_status.status if latest_status else "",
-                    }
+            latest_run = (
+                select(
+                    ExtractorStatus.user_id,
+                    func.max(ExtractorStatus.last_run_at).label("max_run_at"),
                 )
+                .group_by(ExtractorStatus.user_id)
+                .subquery()
+            )
+
+            stmt = (
+                select(
+                    User,
+                    ExtractorStatus.last_run_at,
+                    ExtractorStatus.status,
+                )
+                .outerjoin(
+                    latest_run,
+                    User.user_id == latest_run.c.user_id,
+                )
+                .outerjoin(
+                    ExtractorStatus,
+                    (ExtractorStatus.user_id == latest_run.c.user_id)
+                    & (ExtractorStatus.last_run_at == latest_run.c.max_run_at),
+                )
+                .order_by(User.user_id)
+            )
+
+            rows = session.exec(stmt).all()
+            self.users = [
+                {
+                    "user_id": u.user_id,
+                    "display_name": u.display_name,
+                    "email": u.email,
+                    "enabled": u.enabled,
+                    "created_at": u.created_at.isoformat() if u.created_at else "",
+                    "last_sync": last_run_at.isoformat() if last_run_at else "Never",
+                    "last_sync_status": status or "",
+                }
+                for u, last_run_at, status in rows
+            ]
         finally:
             session.close()
 
