@@ -134,7 +134,7 @@ class TestLoadUsersQuery:
 
         result = _run_load_users_query(session)
         assert len(result) == 1
-        assert result[0]["last_sync"] == new.isoformat()
+        assert result[0]["last_sync"] == new.replace(tzinfo=None).isoformat()
         assert result[0]["last_sync_status"] == "success"
 
     def test_mixed_users_with_and_without_status(self, session):
@@ -150,7 +150,7 @@ class TestLoadUsersQuery:
         assert len(result) == 2
         alice = next(r for r in result if r["user_id"] == "alice")
         bob = next(r for r in result if r["user_id"] == "bob")
-        assert alice["last_sync"] == now.isoformat()
+        assert alice["last_sync"] == now.replace(tzinfo=None).isoformat()
         assert alice["last_sync_status"] == "success"
         assert bob["last_sync"] == "Never"
         assert bob["last_sync_status"] == ""
@@ -180,4 +180,4 @@ class TestLoadUsersQuery:
         bob = next(r for r in result if r["user_id"] == "bob")
         assert alice["last_sync_status"] == "success"
         assert bob["last_sync_status"] == "success"
-        assert bob["last_sync"] == (base + timedelta(hours=2)).isoformat()
+        assert bob["last_sync"] == (base + timedelta(hours=2)).replace(tzinfo=None).isoformat()
