@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from m365_brain.config import EmailExtractorConfig, MailboxConfig
-from m365_brain.m365.extractors._email_writer import write_email
+from m365_brain.m365.extractors._email_writer import EmailSyncContext, write_email
 from m365_brain.storage.local import LocalBackend
 
 
@@ -40,29 +40,34 @@ def sample_msg() -> dict:
     }
 
 
+def _make_sync_ctx(tmp_path, email_config, ctx, seen_keys=None, path_map=None) -> tuple[EmailSyncContext, LocalBackend]:
+    storage = LocalBackend(str(tmp_path / "vault"))
+    client = MagicMock()
+    return EmailSyncContext(
+        storage=storage,
+        client=client,
+        config=email_config,
+        ctx=ctx,
+        seen_keys=seen_keys if seen_keys is not None else set(),
+        path_map=path_map if path_map is not None else {},
+    ), storage
+
+
 class TestWriteEmail:
     def test_writes_markdown_file(self, tmp_path, email_config, sample_msg, ctx):
-        storage = LocalBackend(str(tmp_path / "vault"))
-        client = MagicMock()
-        seen: set[tuple[str, str]] = set()
-        path_map: dict[str, str] = {}
+        sync_ctx, storage = _make_sync_ctx(tmp_path, email_config, ctx)
 
         result = write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=sample_msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=seen,
-            path_map=path_map,
         )
 
         assert result is True
-        assert "msg-001" in path_map
+        assert "msg-001" in sync_ctx.path_map
         files = storage.list_files(ctx.paths.inbox_root("email"))
         assert len(files) == 1
         content = storage.read_file(files[0])
@@ -70,77 +75,53 @@ class TestWriteEmail:
         assert "alice@example.com" in content
 
     def test_skips_invalid_message(self, tmp_path, email_config, ctx):
-        storage = LocalBackend(str(tmp_path / "vault"))
-        client = MagicMock()
+        sync_ctx, _ = _make_sync_ctx(tmp_path, email_config, ctx)
         msg = {"id": "", "receivedDateTime": ""}
 
         result = write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=set(),
-            path_map={},
         )
         assert result is False
 
     def test_skips_duplicate(self, tmp_path, email_config, sample_msg, ctx):
-        storage = LocalBackend(str(tmp_path / "vault"))
-        client = MagicMock()
-        path_map: dict[str, str] = {}
-
         seen: set[tuple[str, str]] = set()
+        sync_ctx, _ = _make_sync_ctx(tmp_path, email_config, ctx, seen_keys=seen)
+
         write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=sample_msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=seen,
-            path_map=path_map,
         )
 
         result = write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=sample_msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=seen,
-            path_map=path_map,
         )
         assert result is False
 
     def test_html_body_converted_to_markdown(self, tmp_path, email_config, sample_msg, ctx):
-        storage = LocalBackend(str(tmp_path / "vault"))
-        client = MagicMock()
+        sync_ctx, storage = _make_sync_ctx(tmp_path, email_config, ctx)
         sample_msg["body"] = {"contentType": "html", "content": "<p>Hello <b>world</b></p>"}
 
         write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=sample_msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=set(),
-            path_map={},
         )
 
         files = storage.list_files(ctx.paths.inbox_root("email"))
@@ -149,22 +130,16 @@ class TestWriteEmail:
         assert "world" in content
 
     def test_no_subject_uses_placeholder(self, tmp_path, email_config, sample_msg, ctx):
-        storage = LocalBackend(str(tmp_path / "vault"))
-        client = MagicMock()
+        sync_ctx, storage = _make_sync_ctx(tmp_path, email_config, ctx)
         sample_msg["subject"] = None
 
         write_email(
-            storage=storage,
-            client=client,
+            sync_ctx,
             msg=sample_msg,
             folder="Inbox",
             address="me",
             output_subdir="",
             endpoint_base="/me/mailFolders/Inbox/messages",
-            config=email_config,
-            ctx=ctx,
-            seen_keys=set(),
-            path_map={},
         )
 
         files = storage.list_files(ctx.paths.inbox_root("email"))
