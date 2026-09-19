@@ -39,6 +39,15 @@ class FilePayload:
     content_type: str
 
 
+@dataclass(frozen=True)
+class DriveWriteContext:
+    """The three values stable for the lifetime of any single file-write operation."""
+
+    client: GraphClient
+    upload: UploadConfig
+    drive_id: str
+
+
 class ETagRequired(ValueError):
     """`update_file` was called without an eTag. There is no unconditional write."""
 
@@ -155,9 +164,7 @@ def get_file(client: GraphClient, drive_id: str, item_path: str) -> tuple[str, s
 
 
 def create_file(
-    client: GraphClient,
-    upload: UploadConfig,
-    drive_id: str,
+    ctx: DriveWriteContext,
     item_path: str,
     payload: FilePayload,
 ) -> str:
@@ -171,20 +178,18 @@ def create_file(
     # actually costs data is covered by `update_file`'s eTag; upgrade path is a
     # session-only create with `conflictBehavior: fail` if this ever races.
     """
-    existing = item_etag(client, drive_id, item_path)
+    existing = item_etag(ctx.client, ctx.drive_id, item_path)
     if existing is not None:
         raise GraphConflictError(
-            f"create_file refused: {item_path!r} already exists in drive {drive_id} "
+            f"create_file refused: {item_path!r} already exists in drive {ctx.drive_id} "
             f"(eTag {existing}); use update_file with that eTag to overwrite it",
             412,
         )
-    return _write(client, upload, drive_id, item_path, payload, None)
+    return _write(ctx, item_path, payload, None)
 
 
 def update_file(
-    client: GraphClient,
-    upload: UploadConfig,
-    drive_id: str,
+    ctx: DriveWriteContext,
     item_path: str,
     payload: FilePayload,
     etag: str,
@@ -201,29 +206,25 @@ def update_file(
             f"update_file({item_path!r}) needs the eTag read at fetch time. "
             "Pass it, or call create_file if the item is new -- there is no unconditional write."
         )
-    return _write(client, upload, drive_id, item_path, payload, etag)
+    return _write(ctx, item_path, payload, etag)
 
 
 def _write(
-    client: GraphClient,
-    upload: UploadConfig,
-    drive_id: str,
+    ctx: DriveWriteContext,
     item_path: str,
     payload: FilePayload,
     if_match: str | None,
 ) -> str:
     """The one write path. Private, so `if_match: str | None` never escapes."""
-    ref = _item_ref(drive_id, item_path)
-    if len(payload.content) <= upload.simple_upload_max_bytes:
-        response = client.put_bytes(f"{ref}:/content", payload.content, payload.content_type, if_match)
+    ref = _item_ref(ctx.drive_id, item_path)
+    if len(payload.content) <= ctx.upload.simple_upload_max_bytes:
+        response = ctx.client.put_bytes(f"{ref}:/content", payload.content, payload.content_type, if_match)
         return str(response.json().get("eTag", ""))
-    return _write_session(client, upload, drive_id, item_path, payload.content, if_match)
+    return _write_session(ctx, item_path, payload.content, if_match)
 
 
 def _write_session(
-    client: GraphClient,
-    upload: UploadConfig,
-    drive_id: str,
+    ctx: DriveWriteContext,
     item_path: str,
     content: bytes,
     if_match: str | None,
@@ -238,22 +239,22 @@ def _write_session(
     yesterday -- from a silent clobber into a raised conflict.
     """
     if if_match is not None:
-        current = item_etag(client, drive_id, item_path)
+        current = item_etag(ctx.client, ctx.drive_id, item_path)
         if current != if_match:
             raise GraphConflictError(
                 f"eTag for {item_path!r} moved from {if_match} to {current} before the upload "
                 "session opened; nothing was written",
                 412,
             )
-    session = client.post(
-        f"{_item_ref(drive_id, item_path)}:/createUploadSession",
+    session = ctx.client.post(
+        f"{_item_ref(ctx.drive_id, item_path)}:/createUploadSession",
         {"item": {"@microsoft.graph.conflictBehavior": "replace"}},
     )
     final = upload_in_chunks(
         session.json()["uploadUrl"],
         content,
-        upload.chunk_bytes,
-        client.config.timeout_seconds,
-        client.config.error_message_max_length,
+        ctx.upload.chunk_bytes,
+        ctx.client.config.timeout_seconds,
+        ctx.client.config.error_message_max_length,
     )
     return str(final.json().get("eTag", ""))

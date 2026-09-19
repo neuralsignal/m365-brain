@@ -174,11 +174,11 @@ class TestPush:
         update_fn = extra["update_file"]
         update_fn.assert_called_once()
         call_args = update_fn.call_args[0]
-        assert call_args[2] == "drive-id-456"
-        assert call_args[3] == "Reports/annual.md"
-        assert call_args[4].content == b"updated content"
-        assert call_args[4].content_type == "text/markdown"
-        assert call_args[5] == '"etag-old"'
+        assert call_args[0].drive_id == "drive-id-456"
+        assert call_args[1] == "Reports/annual.md"
+        assert call_args[2].content == b"updated content"
+        assert call_args[2].content_type == "text/markdown"
+        assert call_args[3] == '"etag-old"'
 
     def test_json_emits_structured_output(self, runner, config_with_m365, tmp_path):
         source = tmp_path / "doc.md"

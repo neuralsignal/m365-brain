@@ -24,6 +24,7 @@ from m365_brain.m365 import files as files_module
 from m365_brain.m365.client import GRAPH_BASE_URL, GraphClient
 from m365_brain.m365.errors import GraphApiError, GraphConflictError, GraphNotFoundError
 from m365_brain.m365.files import (
+    DriveWriteContext,
     ETagRequired,
     FilePayload,
     create_file,
@@ -65,6 +66,11 @@ def upload():
         simple_upload_max_bytes=100,
         chunk_bytes=320 * 1024,
     )
+
+
+@pytest.fixture()
+def write_ctx(client, upload):
+    return DriveWriteContext(client=client, upload=upload, drive_id=DRIVE)
 
 
 def _not_found(code: str) -> httpx.Response:
@@ -207,23 +213,23 @@ class TestReads:
 
 class TestCreateFile:
     @respx.mock
-    def test_creates_when_nothing_is_there(self, client, upload):
+    def test_creates_when_nothing_is_there(self, write_ctx):
         respx.get(ITEM).mock(return_value=_not_found("itemNotFound"))
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(201, json={"eTag": '"e-new"'}))
 
-        etag = create_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"body", "text/markdown"))
+        etag = create_file(write_ctx, "folder/report.md", FilePayload(b"body", "text/markdown"))
 
         assert etag == '"e-new"'
         assert put.calls[0].request.content == b"body"
         assert "If-Match" not in put.calls[0].request.headers
 
     @respx.mock
-    def test_refuses_an_existing_item_and_writes_nothing(self, client, upload):
+    def test_refuses_an_existing_item_and_writes_nothing(self, write_ctx):
         respx.get(ITEM).mock(return_value=httpx.Response(200, json={"eTag": '"e1"'}))
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(200, json={"eTag": '"e2"'}))
 
         with pytest.raises(GraphConflictError) as excinfo:
-            create_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"body", "text/markdown"))
+            create_file(write_ctx, "folder/report.md", FilePayload(b"body", "text/markdown"))
 
         assert put.call_count == 0, "create_file must never overwrite"
         assert "update_file" in str(excinfo.value)
@@ -231,23 +237,23 @@ class TestCreateFile:
 
 class TestUpdateFileIsTheOnlyOverwrite:
     @respx.mock
-    def test_sends_if_match_and_returns_the_new_etag(self, client, upload):
+    def test_sends_if_match_and_returns_the_new_etag(self, write_ctx):
         put = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(200, json={"eTag": '"e2"'}))
 
-        etag = update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), '"e1"')
+        etag = update_file(write_ctx, "folder/report.md", FilePayload(b"new", "text/markdown"), '"e1"')
 
         assert etag == '"e2"'
         assert put.calls[0].request.headers["If-Match"] == '"e1"'
 
     @respx.mock
-    def test_stale_etag_raises_and_writes_nothing(self, client, upload):
+    def test_stale_etag_raises_and_writes_nothing(self, write_ctx):
         """Gate 1. 'It raised' is not the property; 'it did not write' is."""
         put = respx.put(f"{ITEM}:/content").mock(
             return_value=httpx.Response(412, json={"error": {"code": "preconditionFailed", "message": "etag"}})
         )
 
         with pytest.raises(GraphConflictError) as excinfo:
-            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), '"stale"')
+            update_file(write_ctx, "folder/report.md", FilePayload(b"new", "text/markdown"), '"stale"')
 
         assert excinfo.value.status_code == 412
         assert put.call_count == 1, "a 412 must not be retried into an overwrite"
@@ -255,13 +261,13 @@ class TestUpdateFileIsTheOnlyOverwrite:
         assert accepted == [], "no request carrying the new bytes may have been accepted"
 
     @respx.mock
-    def test_an_empty_etag_raises_before_any_request(self, client, upload):
+    def test_an_empty_etag_raises_before_any_request(self, write_ctx):
         """Gate 1, second half: zero requests, not merely a failed one."""
         route = respx.put(f"{ITEM}:/content").mock(return_value=httpx.Response(200, json={}))
         meta = respx.get(ITEM).mock(return_value=httpx.Response(200, json={"eTag": '"e1"'}))
 
         with pytest.raises(ETagRequired):
-            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"new", "text/markdown"), "")
+            update_file(write_ctx, "folder/report.md", FilePayload(b"new", "text/markdown"), "")
 
         assert route.call_count == 0
         assert meta.call_count == 0
@@ -284,7 +290,7 @@ class TestUpdateFileIsTheOnlyOverwrite:
 
 class TestLargeUploads:
     @respx.mock
-    def test_content_above_the_ceiling_uses_a_chunked_session(self, client, upload):
+    def test_content_above_the_ceiling_uses_a_chunked_session(self, write_ctx):
         content = b"x" * 300
         respx.post(f"{ITEM}:/createUploadSession").mock(
             return_value=httpx.Response(200, json={"uploadUrl": "https://tenant.sharepoint.com/_api/upload/1"})
@@ -294,20 +300,20 @@ class TestLargeUploads:
         )
         respx.get(ITEM).mock(return_value=_not_found("itemNotFound"))
 
-        etag = create_file(client, upload, DRIVE, "folder/report.md", FilePayload(content, "text/markdown"))
+        etag = create_file(write_ctx, "folder/report.md", FilePayload(content, "text/markdown"))
 
         assert etag == '"e-big"'
         assert chunks.calls[0].request.headers["Content-Range"] == "bytes 0-299/300"
         assert "Authorization" not in chunks.calls[0].request.headers
 
     @respx.mock
-    def test_a_moved_etag_stops_the_session_before_it_opens(self, client, upload):
+    def test_a_moved_etag_stops_the_session_before_it_opens(self, write_ctx):
         respx.get(ITEM).mock(return_value=httpx.Response(200, json={"eTag": '"moved"'}))
         session = respx.post(f"{ITEM}:/createUploadSession").mock(
             return_value=httpx.Response(200, json={"uploadUrl": "https://tenant.sharepoint.com/_api/upload/1"})
         )
 
         with pytest.raises(GraphConflictError):
-            update_file(client, upload, DRIVE, "folder/report.md", FilePayload(b"y" * 300, "text/markdown"), '"e1"')
+            update_file(write_ctx, "folder/report.md", FilePayload(b"y" * 300, "text/markdown"), '"e1"')
 
         assert session.call_count == 0
