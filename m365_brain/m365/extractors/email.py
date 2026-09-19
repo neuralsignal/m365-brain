@@ -27,7 +27,7 @@ import structlog
 
 from m365_brain.config import EmailExtractorConfig, MailboxConfig
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.extractors._email_writer import write_email
+from m365_brain.m365.extractors._email_writer import EmailSyncContext, write_email
 from m365_brain.m365.extractors._folder_helpers import (
     FOLDER_IDS,
     cache_folder_id,
@@ -78,6 +78,14 @@ def run(
     """
     total_written = 0
     ss = _SyncState(path_map=state.setdefault(PATH_MAP_STATE_KEY, {}))
+    sync_ctx = EmailSyncContext(
+        storage=storage,
+        client=client,
+        config=config,
+        ctx=ctx,
+        seen_keys=ss.seen_keys,
+        path_map=ss.path_map,
+    )
 
     for mailbox in config.mailboxes:
         folders = _folders_for_mailbox(client, mailbox, ss.folder_cache)
@@ -87,14 +95,11 @@ def run(
             delta_link = state.get(state_key)
 
             items, new_delta_link = _sync_folder(
-                client,
-                storage,
+                sync_ctx,
                 mailbox.address,
                 mailbox.output_subdir,
                 folder,
                 delta_link,
-                config,
-                ctx,
                 ss,
             )
 
@@ -128,19 +133,16 @@ def _folders_for_mailbox(
 
 
 def _sync_folder(
-    client: GraphClient,
-    storage: StorageBackend,
+    sync_ctx: EmailSyncContext,
     address: str,
     output_subdir: str,
     folder: str,
     delta_link: str | None,
-    config: EmailExtractorConfig,
-    ctx: ExtractorContext,
     ss: _SyncState,
 ) -> tuple[int, str | None]:
     """Sync a single (mailbox, folder). Returns (items_written, new_delta_link)."""
     endpoint_base = _endpoint_base(address)
-    folder_id = resolve_folder_id(client, endpoint_base, address, folder, ss.folder_cache)
+    folder_id = resolve_folder_id(sync_ctx.client, endpoint_base, address, folder, ss.folder_cache)
     path = f"{endpoint_base}/mailFolders/{folder_id}/messages/delta"
 
     sync_type = "incremental" if delta_link else "initial"
@@ -149,44 +151,25 @@ def _sync_folder(
     params = {
         "$select": "id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
         "receivedDateTime,importance,hasAttachments,webLink,parentFolderId",
-        # $top on a delta query caps the WHOLE enumeration, not the page: Graph
-        # returns at most this many messages across every page of the round and
-        # then closes with a deltaLink, so anything past the cap is never
-        # fetched and never resumed. It is the item budget, and only the
-        # configured budget may set it. The constant 50 that used to sit here
-        # made every initial folder sync stop at 50 messages, ok=True.
-        "$top": str(config.max_items_per_sync),
+        "$top": str(sync_ctx.config.max_items_per_sync),
     }
-    # No $filter, and no time window: see the module docstring for what is
-    # settled about `lookback_days` and what is not.
 
-    # Graph pages a delta round at its own size (~10 items) whatever $top says,
-    # so a page budget derived from the item budget could never bind. $top bounds
-    # the items server-side; the page walk needs only the global runaway bound,
-    # and a round that bound interrupts resumes from the pending nextLink next
-    # cycle. Everything fetched IS processed — slicing after the fetch would
-    # skip the tail forever once the (resume) delta link is persisted.
-    messages, new_delta_link = client.get_delta(path, delta_link, params=params, max_pages=client.max_pages)
+    messages, new_delta_link = sync_ctx.client.get_delta(
+        path, delta_link, params=params, max_pages=sync_ctx.client.max_pages
+    )
 
     written = 0
     for msg in messages:
-        # The delta endpoint has always emitted @removed; nothing read it, so a
-        # deleted mail stayed in the vault forever.
         if "@removed" in msg:
-            ctx.removal.remove(extractor=name, upstream_id=msg.get("id", ""), path_map=ss.path_map)
+            sync_ctx.ctx.removal.remove(extractor=name, upstream_id=msg.get("id", ""), path_map=ss.path_map)
             continue
         if write_email(
-            storage,
-            client,
+            sync_ctx,
             msg,
             folder,
             address,
             output_subdir,
             endpoint_base,
-            config,
-            ctx,
-            ss.seen_keys,
-            ss.path_map,
         ):
             written += 1
 

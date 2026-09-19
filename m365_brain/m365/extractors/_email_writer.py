@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import structlog
 
 from m365_brain.config import EmailExtractorConfig
@@ -18,18 +20,25 @@ log = structlog.get_logger()
 EXTRACTOR_NAME = "email"
 
 
+@dataclass(frozen=True)
+class EmailSyncContext:
+    """Stable sync-run state shared across every write_email call in a folder loop."""
+
+    storage: StorageBackend
+    client: GraphClient
+    config: EmailExtractorConfig
+    ctx: ExtractorContext
+    seen_keys: set[tuple[str, str]]
+    path_map: dict[str, str]
+
+
 def write_email(
-    storage: StorageBackend,
-    client: GraphClient,
+    sync_ctx: EmailSyncContext,
     msg: dict,
     folder: str,
     address: str,
     output_subdir: str,
     endpoint_base: str,
-    config: EmailExtractorConfig,
-    ctx: ExtractorContext,
-    seen_keys: set[tuple[str, str]],
-    path_map: dict[str, str],
 ) -> bool:
     """Write a single email to storage. Returns True if written."""
     message_id = msg.get("id", "")
@@ -43,10 +52,10 @@ def write_email(
 
     slug = slugify(subject, 80)
     key = (received[:16], slug)
-    if key in seen_keys:
+    if key in sync_ctx.seen_keys:
         log.info("email.skipped_duplicate", slug=slug, received=received[:16])
         return False
-    seen_keys.add(key)
+    sync_ctx.seen_keys.add(key)
 
     from_field = (msg.get("from") or {}).get("emailAddress", {})
     sender_address = from_field.get("address", "")
@@ -96,21 +105,21 @@ def write_email(
     subdir = output_subdir.strip("/")
     segments = [subdir] if subdir else []
     segments += [year, date_str, f"{slug}-{hsh}"]
-    email_dir = ctx.paths.inbox_item(EXTRACTOR_NAME, *segments)
-    file_path = ctx.paths.entry_file(email_dir)
+    email_dir = sync_ctx.ctx.paths.inbox_item(EXTRACTOR_NAME, *segments)
+    file_path = sync_ctx.ctx.paths.entry_file(email_dir)
 
-    storage.write_file(file_path, content)
-    path_map[message_id] = email_dir
+    sync_ctx.storage.write_file(file_path, content)
+    sync_ctx.path_map[message_id] = email_dir
 
-    if config.download_attachments and msg.get("hasAttachments"):
+    if sync_ctx.config.download_attachments and msg.get("hasAttachments"):
         download_attachments(
-            client,
-            storage,
+            sync_ctx.client,
+            sync_ctx.storage,
             endpoint_base,
             message_id,
             email_dir,
-            config,
-            ctx,
+            sync_ctx.config,
+            sync_ctx.ctx,
         )
 
     return True
