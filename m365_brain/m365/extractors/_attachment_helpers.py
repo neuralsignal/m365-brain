@@ -35,6 +35,51 @@ def _basename(name: str) -> str:
     return PurePosixPath(name.replace("\\", "/")).name
 
 
+def _process_attachment(
+    att: dict,
+    client: GraphClient,
+    storage: StorageBackend,
+    message_id: str,
+    email_dir: str,
+    config: EmailExtractorConfig,
+    ctx: ExtractorContext,
+) -> None:
+    """Process a single attachment: validate, download, store, and optionally convert."""
+    raw_name = att.get("name", "")
+    att_name = _basename(raw_name)
+    if not att_name or ":" in att_name:
+        log.warning("email.attachment_unusable_name", message_id=message_id, name=raw_name)
+        return
+    if att.get("isInline", False):
+        return
+    size = att.get("size", 0)
+    if size > config.max_attachment_size_mb * 1024 * 1024:
+        log.warning("email.attachment_too_large", name=att_name, size_mb=size // (1024 * 1024))
+        return
+    download_url = att.get("@microsoft.graph.downloadUrl")
+    content_bytes_b64 = att.get("contentBytes")
+    if not download_url and not content_bytes_b64:
+        log.warning("email.attachment_no_download_url", name=att_name)
+        return
+    try:
+        if download_url:
+            data = client.get_bytes(download_url)
+        else:
+            data = base64.b64decode(content_bytes_b64)
+        storage.write_bytes(ctx.paths.attachment(email_dir, att_name), data)
+        ext = Path(att_name).suffix.lower()
+        if ext in config.attachment_convert_extensions:
+            convert_and_store(
+                storage,
+                data,
+                att_name,
+                ctx.paths.converted_attachment(email_dir, f"{att_name}.md"),
+                ctx.converters,
+            )
+    except (GraphApiError, httpx.TransportError, binascii.Error, StorageError, OSError) as exc:
+        log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
+
+
 def download_attachments(
     client: GraphClient,
     storage: StorageBackend,
@@ -49,44 +94,7 @@ def download_attachments(
     params = {"$top": "20"}
     try:
         for att in client.get_paginated(path, params, max_pages=5):
-            raw_name = att.get("name", "")
-            att_name = _basename(raw_name)
-            if not att_name or ":" in att_name:
-                # Strip first, reject second: a Windows-shaped
-                # `C:\Users\x\report.pdf` is a perfectly good `report.pdf`, and
-                # rejecting on the colon threw the attachment away. What is left
-                # after the strip and still carries a colon is a drive-relative
-                # name with no basename to recover.
-                log.warning("email.attachment_unusable_name", message_id=message_id, name=raw_name)
-                continue
-            if att.get("isInline", False):
-                continue
-            size = att.get("size", 0)
-            if size > config.max_attachment_size_mb * 1024 * 1024:
-                log.warning("email.attachment_too_large", name=att_name, size_mb=size // (1024 * 1024))
-                continue
-            download_url = att.get("@microsoft.graph.downloadUrl")
-            content_bytes_b64 = att.get("contentBytes")
-            if not download_url and not content_bytes_b64:
-                log.warning("email.attachment_no_download_url", name=att_name)
-                continue
-            try:
-                if download_url:
-                    data = client.get_bytes(download_url)
-                else:
-                    data = base64.b64decode(content_bytes_b64)
-                storage.write_bytes(ctx.paths.attachment(email_dir, att_name), data)
-                ext = Path(att_name).suffix.lower()
-                if ext in config.attachment_convert_extensions:
-                    convert_and_store(
-                        storage,
-                        data,
-                        att_name,
-                        ctx.paths.converted_attachment(email_dir, f"{att_name}.md"),
-                        ctx.converters,
-                    )
-            except (GraphApiError, httpx.TransportError, binascii.Error, StorageError, OSError) as exc:
-                log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
+            _process_attachment(att, client, storage, message_id, email_dir, config, ctx)
     except (GraphApiError, httpx.TransportError) as exc:
         log.warning("email.attachments_fetch_failed", message_id=message_id, error=str(exc))
 
