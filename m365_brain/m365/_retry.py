@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -26,6 +27,27 @@ from m365_brain.m365.graph_helpers import (
 )
 
 log = structlog.get_logger()
+
+
+@dataclass(frozen=True, slots=True)
+class RetryPolicy:
+    """Transport-level retry/backoff settings."""
+
+    config: GraphConfig
+    backoff_base_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class RequestSpec:
+    """Everything that describes a single Graph API call."""
+
+    method: str
+    url: str
+    log_ref: str
+    params: dict[str, Any] | None
+    body: str | bytes | None
+    content_type: str | None
+    if_match: str | None
 
 
 def raise_for_response(response: httpx.Response, log_ref: str, error_message_max_length: int) -> None:
@@ -49,16 +71,9 @@ def raise_for_response(response: httpx.Response, log_ref: str, error_message_max
 def execute_with_retry(
     http_client: httpx.Client,
     headers_fn: Callable[[str | None, str | None], dict[str, str]],
-    config: GraphConfig,
-    backoff_base_seconds: float,
-    url: str,
-    log_ref: str,
-    params: dict[str, Any] | None,
+    policy: RetryPolicy,
+    request: RequestSpec,
     extract: Callable[[httpx.Response], Any],
-    method: str,
-    body: str | bytes | None,
-    content_type: str | None,
-    if_match: str | None,
 ) -> Any:
     """Execute one Graph request with retry, backoff, and token refresh.
 
@@ -66,18 +81,21 @@ def execute_with_retry(
     immediately (``GraphNotFoundError`` / ``GraphConflictError``); 401
     refreshes the token once; 429 and 5xx back off.
     """
-    request_url = url
+    config = policy.config
+    backoff_base_seconds = policy.backoff_base_seconds
+
+    request_url = request.url
     if request_url.startswith("https://"):
         request_url = request_url.removeprefix(GRAPH_BASE_URL)
 
     for attempt in range(config.max_retries + 1):
         try:
             response = http_client.request(
-                method,
+                request.method,
                 request_url,
-                headers=headers_fn(content_type, if_match),
-                params=params,
-                content=body,
+                headers=headers_fn(request.content_type, request.if_match),
+                params=request.params,
+                content=request.body,
             )
         except (httpx.TransportError, AuthTransportError) as exc:
             if attempt == config.max_retries:
@@ -102,11 +120,11 @@ def execute_with_retry(
             error_code, error_message = _extract_graph_error(response.text, config.error_message_max_length)
             log.error(
                 "graph.401_after_retry",
-                path=log_ref,
+                path=request.log_ref,
                 error_code=error_code,
                 error_message=error_message,
             )
-            raise GraphApiError(_friendly_error(401, error_code, error_message, log_ref), 401)
+            raise GraphApiError(_friendly_error(401, error_code, error_message, request.log_ref), 401)
 
         if response.status_code in RETRYABLE_STATUS_CODES and attempt < config.max_retries:
             wait = _retry_wait_seconds(
@@ -125,8 +143,8 @@ def execute_with_retry(
             continue
 
         if response.status_code in RETRYABLE_STATUS_CODES:
-            log.error("graph.max_retries_exceeded", status=response.status_code, path=log_ref)
-        raise_for_response(response, log_ref, config.error_message_max_length)
+            log.error("graph.max_retries_exceeded", status=response.status_code, path=request.log_ref)
+        raise_for_response(response, request.log_ref, config.error_message_max_length)
 
-    msg = f"Graph API request failed after {config.max_retries} retries: {log_ref}"
+    msg = f"Graph API request failed after {config.max_retries} retries: {request.log_ref}"
     raise GraphApiError(msg, None)

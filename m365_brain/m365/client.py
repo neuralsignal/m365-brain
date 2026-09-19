@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 import structlog
 
 from m365_brain.config import GraphConfig
-from m365_brain.m365._retry import execute_with_retry
+from m365_brain.m365._retry import RequestSpec, RetryPolicy, execute_with_retry
 
 # Re-exported — `from m365_brain.m365.client import GraphApiError` is what every extractor writes.
 from m365_brain.m365.errors import AuthTransportError as AuthTransportError  # noqa: F401
@@ -29,17 +28,6 @@ log = structlog.get_logger()
 JSON_CONTENT_TYPE = "application/json"
 
 
-@dataclass(frozen=True, slots=True)
-class _Request:
-    """Transport-specific fields for a single Graph API call."""
-
-    method: str
-    url: str
-    body: str | bytes | None
-    content_type: str | None
-    if_match: str | None
-
-
 class GraphClient:
     """HTTP client for Microsoft Graph API v1.0."""
 
@@ -50,7 +38,10 @@ class GraphClient:
     ) -> None:
         self._token_provider = token_provider
         self._config = graph_config
-        self._backoff_base_seconds = graph_config.backoff_base_ms / 1000.0
+        self._retry_policy = RetryPolicy(
+            config=graph_config,
+            backoff_base_seconds=graph_config.backoff_base_ms / 1000.0,
+        )
         self._client = httpx.Client(
             base_url=GRAPH_BASE_URL,
             timeout=graph_config.timeout_seconds,
@@ -79,24 +70,15 @@ class GraphClient:
 
     def _execute_with_retry(
         self,
-        req: _Request,
-        log_ref: str,
-        params: dict[str, Any] | None,
+        request: RequestSpec,
         extract: Callable[[httpx.Response], Any],
     ) -> Any:
         return execute_with_retry(
-            self._client,
-            self._headers,
-            self._config,
-            self._backoff_base_seconds,
-            req.url,
-            log_ref,
-            params,
-            extract,
-            req.method,
-            req.body,
-            req.content_type,
-            req.if_match,
+            http_client=self._client,
+            headers_fn=self._headers,
+            policy=self._retry_policy,
+            request=request,
+            extract=extract,
         )
 
     @property
@@ -117,9 +99,15 @@ class GraphClient:
         extract: Callable[[httpx.Response], Any],
     ) -> Any:
         return self._execute_with_retry(
-            _Request(method="GET", url=url, body=None, content_type=None, if_match=None),
-            log_ref=log_ref,
-            params=params,
+            RequestSpec(
+                method="GET",
+                url=url,
+                log_ref=log_ref,
+                params=params,
+                body=None,
+                content_type=None,
+                if_match=None,
+            ),
             extract=extract,
         )
 
@@ -137,15 +125,15 @@ class GraphClient:
 
     def _json_write(self, method: str, path: str, json_body: dict[str, Any] | None) -> httpx.Response:
         return self._execute_with_retry(
-            _Request(
+            RequestSpec(
                 method=method,
                 url=path,
+                log_ref=path,
+                params=None,
                 body=None if json_body is None else json.dumps(json_body),
                 content_type=None if json_body is None else JSON_CONTENT_TYPE,
                 if_match=None,
             ),
-            log_ref=path,
-            params=None,
             extract=lambda r: r,
         )
 
@@ -163,15 +151,15 @@ class GraphClient:
         ``m365/files.py`` owns that policy and never exposes the nullable.
         """
         return self._execute_with_retry(
-            _Request(
+            RequestSpec(
                 method="PUT",
                 url=path,
+                log_ref=path,
+                params=None,
                 body=content,
                 content_type=content_type,
                 if_match=if_match,
             ),
-            log_ref=path,
-            params=None,
             extract=lambda r: r,
         )
 
