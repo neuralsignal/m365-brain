@@ -127,35 +127,41 @@ def get_user_extractors(engine: Engine, user_id: str) -> list[str]:
 
 def get_due_jobs(engine: Engine, config: Config) -> list[tuple[User, str]]:
     """Return (user, extractor_name) pairs that are due for a sync run."""
-    users = get_enabled_users(engine)
+    with Session(engine) as session:
+        statement = (
+            select(User, ExtractorPreference.extractor_name, ExtractorStatus.last_run_at)
+            .join(ExtractorPreference, ExtractorPreference.user_id == User.user_id)
+            .outerjoin(
+                ExtractorStatus,
+                (ExtractorStatus.user_id == User.user_id)
+                & (ExtractorStatus.extractor_name == ExtractorPreference.extractor_name),
+            )
+            .where(
+                User.enabled == True,  # noqa: E712
+                ExtractorPreference.enabled == True,  # noqa: E712
+            )
+            .order_by(User.user_id)
+        )
+        rows = session.exec(statement).all()
+
     due: list[tuple[User, str]] = []
     now = datetime.now(tz=UTC)
 
-    for user in users:
-        extractor_names = get_user_extractors(engine, user.user_id)
-        for ext_name in extractor_names:
-            if ext_name not in EXTRACTORS:
-                continue
-            _, config_getter = EXTRACTORS[ext_name]
-            ext_config = config_getter(config)
-            interval_seconds = ext_config.poll_interval_minutes * 60
+    for user, ext_name, last_run_at in rows:
+        if ext_name not in EXTRACTORS:
+            continue
+        _, config_getter = EXTRACTORS[ext_name]
+        ext_config = config_getter(config)
+        interval_seconds = ext_config.poll_interval_minutes * 60
 
-            with Session(engine) as session:
-                statement = select(ExtractorStatus).where(
-                    ExtractorStatus.user_id == user.user_id,
-                    ExtractorStatus.extractor_name == ext_name,
-                )
-                status_row = session.exec(statement).first()
-
-            if status_row is None or status_row.last_run_at is None:
+        if last_run_at is None:
+            due.append((user, ext_name))
+        else:
+            # SQLite strips timezone info; ensure both sides match
+            if last_run_at.tzinfo is None:
+                last_run_at = last_run_at.replace(tzinfo=UTC)
+            if (now - last_run_at).total_seconds() >= interval_seconds:
                 due.append((user, ext_name))
-            else:
-                # SQLite strips timezone info; ensure both sides match
-                last_run = status_row.last_run_at
-                if last_run.tzinfo is None:
-                    last_run = last_run.replace(tzinfo=UTC)
-                if (now - last_run).total_seconds() >= interval_seconds:
-                    due.append((user, ext_name))
 
     return due
 
