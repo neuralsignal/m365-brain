@@ -15,6 +15,7 @@ from m365_brain.m365.client import GraphClient
 from m365_brain.m365.extractors import contacts
 from m365_brain.m365.markdown_writer import loads_markdown
 from m365_brain.storage.local import LocalBackend
+from m365_brain.vault.removal import PATH_MAP_STATE_KEY
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
 
@@ -473,6 +474,95 @@ class TestOddLayoutGoldenPaths:
             "zz-inbox/address-book/jane-smith-f2dc23/page.md",
         ]
         assert local_storage.list_files("inbox") == []
+        client.close()
+
+
+class TestRemovedContactDeletion:
+    """A @removed delta entry deletes the contact from the vault."""
+
+    def test_removed_contact_is_deleted_from_vault(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
+    ):
+        client = GraphClient(graph_config, lambda: "test-token")
+        inbox = ctx.paths.inbox_root("contacts")
+        delta1 = "https://graph.microsoft.com/v1.0/me/contacts/delta?$deltatoken=t1"
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta$"),
+            json={
+                "value": [
+                    {
+                        "id": "c123",
+                        "displayName": "Soon Deleted",
+                        "emailAddresses": [],
+                        "businessPhones": [],
+                        "categories": [],
+                    }
+                ],
+                "@odata.deltaLink": delta1,
+            },
+        )
+        state, count = contacts.run(client, local_storage, {}, contacts_config, ctx)
+        assert count == 1
+        assert local_storage.list_files(inbox) != []
+
+        httpx_mock.add_response(
+            url=delta1,
+            json={
+                "value": [{"@removed": {"reason": "deleted"}, "id": "c123"}],
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/contacts/delta?$deltatoken=t2",
+            },
+        )
+        state, count = contacts.run(client, local_storage, state, contacts_config, ctx)
+        assert count == 0
+        assert state[PATH_MAP_STATE_KEY] == {}
+        assert local_storage.list_files(inbox) == []
+        client.close()
+
+    def test_removed_contact_without_id_uses_empty_string(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
+    ):
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta.*"),
+            json={
+                "value": [{"@removed": {"reason": "deleted"}}],
+                "@odata.deltaLink": "https://delta?token=noid",
+            },
+        )
+        state, count = contacts.run(client, local_storage, {}, contacts_config, ctx)
+        assert count == 0
+        assert state[PATH_MAP_STATE_KEY] == {}
+        client.close()
+
+    def test_removed_contact_is_not_written_to_storage(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
+    ):
+        """A @removed entry must not pass through _extract_contact_data or _write_contact."""
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/me/contacts/delta.*"),
+            json={
+                "value": [
+                    {"@removed": {"reason": "deleted"}, "id": "c-gone"},
+                    {
+                        "id": "c-stay",
+                        "displayName": "Staying Contact",
+                        "emailAddresses": [],
+                        "businessPhones": [],
+                        "categories": [],
+                    },
+                ],
+                "@odata.deltaLink": "https://delta?token=mix",
+            },
+        )
+        state, count = contacts.run(client, local_storage, {}, contacts_config, ctx)
+        assert count == 1
+        files = local_storage.list_files(ctx.paths.inbox_root("contacts"))
+        assert len(files) == 1
+        assert "c-gone" not in files[0]
         client.close()
 
 

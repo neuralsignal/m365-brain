@@ -617,6 +617,95 @@ class TestDisabledAccountRemoval:
         client.close()
 
 
+class TestHardDeletedUserRemoval:
+    """A @removed delta entry deletes the user from the vault (hard-delete, not disable)."""
+
+    def test_removed_user_is_deleted_from_vault(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
+    ):
+        client = GraphClient(graph_config, lambda: "test-token")
+        inbox = ctx.paths.inbox_root("directory")
+        delta1 = "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=t1"
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/delta.*"),
+            json={
+                "value": [
+                    {
+                        "id": "u456",
+                        "displayName": "Soon Deleted",
+                        "mail": "soon@contoso.com",
+                        "userPrincipalName": "soon@contoso.com",
+                        "accountEnabled": True,
+                    }
+                ],
+                "@odata.deltaLink": delta1,
+            },
+        )
+        state, count = directory.run(client, local_storage, {}, directory_config, ctx)
+        assert count == 1
+        assert local_storage.list_files(inbox) != []
+
+        httpx_mock.add_response(
+            url=re.compile(r".*\$deltatoken=t1.*"),
+            json={
+                "value": [{"@removed": {"reason": "deleted"}, "id": "u456"}],
+                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=t2",
+            },
+        )
+        state, count = directory.run(client, local_storage, state, directory_config, ctx)
+        assert count == 0
+        assert state[PATH_MAP_STATE_KEY] == {}
+        assert local_storage.list_files(inbox) == []
+        client.close()
+
+    def test_removed_user_without_id_uses_empty_string(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
+    ):
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/delta.*"),
+            json={
+                "value": [{"@removed": {"reason": "deleted"}}],
+                "@odata.deltaLink": "https://delta?token=noid",
+            },
+        )
+        state, count = directory.run(client, local_storage, {}, directory_config, ctx)
+        assert count == 0
+        assert state[PATH_MAP_STATE_KEY] == {}
+        client.close()
+
+    def test_removed_user_is_not_written_to_storage(
+        self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
+    ):
+        """A @removed entry must not pass through _extract_user_data or _write_user."""
+        client = GraphClient(graph_config, lambda: "test-token")
+
+        httpx_mock.add_response(
+            url=re.compile(r".*/users/delta.*"),
+            json={
+                "value": [
+                    {"@removed": {"reason": "deleted"}, "id": "u-gone"},
+                    {
+                        "id": "u-stay",
+                        "displayName": "Staying User",
+                        "mail": "stay@contoso.com",
+                        "userPrincipalName": "stay@contoso.com",
+                        "accountEnabled": True,
+                    },
+                ],
+                "@odata.deltaLink": "https://delta?token=mix",
+            },
+        )
+        state, count = directory.run(client, local_storage, {}, directory_config, ctx)
+        assert count == 1
+        files = local_storage.list_files(ctx.paths.inbox_root("directory"))
+        assert len(files) == 1
+        assert "u-gone" not in files[0]
+        client.close()
+
+
 class TestOddLayoutGoldenPaths:
     def test_users_land_under_the_configured_names_only(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, odd_ctx, directory_response
