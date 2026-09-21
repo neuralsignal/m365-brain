@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.5](https://github.com/neuralsignal/m365-brain/compare/v1.2.4...v1.2.5) (2026-09-21)
+
+
+### Bug Fixes
+
+* replace N+1 DB query patterns in worker and admin state ([#361](https://github.com/neuralsignal/m365-brain/issues/361)) ([#368](https://github.com/neuralsignal/m365-brain/issues/368)) ([2ee15d3](https://github.com/neuralsignal/m365-brain/commit/2ee15d352969ecac6e78f1de4ebbeccea82cc09c))
+
 ## [1.2.4](https://github.com/neuralsignal/m365-brain/compare/v1.2.3...v1.2.4) (2026-09-09)
 
 
