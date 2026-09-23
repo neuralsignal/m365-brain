@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -115,6 +118,7 @@ class DeviceCodeAuth:
         if "user_code" not in flow:
             _fail(f"Failed to initiate device flow: {json.dumps(flow, indent=2)}")
         print(flow["message"])
+        _copy_to_clipboard(flow["user_code"])
         sys.stdout.flush()
         with auth_transport_errors():
             return self._app.acquire_token_by_device_flow(flow)
@@ -128,13 +132,33 @@ class DeviceCodeAuth:
         return cache
 
     def _save_cache(self) -> None:
+        """Publish a complete owner-only cache, retaining dirty state on failure."""
         if self._cache.has_state_changed:
             cache_path = Path(self._config.token_cache_path)
             with _cache_io(cache_path):
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
-                fd = os.open(str(cache_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(self._cache.serialize())
+                staged_path: Path | None = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w",
+                        encoding="utf-8",
+                        dir=cache_path.parent,
+                        prefix=f".{cache_path.name}.",
+                        suffix=".tmp",
+                        delete=False,
+                    ) as staged:
+                        staged_path = Path(staged.name)
+                        os.fchmod(staged.fileno(), 0o600)
+                        staged.write(self._cache.serialize())
+                        staged.flush()
+                        os.fsync(staged.fileno())
+                    os.replace(staged_path, cache_path)
+                    staged_path = None
+                finally:
+                    if staged_path is not None:
+                        # MSAL serialize() clears this before any write succeeds.
+                        self._cache.has_state_changed = True
+                        staged_path.unlink(missing_ok=True)
 
     def _extract_token(self, result: dict) -> str:
         if "access_token" in result:
@@ -161,6 +185,28 @@ def _cache_io(path: Path) -> Iterator[None]:
         yield
     except OSError as exc:
         raise TokenCacheError(f"token cache {path}: {exc}") from exc
+
+
+def _copy_to_clipboard(text: str) -> None:
+    """Put the device code on the clipboard so the user only has to paste.
+
+    Convenience only: a missing or failing clipboard tool must not break a
+    login that is otherwise fine, so it says so and carries on. Gated on a tty
+    so a test run or a piped daemon never overwrites the real clipboard.
+    """
+    if not sys.stdout.isatty():
+        return
+    for tool in (["pbcopy"], ["clip.exe"], ["wl-copy"], ["xclip", "-selection", "clipboard"]):
+        if shutil.which(tool[0]) is None:
+            continue
+        try:
+            subprocess.run(tool, input=text.encode(), check=True)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"(could not copy the code to the clipboard via {tool[0]}: {exc})")
+            return
+        print(f"(code {text} copied to clipboard)")
+        return
+    print("(no clipboard tool found -- copy the code by hand)")
 
 
 def _fail(message: str) -> None:

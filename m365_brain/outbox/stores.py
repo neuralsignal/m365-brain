@@ -96,7 +96,7 @@ class IntentStore(Protocol):
     def receipt(self, uuid: str) -> DispatchReceipt | None: ...
 
     def dispatched_receipts(self) -> Iterator[DispatchReceipt]:
-        """Every receipt with outcome `dispatched` -- what reconciliation walks."""
+        """Dispatched receipts in this store's scope, for reconciliation."""
         ...
 
     def archived_intent(self, uuid: str) -> IntentEnvelope | None:

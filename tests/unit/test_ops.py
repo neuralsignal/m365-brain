@@ -8,7 +8,7 @@ config.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -572,6 +572,26 @@ class TestTriagePredicates:
 
 
 class TestTriage:
+    @pytest.mark.parametrize("sent_offset", [-3600, 0, 3600])
+    def test_only_a_sent_sibling_at_or_after_receipt_answers_the_message(self, backend, sent_offset):
+        received = NOW - timedelta(days=1)
+        corpus = loaded(
+            backend,
+            [
+                message("follow-up", "New question", "Inbox", "ongoing", received.isoformat(), "owner@example.com"),
+                message(
+                    "previous-reply",
+                    "Reply",
+                    "SentItems",
+                    "ongoing",
+                    (received + timedelta(seconds=sent_offset)).isoformat(),
+                    "alice@example.com",
+                ),
+            ],
+        )
+        result = triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+        assert [item.entity.key for item in result] == (["follow-up"] if sent_offset < 0 else [])
+
     @pytest.fixture()
     def corpus(self, backend):
         return loaded(

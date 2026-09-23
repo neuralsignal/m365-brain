@@ -19,3 +19,8 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+## TL;DR section
+
+End every reply with a `## TL;DR` section: one or two lines carrying the decision — the
+verdict, the recommendation, or what the reader now has to decide. Not a recap of the work.

@@ -72,7 +72,8 @@ to see what yours are called.
     m365-brain --config "$M365_BRAIN_CONFIG" ops triage --timeframe 7d --json
 
 Lists messages in the configured inbox folder, within the timeframe, with no
-sent message sharing their conversation, and not already recorded as rejected.
+sent message at or after them in the same conversation, and not already recorded
+as rejected. An older sent reply does not hide a new inbound follow-up.
 
 The categories come from `ops.triage.fields` — seven of them, all required and
 none defaulted, because the vocabulary inside a note belongs to whoever writes

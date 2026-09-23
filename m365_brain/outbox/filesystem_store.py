@@ -119,12 +119,13 @@ class FilesystemIntentStore:
         return None
 
     def dispatched_receipts(self) -> Iterator[DispatchReceipt]:
+        """Dispatched receipts whose kind belongs to this store's outbox selection."""
         root = self._paths.meta(self._paths.vault.layout.processed)
         for key in sorted(self._storage.list_files(root)):
             if not key.endswith(RECEIPT_SUFFIX):
                 continue
             receipt = DispatchReceipt.model_validate(json.loads(self._storage.read_file(key)))
-            if receipt.outcome == "dispatched":
+            if receipt.outcome == "dispatched" and receipt.kind in self._outbox_names:
                 yield receipt
 
     def archived_intent(self, uuid: str) -> IntentEnvelope | None:

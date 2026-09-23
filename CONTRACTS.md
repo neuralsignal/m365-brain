@@ -67,6 +67,8 @@ being read, not a policy the config owns.
 `conversation_id` and `message_id` are **two identifier spaces and both are read**: a reply is
 paired with the message it answers by conversation, while an intent's `in_reply_to` names a single
 message. Comparing one against the other is not a near miss — it is a clause that cannot fire.
+A sent sibling answers an incoming message only when its timestamp is at or after
+that message. An older sent sibling must not hide a newer inbound follow-up.
 
 `ops.tiers.interaction_sources` carries the same kind of name and the same hazard. Every
 `entity_type`, `party_from` and `timestamp` in it is a statement about what the corpus contains, so
@@ -564,6 +566,12 @@ The seam set. One implementation each today, each shipping an in-memory fake (AD
 payload kind: the two coincide in every shipped config and nothing enforces that they must, and a
 release into the wrong directory would re-dispatch the intent under another outbox's authority.
 
+`FilesystemIntentStore.dispatched_receipts()` filters the shared archive by the
+store's selected outbox kinds. `outbox list --outbox NAME` and
+`outbox reconcile --outbox NAME` apply that selection to dispatched receipts.
+UUID lookups remain global for idempotency; the in-flight list reports global
+unresolved claims because their outbox is not carried in a receipt yet.
+
 `StorageBackend` today: `write_file(path, content)`, `read_file(path)`, `file_exists(path)`,
 `list_files(prefix)`, `delete_file(path)`, `write_bytes(path, content)`. All paths are relative to
 the backend root.
@@ -691,7 +699,11 @@ apply is traceable to a named config key, tabulated in
 10. **No module exceeds 300 lines, and no module lacks a test file.** Both are checked, and the
     checker is itself tested against planted violations. *(Present.)*
 11. **A local storage path may not escape its root.** Path traversal is rejected in the local
-    backend; the MSAL token cache is written `0600`. *(Present.)*
+    backend. Device-code cache saves write a unique same-directory temporary file
+    with mode `0600`, flush and fsync it, then atomically replace the destination.
+    Existing destination permissions are replaced by `0600`. A failed save
+    preserves the previous cache and restores dirty state for retry; only its own
+    temporary file is removed. *(Present.)*
 12. **A hook that raises is logged and the cycle completes.** The single deliberate exception to
     fail-loud, scoped to consumer-supplied code so one consumer's bug cannot wedge extraction —
     and it still degrades the cycle's verdict, so nothing about the outcome claims success.

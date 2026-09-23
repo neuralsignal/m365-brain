@@ -75,7 +75,7 @@ def list_intents(ctx: click.Context, only: str | None, as_json: bool) -> None:
     config = require_config(ctx)
     outboxes = require_section(config.outboxes, "outboxes")
     names = _names(config, only)
-    store = _store(config, tuple(sorted(outboxes.definitions)))
+    store = _store(config, names)
 
     rows = [
         {"uuid": uuid, "outbox": name, "authority": outboxes.definitions[name].authority, "status": "pending"}

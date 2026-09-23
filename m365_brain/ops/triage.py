@@ -2,7 +2,7 @@
 
 The rule is four clauses and every one of them is checkable: a message needs
 attention when it arrived inside the window the caller asked for, sits in the
-inbox folder, has no sibling in a sent folder sharing its conversation id, and
+inbox folder, has no sent sibling at or after it in the same conversation, and
 is not already recorded as rejected.
 
 Two fields from the script this replaces are **gone**, and their absence is the
@@ -139,7 +139,12 @@ def triage(
         _message(backend, entity, fields) for entity in indexed_entities(backend, fields.entity_type, page_size)
     ]
 
-    answered = {message.conversation_id for message in messages if message.folder in config.sent_folders}
+    last_sent: dict[str, datetime] = {}
+    for message in messages:
+        if message.folder in config.sent_folders:
+            previous = last_sent.get(message.conversation_id)
+            if previous is None or message.received_at > previous:
+                last_sent[message.conversation_id] = message.received_at
     declined = rejected_references(store)
 
     return [
@@ -155,7 +160,7 @@ def triage(
         for message in messages
         if message.folder == config.inbox_folder
         and message.received_at >= since
-        and message.conversation_id not in answered
+        and (message.conversation_id not in last_sent or message.received_at > last_sent[message.conversation_id])
         and message.message_id not in declined
     ]
 

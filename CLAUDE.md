@@ -290,3 +290,8 @@ The `m365_admin/` package is a Reflex SPA for managing sync settings, user prefe
 - **`Killing worker-0` warning during dev** — Granian (Reflex's ASGI server) killed the worker when `handle_callback()` blocked the event loop with synchronous MSAL + SQLite calls. Fixed: blocking calls are now wrapped in `asyncio.to_thread()`. If this warning reappears, check for new synchronous I/O added to event handlers.
 - **State inheritance** — `PreferencesState`, `AdminState`, `SyncState` all inherit from `AuthState` so they share auth vars. Reflex merges substates; `on_load` handlers from parent and child both fire.
 - **`DATABASE_URL` must be set** — `rxconfig.py` reads it at import time (before `config_loader`). Falls back to `sqlite:///state/web.db` for tests. Production must set the env var explicitly.
+
+## TL;DR section
+
+End every reply with a `## TL;DR` section: one or two lines carrying the decision — the
+verdict, the recommendation, or what the reader now has to decide. Not a recap of the work.
