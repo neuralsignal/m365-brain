@@ -59,7 +59,7 @@ def _clients(config: Config) -> Iterator[dict[str, GraphClient]]:
     opened: dict[str, GraphClient] = {}
     try:
         for name in wanted:
-            opened[name] = GraphClient(config.graph, profiles.provider(name))
+            opened[name] = GraphClient(config.graph, profiles.provider(name), prefer_immutable_ids=True)
         yield opened
     finally:
         for client in opened.values():

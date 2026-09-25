@@ -41,6 +41,7 @@ def _client(config: Config, profile: str) -> GraphClient:
     return GraphClient(
         config.graph,
         AuthProfiles(config.auth.profiles or {}, config.graph.timeout_seconds).provider(profile),
+        prefer_immutable_ids=False,
     )
 
 

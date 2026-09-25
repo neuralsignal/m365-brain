@@ -79,7 +79,7 @@ class TestOneDriveExtractor:
             json=onedrive_response,
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
 
@@ -117,7 +117,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         existing_state = {"delta_link": delta_url}
         state, count = onedrive.run(client, local_storage, existing_state, onedrive_config, onedrive_ctx)
@@ -139,7 +139,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 0
@@ -162,7 +162,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         existing_state = {"file_paths": {"file-to-remove": recorded}}
 
         state, count = onedrive.run(client, local_storage, existing_state, onedrive_config, onedrive_ctx)
@@ -207,7 +207,7 @@ class TestOneDriveExtractor:
             content=b"fake docx bytes",
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         with patch(
             "m365_brain.m365.extractors._file_helpers.convert_document",
@@ -244,7 +244,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 1
@@ -275,7 +275,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 0
@@ -304,7 +304,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 0
@@ -317,7 +317,7 @@ class TestOneDriveExtractor:
             json={"value": [], "@odata.deltaLink": "https://delta?token=empty"},
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 0
@@ -346,7 +346,7 @@ class TestOneDriveExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
 
@@ -392,7 +392,7 @@ class TestRemovalRoundTrip:
         httpx_mock.add_response(url=cycle_1, json={"value": [removed_item], "@odata.deltaLink": cycle_2})
         httpx_mock.add_response(url=cycle_2, json={"value": [removed_item], "@odata.deltaLink": cycle_2})
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, onedrive_ctx)
         assert count == 1
@@ -424,7 +424,7 @@ class TestNonDefaultLayout:
     ):
         httpx_mock.add_response(url=re.compile(r".*/me/drive/root/delta.*"), json=onedrive_response)
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         state, count = onedrive.run(client, local_storage, {}, onedrive_config, odd_ctx)
 
         assert count == 2

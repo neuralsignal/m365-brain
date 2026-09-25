@@ -47,9 +47,19 @@ def token_provider():
 
 @pytest.fixture()
 def client(graph_config, token_provider):
-    c = GraphClient(graph_config, token_provider)
+    c = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
     yield c
     c.close()
+
+
+class TestImmutableIds:
+    @pytest.mark.parametrize("prefer", [True, False])
+    def test_prefer_header_follows_the_flag(self, httpx_mock: HTTPXMock, graph_config, token_provider, prefer):
+        httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me/messages", method="POST", json={"id": "AAkALg"})
+        with GraphClient(graph_config, token_provider, prefer_immutable_ids=prefer) as c:
+            c.post("/me/messages", {"subject": "hi"})
+        sent = httpx_mock.get_requests()[0].headers.get("Prefer")
+        assert sent == ('IdType="ImmutableId"' if prefer else None)
 
 
 class TestGet:
@@ -78,7 +88,7 @@ class TestGet:
             call_count += 1
             return f"token-{call_count}"
 
-        c = GraphClient(graph_config, token_provider)
+        c = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
 
         httpx_mock.add_response(
             url=f"{GRAPH_BASE_URL}/me",
@@ -470,7 +480,7 @@ class TestExtractGraphError:
             text=pii_body,
         )
 
-        c = GraphClient(graph_config, lambda: "test-token")
+        c = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         with pytest.raises(GraphApiError, match="HTTP 401"):
             c.get("/me", params=None)
         c.close()
@@ -603,7 +613,7 @@ class TestFriendlyErrors:
         httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", status_code=401)
         httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", status_code=401, text=body)
 
-        c = GraphClient(graph_config, lambda: "expired-token")
+        c = GraphClient(graph_config, lambda: "expired-token", prefer_immutable_ids=False)
         with pytest.raises(GraphApiError, match="Hint:.*auth login") as exc_info:
             c.get("/me", params=None)
         assert "InvalidAuthenticationToken" in str(exc_info.value)
@@ -679,20 +689,20 @@ class TestSanitizeLogUrl:
 
 class TestContextManager:
     def test_enter_returns_self(self, graph_config, token_provider):
-        client = GraphClient(graph_config, token_provider)
+        client = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
         result = client.__enter__()
         assert result is client
         client.close()
 
     def test_exit_closes_client(self, graph_config, token_provider):
-        client = GraphClient(graph_config, token_provider)
+        client = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
         client._client = MagicMock(spec=httpx.Client)
         client.__exit__(None, None, None)
         client._client.close.assert_called_once()
 
     def test_with_statement(self, graph_config, token_provider, httpx_mock: HTTPXMock):
         httpx_mock.add_response(url=f"{GRAPH_BASE_URL}/me", json={"ok": True})
-        with GraphClient(graph_config, token_provider) as client:
+        with GraphClient(graph_config, token_provider, prefer_immutable_ids=False) as client:
             result = client.get("/me", params=None)
             assert result["ok"] is True
 
@@ -709,7 +719,7 @@ class TestTransportErrorRetry:
                 raise httpx.ConnectError("connection refused")
             return httpx.Response(200, json={"ok": True})
 
-        client = GraphClient(graph_config, token_provider)
+        client = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
         monkeypatch.setattr(client._client, "request", mock_get)
         result = client.get("/me", params=None)
         assert result["ok"] is True
@@ -722,7 +732,7 @@ class TestTransportErrorRetry:
         def always_fail(*args, **kwargs):
             raise httpx.ConnectError("connection refused")
 
-        client = GraphClient(graph_config, token_provider)
+        client = GraphClient(graph_config, token_provider, prefer_immutable_ids=False)
         monkeypatch.setattr(client._client, "request", always_fail)
         with pytest.raises(httpx.ConnectError, match="connection refused"):
             client.get("/me", params=None)
@@ -744,7 +754,7 @@ class TestMaxRetriesExhausted:
             max_retry_after_seconds=300.0,
             error_message_max_length=200,
         )
-        client = GraphClient(config, token_provider)
+        client = GraphClient(config, token_provider, prefer_immutable_ids=False)
 
         # Return 401 on the single attempt — attempt==0 triggers silent continue,
         # loop ends, falls through to line 237
@@ -890,7 +900,7 @@ class TestTokenTransportErrorRetry:
                 raise AuthTransportError("ConnectionError: getaddrinfo failed")
             return "test-token-abc"
 
-        client = GraphClient(graph_config, flaky_token)
+        client = GraphClient(graph_config, flaky_token, prefer_immutable_ids=False)
         assert client.get("/me", params=None)["ok"] is True
         assert calls == 2
         client.close()
@@ -905,7 +915,7 @@ class TestTokenTransportErrorRetry:
             calls += 1
             raise AuthTransportError("ConnectionError: getaddrinfo failed")
 
-        client = GraphClient(graph_config, dead_idp)
+        client = GraphClient(graph_config, dead_idp, prefer_immutable_ids=False)
         with pytest.raises(AuthTransportError, match="getaddrinfo failed"):
             client.get("/me", params=None)
 
@@ -926,7 +936,7 @@ class TestTokenTransportErrorRetry:
             calls += 1
             raise TokenRefreshError("No refresh token available for user 'u1'")
 
-        client = GraphClient(graph_config, no_refresh_token)
+        client = GraphClient(graph_config, no_refresh_token, prefer_immutable_ids=False)
         with pytest.raises(TokenRefreshError, match="No refresh token"):
             client.get("/me", params=None)
 

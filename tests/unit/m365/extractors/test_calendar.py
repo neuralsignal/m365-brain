@@ -56,7 +56,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -77,7 +77,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -94,7 +94,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
         assert count == 0
@@ -127,7 +127,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
         assert count == 1
@@ -148,7 +148,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -169,7 +169,7 @@ class TestCalendarExtractor:
             event["lastModifiedDateTime"] = "2026-03-20T10:00:00Z"
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         # First sync — writes all events
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
@@ -194,7 +194,7 @@ class TestCalendarExtractor:
             event["lastModifiedDateTime"] = "2026-03-20T10:00:00Z"
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         # First sync
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
@@ -221,7 +221,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -247,7 +247,7 @@ class TestCalendarExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -283,7 +283,7 @@ class TestCalendarExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
         assert count == 1
@@ -315,7 +315,7 @@ class TestCalendarExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
         assert count == 1
@@ -349,7 +349,7 @@ class TestCalendarExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -387,7 +387,7 @@ class TestCalendarExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -408,7 +408,7 @@ class TestCalendarExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json={"value": []})
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         calendar.run(client, storage, {}, config, ctx)
 
@@ -570,7 +570,7 @@ class TestSyncSkipsInvalidEvents:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -616,7 +616,7 @@ class TestSyncSkipsInvalidEvents:
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = calendar.run(client, storage, {}, calendar_config, ctx)
 
@@ -695,7 +695,7 @@ class TestCancelledEventRemoval:
     def test_cancelled_event_deletes_its_file_and_recancelling_is_a_noop(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, calendar_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         inbox = ctx.paths.inbox_root("calendar")
 
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=_cancellable_event(False))
@@ -726,7 +726,7 @@ class TestOddLayoutGoldenPaths:
     ):
         """Golden keys under a layout that shares no name with the conventional one."""
         httpx_mock.add_response(url=re.compile(r".*/me/calendarView.*"), json=calendar_response)
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _state, count = calendar.run(client, local_storage, {}, calendar_config, odd_ctx)
 

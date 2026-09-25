@@ -238,7 +238,7 @@ def _run(name: str, config, httpx_mock: HTTPXMock, tmp_path) -> tuple[BinarySpy,
     recorder = ChangeRecorder()
     storage = RecordingStorage(spy, recorder)
     ctx = build_context(config, storage, recorder)
-    client = GraphClient(config.graph, lambda: "test-token")
+    client = GraphClient(config.graph, lambda: "test-token", prefer_immutable_ids=False)
     try:
         run_one(config, client, storage, ctx, {}, name)
     finally:
@@ -317,7 +317,7 @@ def test_a_second_run_does_not_duplicate_or_reset_rows(httpx_mock: HTTPXMock, tm
     recorder = ChangeRecorder()
     storage = RecordingStorage(spy, recorder)
     ctx = build_context(config, storage, recorder)
-    client = GraphClient(config.graph, lambda: "test-token")
+    client = GraphClient(config.graph, lambda: "test-token", prefer_immutable_ids=False)
     try:
         run_one(config, client, storage, ctx, {}, "email")
         catalog = _open_catalog(config)

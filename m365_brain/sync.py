@@ -119,7 +119,7 @@ def run_extractors(
     """
     total_items = 0
     ctx = build_context(config, storage, ChangeRecorder())
-    with GraphClient(config.graph, token_provider) as client:
+    with GraphClient(config.graph, token_provider, prefer_immutable_ids=False) as client:
         for ext_name in names:
             if ext_name not in EXTRACTORS:
                 log.warning("sync.unknown_extractor", name=ext_name)

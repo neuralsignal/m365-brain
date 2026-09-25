@@ -249,7 +249,7 @@ def _run(name: str, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths):
         removal=RemovalHandler(storage=storage, paths=vault_paths),
         recorder=recorder,
     )
-    client = GraphClient(graph_config, lambda: "test-token")
+    client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
     try:
         module.run(client, storage, {}, config, ctx)
     finally:

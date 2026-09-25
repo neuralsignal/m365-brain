@@ -106,7 +106,7 @@ class TestSharePointExtractor:
             json=delta_response,
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -128,7 +128,7 @@ class TestSharePointExtractor:
             json={"value": []},
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
         assert count == 0
@@ -159,7 +159,7 @@ class TestSharePointExtractor:
             json={"value": [], "@odata.deltaLink": "https://delta?token=d2"},
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -191,7 +191,7 @@ class TestSharePointExtractor:
         )
 
         existing_state = {"file_paths_s1_d1": {"rm-1": recorded}}
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, existing_state, sharepoint_config, sharepoint_ctx)
 
@@ -223,7 +223,7 @@ class TestSharePointExtractor:
             json=delta_response,
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -245,7 +245,7 @@ class TestSharePointExtractor:
             status_code=403,
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
         assert count == 0
@@ -268,7 +268,7 @@ class TestSharePointExtractor:
                 status_code=500,
             )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -295,7 +295,7 @@ class TestSharePointExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -322,7 +322,7 @@ class TestSharePointExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -349,7 +349,7 @@ class TestSharePointExtractor:
             },
         )
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, sharepoint_ctx)
 
@@ -381,7 +381,7 @@ class TestNonDefaultLayout:
         httpx_mock.add_response(url=re.compile(r".*/sites/site-2/drives.*"), json={"value": []})
         httpx_mock.add_response(url=re.compile(r".*/drives/drive-1/root/delta.*"), json=delta_response)
 
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         state, count = sharepoint.run(client, local_storage, {}, sharepoint_config, odd_ctx)
 
         assert count == 1
