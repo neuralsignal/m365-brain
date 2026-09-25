@@ -49,7 +49,7 @@ def dry_run(config: Config, token_provider: Callable[[], str], names: list[str])
     log.info("cli.dry_run_start")
 
     # Step 1: Validate token by calling /me
-    with GraphClient(config.graph, token_provider) as client:
+    with GraphClient(config.graph, token_provider, prefer_immutable_ids=False) as client:
         try:
             me = client.get("/me?$select=displayName,userPrincipalName", params=None)
             display_name = me.get("displayName", "unknown")

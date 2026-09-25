@@ -43,7 +43,7 @@ def write_config():
 
 @pytest.fixture()
 def client(write_config):
-    with GraphClient(write_config, lambda: "test-token") as graph:
+    with GraphClient(write_config, lambda: "test-token", prefer_immutable_ids=False) as graph:
         yield graph
 
 
@@ -193,7 +193,10 @@ def test_raises_after_exhausting_retries_on_503(write_config):
         return_value=httpx.Response(503, json={"error": {"code": "ServiceUnavailable", "message": "down"}})
     )
 
-    with GraphClient(write_config, lambda: "test-token") as client, pytest.raises(GraphApiError) as excinfo:
+    with (
+        GraphClient(write_config, lambda: "test-token", prefer_immutable_ids=False) as client,
+        pytest.raises(GraphApiError) as excinfo,
+    ):
         client.post("/me/messages", {"subject": "hi"})
 
     assert excinfo.value.status_code == 503
@@ -222,7 +225,7 @@ def test_401_refreshes_the_token_once_then_succeeds(write_config):
         ]
     )
 
-    with GraphClient(write_config, lambda: next(tokens)) as client:
+    with GraphClient(write_config, lambda: next(tokens), prefer_immutable_ids=False) as client:
         response = client.post("/me/messages", {"subject": "hi"})
 
     assert response.json()["id"] == "AAMk"
@@ -236,7 +239,10 @@ def test_second_401_raises(write_config):
         return_value=httpx.Response(401, json={"error": {"code": "InvalidAuthenticationToken", "message": "bad"}})
     )
 
-    with GraphClient(write_config, lambda: "stale") as client, pytest.raises(GraphApiError) as excinfo:
+    with (
+        GraphClient(write_config, lambda: "stale", prefer_immutable_ids=False) as client,
+        pytest.raises(GraphApiError) as excinfo,
+    ):
         client.post("/me/messages", {"subject": "hi"})
 
     assert excinfo.value.status_code == 401

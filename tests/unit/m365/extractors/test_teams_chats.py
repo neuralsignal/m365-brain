@@ -126,7 +126,7 @@ def storage(tmp_path):
 
 @pytest.fixture()
 def client(graph_config):
-    c = GraphClient(graph_config, lambda: "test-token")
+    c = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
     yield c
     c.close()
 
@@ -369,7 +369,7 @@ class TestIncremental:
             max_retry_after_seconds=300.0,
             error_message_max_length=200,
         )
-        client = GraphClient(config_one_page, lambda: "test-token")
+        client = GraphClient(config_one_page, lambda: "test-token", prefer_immutable_ids=False)
         try:
             state = self._seed(httpx_mock, storage, client, ctx)
             assert state["watermarks"][CHAT_ID] == "2026-06-10T09:00:00Z"

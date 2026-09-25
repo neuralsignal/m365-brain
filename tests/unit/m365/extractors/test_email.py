@@ -63,7 +63,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, email_config, ctx)
 
@@ -100,7 +100,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         existing_state = {"delta_link_me_Inbox": delta_url}
         state, count = email.run(client, storage, existing_state, email_config, ctx)
@@ -116,7 +116,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 0
@@ -131,7 +131,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         email.run(client, storage, {}, email_config, ctx)
 
@@ -180,7 +180,7 @@ class TestEmailExtractor:
             )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, config, ctx)
         assert count == 2
@@ -196,7 +196,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         events: list[dict] = []
 
@@ -220,7 +220,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         events: list[dict] = []
 
@@ -260,7 +260,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 1
@@ -296,7 +296,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         email.run(client, storage, {}, email_config, ctx)
 
@@ -333,7 +333,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 1
@@ -356,7 +356,7 @@ class TestEmailExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 0
@@ -393,7 +393,7 @@ class TestEmailRemoval:
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
             json={"value": [self._LIVE], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?token=c1"},
         )
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, local_storage, {}, email_config, ctx)
 
@@ -445,7 +445,7 @@ class TestOddVaultLayout:
             url=re.compile(r".*/me/mailFolders/Inbox/messages/delta.*"),
             json=email_response,
         )
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, local_storage, {}, email_config, odd_ctx)
 
@@ -514,7 +514,7 @@ class TestDeltaPageBudget:
             },
         )
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, self._small_config(), ctx)
 
@@ -538,7 +538,9 @@ class TestDeltaPageBudget:
         storage = LocalBackend(str(tmp_path / "vault"))
         # graph.max_pages is what caps the page walk now that $top carries the
         # item budget, so one page is what makes this round a capped one.
-        client = GraphClient(graph_config.model_copy(update={"max_pages": 1}), lambda: "test-token")
+        client = GraphClient(
+            graph_config.model_copy(update={"max_pages": 1}), lambda: "test-token", prefer_immutable_ids=False
+        )
 
         state, count = email.run(client, storage, {}, self._small_config(), ctx)
         assert count == 2
@@ -636,7 +638,7 @@ class TestDeltaTopCarriesTheItemBudget:
         folder = _GraphDeltaFolder(available=200, server_page_size=10)
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         config = self._config(40)
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         email.run(client, LocalBackend(str(tmp_path / "vault")), {}, config, ctx)
 
@@ -649,7 +651,7 @@ class TestDeltaTopCarriesTheItemBudget:
         folder = _GraphDeltaFolder(available=200, server_page_size=10)
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, self._config(40), ctx)
 
@@ -663,7 +665,7 @@ class TestDeltaTopCarriesTheItemBudget:
         folder = _GraphDeltaFolder(available=25, server_page_size=10)
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, self._config(40), ctx)
 
@@ -686,7 +688,7 @@ class TestInitialDeltaSendsNoFilter:
     def test_initial_round_sends_no_filter(self, tmp_path, graph_config, ctx, email_config):
         folder = _GraphDeltaFolder(available=5, server_page_size=10)
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         email.run(client, LocalBackend(str(tmp_path / "vault")), {}, email_config, ctx)
 
@@ -699,7 +701,7 @@ class TestInitialDeltaSendsNoFilter:
         folder = _AgedDeltaFolder(received="2019-01-04T09:00:00Z")
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, email_config, ctx)
 
@@ -769,7 +771,7 @@ class TestEmailDedup:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, email_config, ctx)
 
@@ -793,7 +795,7 @@ class TestEmailDedup:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 2
@@ -813,7 +815,7 @@ class TestEmailDedup:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 2
@@ -885,7 +887,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -922,7 +924,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -960,7 +962,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -997,7 +999,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -1022,7 +1024,7 @@ class TestEmailAttachments:
         # No mock for attachments endpoint — if called, httpx_mock would raise
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, email_config, ctx)
         assert count == 1
@@ -1055,7 +1057,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -1097,7 +1099,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -1134,7 +1136,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         warnings: list[dict] = []
 
@@ -1202,7 +1204,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         with patch.object(_attachment_helpers, "convert_document", return_value="# Converted\n\nbody") as mock_conv:
             _, count = email.run(client, storage, {}, config, ctx)
@@ -1259,7 +1261,7 @@ class TestEmailAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _, count = email.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -1315,7 +1317,7 @@ class TestSharedMailbox:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, config, ctx)
 
@@ -1359,7 +1361,7 @@ class TestSharedMailbox:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, config, ctx)
 
@@ -1415,7 +1417,7 @@ class TestSharedMailbox:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = email.run(client, storage, {}, config, ctx)
 

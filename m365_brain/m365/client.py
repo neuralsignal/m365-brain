@@ -26,6 +26,7 @@ from m365_brain.m365.pagination import fetch_delta, fetch_pages
 log = structlog.get_logger()
 
 JSON_CONTENT_TYPE = "application/json"
+IMMUTABLE_ID_PREFERENCE = 'IdType="ImmutableId"'
 
 
 class GraphClient:
@@ -35,9 +36,19 @@ class GraphClient:
         self,
         graph_config: GraphConfig,
         token_provider: Callable[[], str],
+        *,
+        prefer_immutable_ids: bool,
     ) -> None:
+        """`prefer_immutable_ids` asks Graph for Outlook ids that survive a folder move.
+
+        A default id changes when a message moves, and sending a draft moves it
+        from Drafts to Sent Items. An outbox that stored the default id reads
+        every sent draft as a 404, i.e. as deleted. The sync keeps default ids
+        because the vault is keyed on them.
+        """
         self._token_provider = token_provider
         self._config = graph_config
+        self._prefer_immutable_ids = prefer_immutable_ids
         self._retry_policy = RetryPolicy(
             config=graph_config,
             backoff_base_seconds=graph_config.backoff_base_ms / 1000.0,
@@ -66,6 +77,8 @@ class GraphClient:
             headers["Content-Type"] = content_type
         if if_match is not None:
             headers["If-Match"] = if_match
+        if self._prefer_immutable_ids:
+            headers["Prefer"] = IMMUTABLE_ID_PREFERENCE
         return headers
 
     def _execute_with_retry(

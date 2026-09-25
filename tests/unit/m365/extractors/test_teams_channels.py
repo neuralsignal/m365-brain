@@ -66,7 +66,7 @@ def storage(tmp_path):
 
 @pytest.fixture()
 def client(graph_config):
-    c = GraphClient(graph_config, lambda: "test-token")
+    c = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
     yield c
     c.close()
 

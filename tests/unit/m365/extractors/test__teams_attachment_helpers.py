@@ -102,7 +102,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-1",
             "attachments": [
@@ -131,7 +131,7 @@ class TestDownloadMessageAttachments:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-2",
             "attachments": [
@@ -162,7 +162,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-3",
             "attachments": [{"contentType": "reference", "name": "huge.zip", "contentUrl": content_url}],
@@ -193,7 +193,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-4",
             "attachments": [{"contentType": "reference", "name": "nourl.pdf", "contentUrl": content_url}],
@@ -209,7 +209,7 @@ class TestDownloadMessageAttachments:
 
     def test_missing_name_or_url_skipped(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-5",
             "attachments": [
@@ -228,7 +228,7 @@ class TestDownloadMessageAttachments:
 
     def test_unsupported_content_type_skipped(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-6",
             "attachments": [
@@ -267,7 +267,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-7",
             "attachments": [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}],
@@ -312,7 +312,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-7",
             "attachments": [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}],
@@ -351,7 +351,7 @@ class TestDownloadMessageAttachments:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-8",
             "attachments": [{"contentType": "reference", "name": "../../escape.txt", "contentUrl": content_url}],
@@ -384,7 +384,7 @@ class TestDownloadMessageAttachments:
             )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-9",
             "attachments": [{"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}],
@@ -436,7 +436,7 @@ class TestPermanentFailureSkipList:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         failed: dict[str, str] = {}
 
         warnings: list[dict] = []
@@ -468,7 +468,7 @@ class TestPermanentFailureSkipList:
     ) -> None:
         content_url = "https://contoso-my.sharepoint.com/personal/other_user/secret.pdf"
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         failed = {"msg-denied:secret.pdf": "http_403"}
 
         warnings: list[dict] = []
@@ -498,7 +498,7 @@ class TestPermanentFailureSkipList:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {
             "id": "msg-fwd",
             "attachments": [
@@ -547,7 +547,7 @@ class TestDownloadInlineImages:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
@@ -576,7 +576,7 @@ class TestDownloadInlineImages:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
@@ -602,7 +602,7 @@ class TestDownloadInlineImages:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {"id": msg_id}
 
         hosted_map = hosted_content.download_inline_images(
@@ -630,7 +630,7 @@ class TestDownloadInlineImages:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         hosted_map = hosted_content.download_inline_images(
             _ctx(client, storage, vault_paths, settings=_config()),
@@ -662,7 +662,7 @@ class TestDownloadInlineImages:
 
     def test_no_msg_id_returns_empty(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         assert (
             hosted_content.download_inline_images(
                 _ctx(client, storage, vault_paths, settings=_config()), "/chats/19:abc/messages/x", {}
@@ -734,7 +734,7 @@ class TestDownloadInlineImages:
 class TestSkipsEmpty:
     def test_no_attachments_returns_empty(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         assert (
             helpers.download_message_attachments(
                 _ctx(
@@ -753,7 +753,7 @@ class TestSkipsEmpty:
 
     def test_no_msg_id_returns_empty(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         msg = {"attachments": [{"contentType": "reference", "name": "x", "contentUrl": "https://y"}]}
         assert (
             helpers.download_message_attachments(
@@ -833,7 +833,7 @@ class TestIsDownloadable:
 class TestResolveAttachment:
     def test_skipped_content_type_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {"contentType": "messageReference", "name": "n", "contentUrl": "https://x"}
         result = helpers._resolve_attachment(
             _ctx(client, storage, vault_paths, settings=_config(), converters_config={}, failed_attachments={}),
@@ -846,7 +846,7 @@ class TestResolveAttachment:
 
     def test_missing_fields_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {"contentType": "reference", "name": "", "contentUrl": "https://x"}
         result = helpers._resolve_attachment(
             _ctx(client, storage, vault_paths, settings=_config(), converters_config={}, failed_attachments={}),
@@ -859,7 +859,7 @@ class TestResolveAttachment:
 
     def test_unsupported_type_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {
             "contentType": "application/vnd.microsoft.card.codesnippet",
             "name": "snippet",
@@ -876,7 +876,7 @@ class TestResolveAttachment:
 
     def test_previously_failed_returns_none(self, tmp_path, graph_config, vault_paths) -> None:
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": "https://x"}
         failed = {"msg-1:spec.pdf": "http_403"}
         result = helpers._resolve_attachment(
@@ -898,7 +898,7 @@ class TestResolveAttachment:
         httpx_mock.add_response(url=re.compile(r"https://contoso\.sharepoint\.com/dl.*"), content=b"%PDF fake")
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {"contentType": "reference", "name": "spec.pdf", "contentUrl": content_url}
         result = helpers._resolve_attachment(
             _ctx(client, storage, vault_paths, settings=_config(), converters_config={}, failed_attachments={}),
@@ -924,7 +924,7 @@ class TestResolveAttachment:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         att = {"contentType": "reference", "name": "secret.pdf", "contentUrl": content_url}
         failed: dict[str, str] = {}
         result = helpers._resolve_attachment(

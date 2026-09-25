@@ -54,7 +54,7 @@ def client():
         max_retry_after_seconds=300.0,
         error_message_max_length=200,
     )
-    with GraphClient(config, lambda: "test-token") as graph:
+    with GraphClient(config, lambda: "test-token", prefer_immutable_ids=False) as graph:
         yield graph
 
 

@@ -62,7 +62,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, directory_config, ctx)
 
@@ -100,7 +100,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         existing_state = {"delta_link": delta_url}
         state, count = directory.run(client, storage, existing_state, directory_config, ctx)
@@ -116,7 +116,7 @@ class TestDirectoryExtractor:
         httpx_mock.add_response(url=re.compile(r".*/users/delta.*"), json=directory_response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         directory.run(client, storage, {}, directory_config, ctx)
 
@@ -130,7 +130,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, directory_config, ctx)
         assert count == 0
@@ -151,7 +151,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, directory_config, ctx)
         assert count == 0
@@ -190,7 +190,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -229,7 +229,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, config, ctx)
         assert count == 2
@@ -244,7 +244,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         directory.run(client, storage, {}, directory_config, ctx)
 
@@ -304,7 +304,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -351,7 +351,7 @@ class TestDirectoryExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = directory.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -487,7 +487,7 @@ class TestOrgRelations:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         directory.run(client, storage, {}, config, ctx)
 
         content = storage.read_file(storage.list_files(ctx.paths.inbox_root("directory"))[0])
@@ -534,7 +534,7 @@ class TestOrgRelations:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         directory.run(client, storage, {}, config, ctx)
 
         content = storage.read_file(storage.list_files(ctx.paths.inbox_root("directory"))[0])
@@ -578,7 +578,7 @@ class TestDisabledAccountRemoval:
             url=re.compile(r".*/users/delta.*"),
             json={"value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=nf"},
         )
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         directory.run(client, local_storage, {}, directory_config, ctx)
 
@@ -590,7 +590,7 @@ class TestDisabledAccountRemoval:
     def test_disabling_an_account_deletes_its_page_and_repeating_it_is_a_noop(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         inbox = ctx.paths.inbox_root("directory")
 
         httpx_mock.add_response(url=re.compile(r".*/users/delta.*"), json=_flippable_user(True, "t1"))
@@ -623,7 +623,7 @@ class TestHardDeletedUserRemoval:
     def test_removed_user_is_deleted_from_vault(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         inbox = ctx.paths.inbox_root("directory")
         delta1 = "https://graph.microsoft.com/v1.0/users/delta?$deltatoken=t1"
 
@@ -662,7 +662,7 @@ class TestHardDeletedUserRemoval:
     def test_removed_user_without_id_uses_empty_string(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         httpx_mock.add_response(
             url=re.compile(r".*/users/delta.*"),
@@ -680,7 +680,7 @@ class TestHardDeletedUserRemoval:
         self, httpx_mock: HTTPXMock, local_storage, graph_config, directory_config, ctx
     ):
         """A @removed entry must not pass through _extract_user_data or _write_user."""
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         httpx_mock.add_response(
             url=re.compile(r".*/users/delta.*"),
@@ -712,7 +712,7 @@ class TestOddLayoutGoldenPaths:
     ):
         """Golden keys under a layout that shares no name with the conventional one."""
         httpx_mock.add_response(url=re.compile(r".*/users/delta.*"), json=directory_response)
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _state, count = directory.run(client, local_storage, {}, directory_config, odd_ctx)
 

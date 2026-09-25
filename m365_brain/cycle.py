@@ -200,7 +200,7 @@ def _run_extractors(runtime: Runtime, units: Sequence[Unit]) -> list[ExtractorCh
     if not units:
         return []
     results: list[ExtractorChanges] = []
-    with GraphClient(runtime.config.graph, runtime.token_provider) as client:
+    with GraphClient(runtime.config.graph, runtime.token_provider, prefer_immutable_ids=False) as client:
         for unit in units:
             results.append(_run_extractor(runtime, client, unit))
     return results

@@ -61,7 +61,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, contacts_config, ctx)
 
@@ -99,7 +99,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         existing_state = {"delta_link": delta_url}
         state, count = contacts.run(client, storage, existing_state, contacts_config, ctx)
@@ -115,7 +115,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, contacts_config, ctx)
         assert count == 0
@@ -136,7 +136,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, contacts_config, ctx)
         assert count == 0
@@ -151,7 +151,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         contacts.run(client, storage, {}, contacts_config, ctx)
 
@@ -178,7 +178,7 @@ class TestContactsExtractor:
         httpx_mock.add_response(url=re.compile(r".*/me/contacts/delta.*"), json=contacts_response)
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         contacts.run(client, storage, {}, contacts_config, ctx)
 
@@ -228,7 +228,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, config, ctx)
         assert count == 2
@@ -268,7 +268,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -335,7 +335,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, config, ctx)
         assert count == 1
@@ -365,7 +365,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         state, count = contacts.run(client, storage, {}, config, ctx)
         assert count == 0
@@ -391,7 +391,7 @@ class TestContactsExtractor:
         )
 
         storage = LocalBackend(str(tmp_path / "vault"))
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         contacts.run(client, storage, {}, contacts_config, ctx)
 
@@ -464,7 +464,7 @@ class TestOddLayoutGoldenPaths:
     ):
         """Golden keys under a layout that shares no name with the conventional one."""
         httpx_mock.add_response(url=re.compile(r".*/me/contacts/delta.*"), json=contacts_response)
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         _state, count = contacts.run(client, local_storage, {}, contacts_config, odd_ctx)
 
@@ -483,7 +483,7 @@ class TestRemovedContactDeletion:
     def test_removed_contact_is_deleted_from_vault(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
         inbox = ctx.paths.inbox_root("contacts")
         delta1 = "https://graph.microsoft.com/v1.0/me/contacts/delta?$deltatoken=t1"
 
@@ -522,7 +522,7 @@ class TestRemovedContactDeletion:
     def test_removed_contact_without_id_uses_empty_string(
         self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
     ):
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         httpx_mock.add_response(
             url=re.compile(r".*/me/contacts/delta.*"),
@@ -540,7 +540,7 @@ class TestRemovedContactDeletion:
         self, httpx_mock: HTTPXMock, local_storage, graph_config, contacts_config, ctx
     ):
         """A @removed entry must not pass through _extract_contact_data or _write_contact."""
-        client = GraphClient(graph_config, lambda: "test-token")
+        client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
         httpx_mock.add_response(
             url=re.compile(r".*/me/contacts/delta.*"),
@@ -618,7 +618,7 @@ class TestNoBoundIsDerivedFromAGuess:
                 is_optional=page >= 3,
             )
 
-        client = GraphClient(three_pages, lambda: "test-token")
+        client = GraphClient(three_pages, lambda: "test-token", prefer_immutable_ids=False)
         state, count = contacts.run(
             client,
             LocalBackend(str(tmp_path / "vault")),

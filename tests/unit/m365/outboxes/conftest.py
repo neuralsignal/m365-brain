@@ -59,7 +59,7 @@ def graph_config():
 
 @pytest.fixture()
 def client(graph_config):
-    with GraphClient(graph_config, lambda: TOKEN) as graph:
+    with GraphClient(graph_config, lambda: TOKEN, prefer_immutable_ids=False) as graph:
         yield graph
 
 
