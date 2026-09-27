@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import msal
 import pytest
 
 from m365_brain.config import AuthConfig
-from m365_brain.m365.auth.device_code import DeviceCodeAuth
+from m365_brain.m365.auth.device_code import DeviceCodeAuth, _copy_to_clipboard
 from m365_brain.m365.errors import AuthRequiredError, TokenCacheError
 
 # `graph.timeout_seconds` in production; MSAL is mocked in every test here.
@@ -285,3 +286,54 @@ class TestCacheIoFailure:
     def test_cached_token_fails_the_same_way(self, unwritable):
         with pytest.raises(TokenCacheError):
             unwritable.cached_token()
+
+
+class TestCopyToClipboard:
+    """Cover the tty-gated clipboard helper (lines 199-209)."""
+
+    @staticmethod
+    def _enable_tty(monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    @patch(
+        "m365_brain.m365.auth.device_code.shutil.which",
+        side_effect=lambda t: "/usr/bin/pbcopy" if t == "pbcopy" else None,
+    )
+    @patch("m365_brain.m365.auth.device_code.subprocess.run")
+    def test_clipboard_tool_succeeds(self, mock_run, mock_which, monkeypatch, capsys):
+        self._enable_tty(monkeypatch)
+        _copy_to_clipboard("ABC123")
+        mock_run.assert_called_once()
+        assert "copied to clipboard" in capsys.readouterr().out
+
+    @patch(
+        "m365_brain.m365.auth.device_code.shutil.which",
+        side_effect=lambda t: "/usr/bin/pbcopy" if t == "pbcopy" else None,
+    )
+    @patch("m365_brain.m365.auth.device_code.subprocess.run", side_effect=OSError("broken pipe"))
+    def test_clipboard_tool_oserror(self, mock_run, mock_which, monkeypatch, capsys):
+        self._enable_tty(monkeypatch)
+        _copy_to_clipboard("ABC123")
+        assert "could not copy" in capsys.readouterr().out
+
+    @patch(
+        "m365_brain.m365.auth.device_code.shutil.which",
+        side_effect=lambda t: "/usr/bin/pbcopy" if t == "pbcopy" else None,
+    )
+    @patch("m365_brain.m365.auth.device_code.subprocess.run", side_effect=subprocess.CalledProcessError(1, "pbcopy"))
+    def test_clipboard_tool_called_process_error(self, mock_run, mock_which, monkeypatch, capsys):
+        self._enable_tty(monkeypatch)
+        _copy_to_clipboard("ABC123")
+        assert "could not copy" in capsys.readouterr().out
+
+    @patch("m365_brain.m365.auth.device_code.shutil.which", return_value=None)
+    def test_no_clipboard_tool_found(self, mock_which, monkeypatch, capsys):
+        self._enable_tty(monkeypatch)
+        _copy_to_clipboard("ABC123")
+        assert "no clipboard tool found" in capsys.readouterr().out
+
+    def test_not_a_tty_returns_immediately(self, capsys):
+        _copy_to_clipboard("ABC123")
+        assert capsys.readouterr().out == ""
