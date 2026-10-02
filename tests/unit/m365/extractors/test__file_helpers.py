@@ -11,13 +11,12 @@ from hypothesis import strategies as st
 
 from m365_brain.m365.client import GraphApiError
 from m365_brain.m365.extractors._file_helpers import (
-    FileProcessingConfig,
-    FileProcessingContext,
     build_storage_path,
     extract_parent_path,
     process_drive_item,
     should_eager_convert,
 )
+from m365_brain.m365.extractors._file_types import FileProcessingConfig, FileProcessingContext
 from m365_brain.m365.frontmatter.files import CONTENT_STATUS, OneDriveFileData, build_onedrive_frontmatter
 from m365_brain.m365.markdown_writer import loads_markdown
 from m365_brain.model import CatalogEntry

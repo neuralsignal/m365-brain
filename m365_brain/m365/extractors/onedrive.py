@@ -12,11 +12,11 @@ import structlog
 
 from m365_brain.config import OneDriveExtractorConfig
 from m365_brain.m365.client import GraphClient
-from m365_brain.m365.extractors._file_helpers import (
+from m365_brain.m365.extractors._file_helpers import iterate_drive_items
+from m365_brain.m365.extractors._file_types import (
     DriveItemMetadata,
     FileProcessingConfig,
     FileProcessingContext,
-    iterate_drive_items,
 )
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.frontmatter import OneDriveFileData, build_onedrive_frontmatter

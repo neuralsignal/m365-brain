@@ -11,7 +11,6 @@ Inline-image (hostedContents) download lives in
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -21,6 +20,7 @@ import structlog
 
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors._attachment_helpers import convert_and_store
+from m365_brain.m365.extractors._teams_attachment_download import resolve_reference_bytes
 from m365_brain.storage.exceptions import StorageError
 
 if TYPE_CHECKING:
@@ -68,41 +68,9 @@ class AttachmentRef:
     converted_path: str | None
 
 
-def _encode_share_url(url: str) -> str:
-    """Encode a sharing URL for the ``/shares/{encoded}/driveItem`` endpoint."""
-    return "u!" + base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
-
-
 def _sanitize_filename(name: str) -> str:
     """Strip directory components from an attachment name."""
     return Path(name).name
-
-
-def _resolve_reference_bytes(
-    client: GraphClient,
-    content_url: str,
-    max_bytes: int,
-) -> bytes | None:
-    """Resolve a Teams ``reference`` attachment to bytes via the shares endpoint.
-
-    Returns ``None`` when the file exceeds ``max_bytes`` or lacks a download URL;
-    in both cases a warning is emitted by the caller.
-    """
-    encoded = _encode_share_url(content_url)
-    drive_item = client.get(f"/shares/{encoded}/driveItem", params=None)
-    size = drive_item.get("size", 0)
-    if size and size > max_bytes:
-        log.warning(
-            "teams_attachments.attachment_too_large",
-            size_bytes=size,
-            max_bytes=max_bytes,
-        )
-        return None
-    download_url = drive_item.get("@microsoft.graph.downloadUrl")
-    if not download_url:
-        log.warning("teams_attachments.attachment_no_download_url")
-        return None
-    return client.get_bytes(download_url)
 
 
 def _is_downloadable(att: dict, msg_id: str, failed_attachments: dict[str, str]) -> bool:
@@ -194,7 +162,7 @@ def _download_attachment_bytes(
     Records permanent failures (403/404) into ``failed_attachments``.
     """
     try:
-        return _resolve_reference_bytes(client, content_url, max_bytes)
+        return resolve_reference_bytes(client, content_url, max_bytes)
     except GraphApiError as exc:
         failure_key = f"{msg_id}:{name}"
         if exc.status_code in _PERMANENT_FAILURE_STATUSES:
