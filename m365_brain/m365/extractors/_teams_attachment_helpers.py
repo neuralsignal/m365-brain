@@ -137,16 +137,15 @@ def downloadable_attachment_names(msg: dict, failed_attachments: dict[str, str])
     }
 
 
-def _resolve_attachment(
-    ctx: TeamsContext,
+def _classify_attachment(
     att: dict,
     msg_id: str,
-    max_bytes: int,
-) -> AttachmentRef | None:
-    """Resolve a single attachment to an ``AttachmentRef``, or ``None`` on skip/failure.
+    failed_attachments: dict[str, str],
+) -> tuple[str, str] | None:
+    """Validate an attachment for download eligibility.
 
-    Mutates ``ctx.failed_attachments`` when a download fails with a permanent
-    HTTP status (403/404).
+    Returns (sanitized_name, content_url) if the attachment is a downloadable
+    reference, or None if it should be skipped.
     """
     ctype = att.get("contentType") or ""
     if ctype in _SKIPPED_CONTENT_TYPES:
@@ -170,20 +169,36 @@ def _resolve_attachment(
         return None
 
     failure_key = f"{msg_id}:{name}"
-    if failure_key in ctx.failed_attachments:
+    if failure_key in failed_attachments:
         log.debug(
             "teams_attachments.attachment_skipped_previously_failed",
             msg_id=msg_id,
             name=name,
-            error=ctx.failed_attachments[failure_key],
+            error=failed_attachments[failure_key],
         )
         return None
 
+    return name, content_url
+
+
+def _download_attachment_bytes(
+    client: GraphClient,
+    content_url: str,
+    max_bytes: int,
+    msg_id: str,
+    name: str,
+    failed_attachments: dict[str, str],
+) -> bytes | None:
+    """Download attachment bytes via the shares endpoint with error handling.
+
+    Records permanent failures (403/404) into ``failed_attachments``.
+    """
     try:
-        data = _resolve_reference_bytes(ctx.client, content_url, max_bytes)
+        return _resolve_reference_bytes(client, content_url, max_bytes)
     except GraphApiError as exc:
+        failure_key = f"{msg_id}:{name}"
         if exc.status_code in _PERMANENT_FAILURE_STATUSES:
-            ctx.failed_attachments[failure_key] = f"http_{exc.status_code}"
+            failed_attachments[failure_key] = f"http_{exc.status_code}"
             log.warning(
                 "teams_attachments.attachment_download_failed_permanently",
                 msg_id=msg_id,
@@ -207,11 +222,15 @@ def _resolve_attachment(
             error=str(exc),
         )
         return None
-    if data is None:
-        return None
 
-    # Two forms of the same path: the conversation-relative one is what the
-    # renderer links to from messages.md, the absolute one is the storage key.
+
+def _store_attachment(
+    ctx: TeamsContext,
+    data: bytes,
+    msg_id: str,
+    name: str,
+) -> AttachmentRef | None:
+    """Write attachment bytes to storage and optionally convert to markdown."""
     relative_path = ctx.paths.attachment("", msg_id, name)
     try:
         ctx.storage.write_bytes(ctx.paths.attachment(ctx.conv_dir, msg_id, name), data)
@@ -238,6 +257,29 @@ def _resolve_attachment(
             converted_rel = None
 
     return AttachmentRef(name=name, relative_path=relative_path, converted_path=converted_rel)
+
+
+def _resolve_attachment(
+    ctx: TeamsContext,
+    att: dict,
+    msg_id: str,
+    max_bytes: int,
+) -> AttachmentRef | None:
+    """Resolve a single attachment to an ``AttachmentRef``, or ``None`` on skip/failure.
+
+    Mutates ``ctx.failed_attachments`` when a download fails with a permanent
+    HTTP status (403/404).
+    """
+    classified = _classify_attachment(att, msg_id, ctx.failed_attachments)
+    if classified is None:
+        return None
+    name, content_url = classified
+
+    data = _download_attachment_bytes(ctx.client, content_url, max_bytes, msg_id, name, ctx.failed_attachments)
+    if data is None:
+        return None
+
+    return _store_attachment(ctx, data, msg_id, name)
 
 
 def download_message_attachments(

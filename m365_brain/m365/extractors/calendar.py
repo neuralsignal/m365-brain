@@ -109,6 +109,37 @@ def _normalize_graph_datetime(dt_str: str) -> str:
     return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _build_attendee_detail(att_name: str, att_email: str, att_status: str) -> dict[str, str] | None:
+    """Build an attendee detail dict from individual fields, or None if empty."""
+    if not att_name and not att_email:
+        return None
+    detail: dict[str, str] = {}
+    if att_name:
+        detail["name"] = att_name
+    if att_email:
+        detail["email"] = att_email
+    if att_status:
+        detail["status"] = att_status
+    return detail
+
+
+def _extract_attendees(event: dict) -> tuple[list[str], list[dict]]:
+    """Extract attendee names and structured details from a calendar event."""
+    names: list[str] = []
+    details: list[dict] = []
+    for att in event.get("attendees", []):
+        email_obj = att.get("emailAddress", {})
+        att_name = email_obj.get("name", "")
+        att_email = email_obj.get("address", "")
+        att_status = att.get("status", {}).get("response", "")
+        if att_name:
+            names.append(att_name)
+        detail = _build_attendee_detail(att_name, att_email, att_status)
+        if detail:
+            details.append(detail)
+    return names, details
+
+
 def _extract_event_data(event: dict) -> tuple[CalendarEventData, str] | None:
     """Extract and normalize calendar event data. Returns None if invalid.
 
@@ -136,24 +167,7 @@ def _extract_event_data(event: dict) -> tuple[CalendarEventData, str] | None:
     organizer_name = organizer_obj.get("name", "")
     organizer_email = organizer_obj.get("address", "")
 
-    attendees: list[str] = []
-    attendee_details: list[dict] = []
-    for att in event.get("attendees", []):
-        email_obj = att.get("emailAddress", {})
-        att_name = email_obj.get("name", "")
-        att_email = email_obj.get("address", "")
-        att_status = att.get("status", {}).get("response", "")
-        if att_name:
-            attendees.append(att_name)
-        if att_name or att_email:
-            detail: dict[str, str] = {}
-            if att_name:
-                detail["name"] = att_name
-            if att_email:
-                detail["email"] = att_email
-            if att_status:
-                detail["status"] = att_status
-            attendee_details.append(detail)
+    attendees, attendee_details = _extract_attendees(event)
 
     body_obj = event.get("body", {})
     content_type = body_obj.get("contentType", "text")

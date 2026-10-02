@@ -45,24 +45,23 @@ def _reject(reason: str) -> ClassifiedPath:
     return ClassifiedPath(PathClassification.REJECT, None, None, reason)
 
 
-def classify_outbox_path(path: str, layout: VaultLayout) -> ClassifiedPath:
-    """Classify one storage key under the outbox root. Never raises.
+def _normalise_and_validate(path: str) -> ClassifiedPath | list[str]:
+    """Validate and normalise an outbox path input.
 
-    The archive segment names, like the outbox root itself, come from `layout`
-    -- a hardcoded `_processed` here would silently stop skipping the archive
-    the moment an operator renamed it, and the runner would re-dispatch every
-    intent it had ever sent.
+    Returns the non-empty path segments on success, or a REJECT verdict.
     """
     if not isinstance(path, str) or not path:
         return _reject("empty or non-string path")
     if path.startswith("/") or path.startswith("\\"):
         return _reject(f"path is absolute: {path!r}")
-
     normalised = path.replace("\\", "/")
     if ".." in normalised.split("/"):
         return _reject(f"path contains traversal: {path!r}")
+    return [segment for segment in normalised.split("/") if segment]
 
-    segments = [segment for segment in normalised.split("/") if segment]
+
+def _classify_segments(segments: list[str], path: str, layout: VaultLayout) -> ClassifiedPath:
+    """Classify already-validated path segments against the vault layout."""
     root = layout.outbox
     if not segments or segments[0] != root:
         return _reject(f"path is not under {root!r}: {path!r}")
@@ -85,3 +84,17 @@ def classify_outbox_path(path: str, layout: VaultLayout) -> ClassifiedPath:
         return _reject(f"intent filename is empty: {path!r}")
 
     return ClassifiedPath(PathClassification.VALID, outbox_name, uuid, None)
+
+
+def classify_outbox_path(path: str, layout: VaultLayout) -> ClassifiedPath:
+    """Classify one storage key under the outbox root. Never raises.
+
+    The archive segment names, like the outbox root itself, come from `layout`
+    -- a hardcoded `_processed` here would silently stop skipping the archive
+    the moment an operator renamed it, and the runner would re-dispatch every
+    intent it had ever sent.
+    """
+    result = _normalise_and_validate(path)
+    if isinstance(result, ClassifiedPath):
+        return result
+    return _classify_segments(result, path, layout)

@@ -215,6 +215,99 @@ def _advance_chat_watermark(
         state["watermarks"][chat_id] = max(watermark or "", new_watermark)
 
 
+def _resolve_watermark(
+    state: dict,
+    chat_id: str,
+    storage: StorageBackend,
+    store_path: str,
+) -> str | None:
+    """Return the per-chat watermark, resetting it if the store file is missing."""
+    watermark = state["watermarks"].get(chat_id)
+    if watermark and not storage.file_exists(store_path):
+        log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
+        return None
+    return watermark
+
+
+def _fetch_chat_raw(
+    ctx: TeamsContext,
+    chat_id: str,
+    params: dict,
+    max_pages: int,
+) -> tuple[list[dict], bool] | None:
+    """Fetch raw messages for a chat. Returns (messages, truncated) or None on error."""
+    try:
+        return ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
+    except GraphApiError as exc:
+        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
+        return None
+    except httpx.TransportError as exc:
+        log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
+        return None
+
+
+def _should_advance_watermark(
+    watermark: str | None,
+    truncated: bool,
+    chat_id: str,
+    max_pages: int,
+) -> bool:
+    """Decide whether the watermark should advance after a fetch."""
+    if watermark is not None and truncated:
+        log.error(
+            "teams_chats.incremental_truncated",
+            chat_id=chat_id,
+            max_pages=max_pages,
+            detail="watermark not advanced; the next cycle retries the window",
+        )
+    return watermark is None or not truncated
+
+
+def _load_and_ingest_messages(
+    ctx: TeamsContext,
+    store_path: str,
+    fetched_raw: list[dict],
+    chat_id: str,
+) -> tuple[dict[str, StoredMessage], list[StoredMessage]] | None:
+    """Load the message store and ingest fetched messages. Returns (store, ingested) or None."""
+    try:
+        store = load_store(ctx.storage, store_path)
+    except MessageStoreError as exc:
+        log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
+        return None
+
+    try:
+        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
+    except httpx.TransportError as exc:
+        log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
+        return None
+
+    return store, fetched
+
+
+def _save_and_write_chat(
+    ctx: TeamsContext,
+    chat: dict,
+    merged: dict[str, StoredMessage],
+    merged_ids: list[str],
+    store_path: str,
+    state: dict,
+    chat_id: str,
+    path_map: dict[str, str],
+) -> tuple[str, list[str]] | None:
+    """Persist the merged store and write the chat markdown if there are changes."""
+    if merged_ids or not ctx.storage.file_exists(store_path):
+        save_store(ctx.storage, store_path, merged)
+
+    if not merged_ids:
+        return None
+    file_path = _write_chat(
+        ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths
+    )
+    path_map[chat_id] = file_path
+    return file_path, merged_ids
+
+
 def _process_chat(
     ctx: TeamsContext,
     chat: dict,
@@ -230,62 +323,30 @@ def _process_chat(
     chat_id = chat.get("id", "")
     store_path = ctx.paths.conversation_store(ctx.conv_dir)
 
-    watermark = state["watermarks"].get(chat_id)
-    if watermark and not ctx.storage.file_exists(store_path):
-        log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
-        watermark = None
-
+    watermark = _resolve_watermark(state, chat_id, ctx.storage, store_path)
     params, max_pages = _build_chat_fetch_params(watermark, config, ctx.client.max_pages)
 
-    try:
-        fetched_raw, truncated = ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
-    except GraphApiError as exc:
-        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
+    result = _fetch_chat_raw(ctx, chat_id, params, max_pages)
+    if result is None:
         return None
-    except httpx.TransportError as exc:
-        log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
-        return None
+    fetched_raw, truncated = result
 
     if watermark is None:
         state["history_complete"][chat_id] = not truncated
-
     if not fetched_raw:
         return None
 
-    advance = watermark is None or not truncated
-    if watermark is not None and truncated:
-        log.error(
-            "teams_chats.incremental_truncated",
-            chat_id=chat_id,
-            max_pages=max_pages,
-            detail="watermark not advanced; the next cycle retries the window",
-        )
+    advance = _should_advance_watermark(watermark, truncated, chat_id, max_pages)
 
-    try:
-        store = load_store(ctx.storage, store_path)
-    except MessageStoreError as exc:
-        log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
+    loaded = _load_and_ingest_messages(ctx, store_path, fetched_raw, chat_id)
+    if loaded is None:
         return None
-
-    try:
-        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
-    except httpx.TransportError as exc:
-        log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
-        return None
+    store, fetched = loaded
 
     merged, merged_ids = merge_messages(store, fetched)
     _advance_chat_watermark(state, chat_id, fetched_raw, watermark, advance)
 
-    if merged_ids or not ctx.storage.file_exists(store_path):
-        save_store(ctx.storage, store_path, merged)
-
-    if not merged_ids:
-        return None
-    file_path = _write_chat(
-        ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths
-    )
-    path_map[chat_id] = file_path
     # Recorded even though Graph offers chats no removal signal under delegated
     # permissions -- see CONTRACTS.md. The map is what a future signal, and
     # `vault purge` today, need in order to find the file again.
-    return file_path, merged_ids
+    return _save_and_write_chat(ctx, chat, merged, merged_ids, store_path, state, chat_id, path_map)

@@ -100,6 +100,116 @@ def should_eager_convert(file_name: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(lower_name, pattern.lower()) for pattern in patterns)
 
 
+def _resolve_download_url(ctx: FileProcessingContext, item: dict, file_name: str) -> str:
+    """Resolve a download URL from a drive item, fetching individually if needed."""
+    download_url = item.get("@microsoft.graph.downloadUrl", "")
+    if download_url:
+        return download_url
+    item_id = item.get("id", "")
+    drive_id = item.get("parentReference", {}).get("driveId", "")
+    if item_id and drive_id:
+        try:
+            full_item = ctx.client.get(
+                f"/drives/{drive_id}/items/{item_id}",
+                params={"$select": "@microsoft.graph.downloadUrl"},
+            )
+            return full_item.get("@microsoft.graph.downloadUrl", "")
+        except GraphApiError as exc:
+            log.warning("file_helpers.item_fetch_failed", file=file_name, error=str(exc))
+    elif item_id:
+        log.warning("file_helpers.no_drive_id", file=file_name, item_id=item_id)
+    return ""
+
+
+def _write_stub(
+    ctx: FileProcessingContext,
+    storage_path: str,
+    frontmatter: dict,
+    file_name: str,
+    status: str,
+    body: str,
+) -> bool:
+    """Write a frontmatter stub with a content status and body text."""
+    frontmatter[CONTENT_STATUS] = status
+    ctx.storage.write_file(storage_path, dumps_markdown(frontmatter, body))
+    return True
+
+
+def _eager_convert_and_write(
+    ctx: FileProcessingContext,
+    item: dict,
+    storage_path: str,
+    frontmatter: dict,
+    file_name: str,
+    extension: str,
+) -> bool:
+    """Download, convert, and write an eagerly-converted drive item."""
+    file_size_bytes = item.get("size", 0)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    if file_size_mb > ctx.file_config.max_file_size_mb:
+        log.warning(
+            "file_helpers.file_too_large",
+            file=file_name,
+            size_mb=round(file_size_mb, 1),
+            limit_mb=ctx.file_config.max_file_size_mb,
+        )
+        return _write_stub(
+            ctx,
+            storage_path,
+            frontmatter,
+            file_name,
+            "error_too_large",
+            f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB.",
+        )
+
+    download_url = _resolve_download_url(ctx, item, file_name)
+    if not download_url:
+        log.warning("file_helpers.no_download_url", file=file_name)
+        return _write_stub(
+            ctx,
+            storage_path,
+            frontmatter,
+            file_name,
+            "error_no_download_url",
+            f"# {file_name}\n\nNo download URL available.",
+        )
+
+    try:
+        file_bytes = ctx.client.get_bytes(download_url)
+    except GraphApiError as exc:
+        log.error("file_helpers.download_failed", file=file_name, error=str(exc))
+        return _write_stub(
+            ctx,
+            storage_path,
+            frontmatter,
+            file_name,
+            "error_download",
+            f"# {file_name}\n\nDownload failed: {exc}",
+        )
+
+    suffix = extension if extension else ""
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        markdown_text = convert_document(
+            file_path=tmp_path,
+            converters_config=ctx.file_config.converters_config,
+        )
+        frontmatter[CONTENT_STATUS] = "converted"
+        body = f"# {file_name}\n\n{markdown_text}"
+    except (ImportError, ValueError, OSError) as exc:
+        log.error("file_helpers.conversion_failed", file=file_name, error=str(exc))
+        frontmatter[CONTENT_STATUS] = "error_conversion"
+        body = f"# {file_name}\n\nConversion failed: {exc}"
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    ctx.storage.write_file(storage_path, dumps_markdown(frontmatter, body))
+    return True
+
+
 def process_drive_item(
     ctx: FileProcessingContext,
     item: dict,
@@ -117,87 +227,7 @@ def process_drive_item(
     is_eager = should_eager_convert(file_name, ctx.file_config.eager_patterns)
 
     if is_convertible and is_eager:
-        # Pre-download size check using Graph metadata
-        file_size_bytes = item.get("size", 0)
-        file_size_mb = file_size_bytes / (1024 * 1024)
-        if file_size_mb > ctx.file_config.max_file_size_mb:
-            log.warning(
-                "file_helpers.file_too_large",
-                file=file_name,
-                size_mb=round(file_size_mb, 1),
-                limit_mb=ctx.file_config.max_file_size_mb,
-            )
-            frontmatter[CONTENT_STATUS] = "error_too_large"
-            body = f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB."
-            content = dumps_markdown(frontmatter, body)
-            ctx.storage.write_file(storage_path, content)
-            return True
-
-        download_url = item.get("@microsoft.graph.downloadUrl", "")
-        if not download_url:
-            # Delta responses often omit @microsoft.graph.downloadUrl.
-            # Fetch the item individually to get the download URL. The drive
-            # comes from the item itself: this helper serves SharePoint as well
-            # as OneDrive, and `/me/drive` would look a SharePoint item up in
-            # the signed-in user's own drive.
-            item_id = item.get("id", "")
-            drive_id = item.get("parentReference", {}).get("driveId", "")
-            if item_id and drive_id:
-                try:
-                    full_item = ctx.client.get(
-                        f"/drives/{drive_id}/items/{item_id}",
-                        params={
-                            "$select": "@microsoft.graph.downloadUrl",
-                        },
-                    )
-                    download_url = full_item.get("@microsoft.graph.downloadUrl", "")
-                except GraphApiError as exc:
-                    log.warning("file_helpers.item_fetch_failed", file=file_name, error=str(exc))
-            elif item_id:
-                # No drive to address: guessing one writes the wrong file.
-                log.warning("file_helpers.no_drive_id", file=file_name, item_id=item_id)
-
-        if not download_url:
-            log.warning("file_helpers.no_download_url", file=file_name)
-            frontmatter[CONTENT_STATUS] = "error_no_download_url"
-            body = f"# {file_name}\n\nNo download URL available."
-            content = dumps_markdown(frontmatter, body)
-            ctx.storage.write_file(storage_path, content)
-            return True
-
-        try:
-            file_bytes = ctx.client.get_bytes(download_url)
-        except GraphApiError as exc:
-            log.error("file_helpers.download_failed", file=file_name, error=str(exc))
-            frontmatter[CONTENT_STATUS] = "error_download"
-            body = f"# {file_name}\n\nDownload failed: {exc}"
-            content = dumps_markdown(frontmatter, body)
-            ctx.storage.write_file(storage_path, content)
-            return True
-
-        # Write to tempfile, convert, then clean up
-        suffix = extension if extension else ""
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-
-        try:
-            markdown_text = convert_document(
-                file_path=tmp_path,
-                converters_config=ctx.file_config.converters_config,
-            )
-            frontmatter[CONTENT_STATUS] = "converted"
-            body = f"# {file_name}\n\n{markdown_text}"
-        except (ImportError, ValueError, OSError) as exc:
-            log.error("file_helpers.conversion_failed", file=file_name, error=str(exc))
-            frontmatter[CONTENT_STATUS] = "error_conversion"
-            body = f"# {file_name}\n\nConversion failed: {exc}"
-        finally:
-            tmp_path.unlink(missing_ok=True)
-
-        content = dumps_markdown(frontmatter, body)
-        ctx.storage.write_file(storage_path, content)
-        return True
+        return _eager_convert_and_write(ctx, item, storage_path, frontmatter, file_name, extension)
 
     # Non-eager or non-convertible: write a metadata stub
     frontmatter[CONTENT_STATUS] = "pending" if is_convertible else "not_convertible"
