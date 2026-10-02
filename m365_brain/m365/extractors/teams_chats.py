@@ -26,22 +26,18 @@ import structlog
 
 from m365_brain.config import TeamsChatsExtractorConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
-from m365_brain.m365.extractors._message_renderer import render_chat_body
 from m365_brain.m365.extractors._message_store import (
     StoredMessage,
     load_store,
     merge_messages,
     save_store,
-    sort_key,
 )
+from m365_brain.m365.extractors._teams_chat_writer import chat_title_and_dir, write_chat
 from m365_brain.m365.extractors._teams_context import TeamsContext
 from m365_brain.m365.extractors._teams_ingest import GRAPH_PAGE_SIZE, is_etag_fresh, to_stored_message
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.extractors.errors import MessageStoreError
-from m365_brain.m365.frontmatter import TeamsChatData, build_teams_chat_frontmatter, participant_relations
-from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
 from m365_brain.storage.base import StorageBackend
-from m365_brain.vault.paths import VaultPaths
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
 
 log = structlog.get_logger()
@@ -89,7 +85,7 @@ def run(
         if chat.get("chatType") in _SKIPPED_CHAT_TYPES:
             log.debug("teams_chats.chat_skipped_unreadable", chat_id=chat.get("id", ""))
             continue
-        _, chat_dir, _ = _chat_title_and_dir(chat, ctx.paths)
+        _, chat_dir, _ = chat_title_and_dir(chat, ctx.paths, name)
         teams_ctx = TeamsContext(
             client=client,
             storage=storage,
@@ -109,63 +105,6 @@ def run(
     state["chats_written"] = written
     log.info("teams_chats.sync_complete", written=written, total=len(chats))
     return state, written
-
-
-def _chat_title_and_dir(chat: dict, paths: VaultPaths) -> tuple[str, str, list[str]]:
-    """Derive (title, chat_dir, participants) from a Graph chat object."""
-    topic = chat.get("topic") or ""
-    participants = [m.get("displayName", "") for m in chat.get("members", []) if m.get("displayName", "")]
-    title = topic if topic else ", ".join(sorted(participants)) if participants else "Chat"
-    chat_dir = paths.inbox_item(name, f"{slugify(title, 80)}_{short_hash(chat.get('id', ''), 6)}")
-    return title, chat_dir, participants
-
-
-def _write_chat(
-    storage: StorageBackend,
-    chat: dict,
-    store: dict[str, StoredMessage],
-    chat_dir: str,
-    history_complete: bool,
-    paths: VaultPaths,
-) -> str:
-    """Render the store and write messages.md. Returns the written path."""
-    title, _, participants = _chat_title_and_dir(chat, paths)
-    ordered = sorted(store.values(), key=sort_key)
-    last_message_time = ordered[-1].created if ordered else ""
-
-    data = TeamsChatData(
-        title=title,
-        conversation_id=chat.get("id", ""),
-        conversation_type=chat.get("chatType", "oneOnOne"),
-        participants=participants,
-        last_message_time=last_message_time,
-        message_count=len(store),
-        history_complete=history_complete,
-    )
-    fm = build_teams_chat_frontmatter(data)
-
-    body_parts = [f"# {title}\n"]
-    body_parts.append("## Observations\n")
-    body_parts.append(f"- [conversation_type] {data.conversation_type}")
-    body_parts.append(f"- [last_message_time] {last_message_time}")
-    body_parts.append(f"- [message_count] {len(store)}")
-
-    # Relation lines, not a joined observation: a participant is a counterparty
-    # `ops tiers` counts, and one string holding all of them is one counterparty.
-    # The 5-character slug filter that stood here dropped a short name silently.
-    relations = participant_relations(data)
-    if relations:
-        body_parts.append("\n## Relations\n")
-        body_parts.extend(relations)
-
-    body_parts.append("\n---\n")
-    body_parts.append("## Messages\n")
-    body_parts.append(render_chat_body(store))
-
-    file_path = paths.conversation_file(chat_dir)
-    storage.write_file(file_path, dumps_markdown(fm, "\n".join(body_parts)))
-    log.debug("teams_chats.wrote", title=title, messages=len(store))
-    return file_path
 
 
 def _build_chat_fetch_params(
@@ -215,6 +154,99 @@ def _advance_chat_watermark(
         state["watermarks"][chat_id] = max(watermark or "", new_watermark)
 
 
+def _resolve_watermark(
+    state: dict,
+    chat_id: str,
+    storage: StorageBackend,
+    store_path: str,
+) -> str | None:
+    """Return the per-chat watermark, resetting it if the store file is missing."""
+    watermark = state["watermarks"].get(chat_id)
+    if watermark and not storage.file_exists(store_path):
+        log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
+        return None
+    return watermark
+
+
+def _fetch_chat_raw(
+    ctx: TeamsContext,
+    chat_id: str,
+    params: dict,
+    max_pages: int,
+) -> tuple[list[dict], bool] | None:
+    """Fetch raw messages for a chat. Returns (messages, truncated) or None on error."""
+    try:
+        return ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
+    except GraphApiError as exc:
+        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
+        return None
+    except httpx.TransportError as exc:
+        log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
+        return None
+
+
+def _should_advance_watermark(
+    watermark: str | None,
+    truncated: bool,
+    chat_id: str,
+    max_pages: int,
+) -> bool:
+    """Decide whether the watermark should advance after a fetch."""
+    if watermark is not None and truncated:
+        log.error(
+            "teams_chats.incremental_truncated",
+            chat_id=chat_id,
+            max_pages=max_pages,
+            detail="watermark not advanced; the next cycle retries the window",
+        )
+    return watermark is None or not truncated
+
+
+def _load_and_ingest_messages(
+    ctx: TeamsContext,
+    store_path: str,
+    fetched_raw: list[dict],
+    chat_id: str,
+) -> tuple[dict[str, StoredMessage], list[StoredMessage]] | None:
+    """Load the message store and ingest fetched messages. Returns (store, ingested) or None."""
+    try:
+        store = load_store(ctx.storage, store_path)
+    except MessageStoreError as exc:
+        log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
+        return None
+
+    try:
+        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
+    except httpx.TransportError as exc:
+        log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
+        return None
+
+    return store, fetched
+
+
+def _save_and_write_chat(
+    ctx: TeamsContext,
+    chat: dict,
+    merged: dict[str, StoredMessage],
+    merged_ids: list[str],
+    store_path: str,
+    state: dict,
+    chat_id: str,
+    path_map: dict[str, str],
+) -> tuple[str, list[str]] | None:
+    """Persist the merged store and write the chat markdown if there are changes."""
+    if merged_ids or not ctx.storage.file_exists(store_path):
+        save_store(ctx.storage, store_path, merged)
+
+    if not merged_ids:
+        return None
+    file_path = write_chat(
+        ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths, name
+    )
+    path_map[chat_id] = file_path
+    return file_path, merged_ids
+
+
 def _process_chat(
     ctx: TeamsContext,
     chat: dict,
@@ -230,62 +262,30 @@ def _process_chat(
     chat_id = chat.get("id", "")
     store_path = ctx.paths.conversation_store(ctx.conv_dir)
 
-    watermark = state["watermarks"].get(chat_id)
-    if watermark and not ctx.storage.file_exists(store_path):
-        log.warning("teams_chats.store_missing_backfill", chat_id=chat_id)
-        watermark = None
-
+    watermark = _resolve_watermark(state, chat_id, ctx.storage, store_path)
     params, max_pages = _build_chat_fetch_params(watermark, config, ctx.client.max_pages)
 
-    try:
-        fetched_raw, truncated = ctx.client.get_pages(f"/me/chats/{chat_id}/messages", params, max_pages)
-    except GraphApiError as exc:
-        log.warning("teams_chats.fetch_failed", chat_id=chat_id, error=str(exc))
+    result = _fetch_chat_raw(ctx, chat_id, params, max_pages)
+    if result is None:
         return None
-    except httpx.TransportError as exc:
-        log.error("teams_chats.fetch_transport_error", chat_id=chat_id, error=str(exc))
-        return None
+    fetched_raw, truncated = result
 
     if watermark is None:
         state["history_complete"][chat_id] = not truncated
-
     if not fetched_raw:
         return None
 
-    advance = watermark is None or not truncated
-    if watermark is not None and truncated:
-        log.error(
-            "teams_chats.incremental_truncated",
-            chat_id=chat_id,
-            max_pages=max_pages,
-            detail="watermark not advanced; the next cycle retries the window",
-        )
+    advance = _should_advance_watermark(watermark, truncated, chat_id, max_pages)
 
-    try:
-        store = load_store(ctx.storage, store_path)
-    except MessageStoreError as exc:
-        log.error("teams_chats.store_corrupt", chat_id=chat_id, store=store_path, error=str(exc))
+    loaded = _load_and_ingest_messages(ctx, store_path, fetched_raw, chat_id)
+    if loaded is None:
         return None
-
-    try:
-        fetched = _ingest_chat_messages(ctx, store, fetched_raw, chat_id)
-    except httpx.TransportError as exc:
-        log.error("teams_chats.media_transport_error", chat_id=chat_id, error=str(exc))
-        return None
+    store, fetched = loaded
 
     merged, merged_ids = merge_messages(store, fetched)
     _advance_chat_watermark(state, chat_id, fetched_raw, watermark, advance)
 
-    if merged_ids or not ctx.storage.file_exists(store_path):
-        save_store(ctx.storage, store_path, merged)
-
-    if not merged_ids:
-        return None
-    file_path = _write_chat(
-        ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths
-    )
-    path_map[chat_id] = file_path
     # Recorded even though Graph offers chats no removal signal under delegated
     # permissions -- see CONTRACTS.md. The map is what a future signal, and
     # `vault purge` today, need in order to find the file again.
-    return file_path, merged_ids
+    return _save_and_write_chat(ctx, chat, merged, merged_ids, store_path, state, chat_id, path_map)

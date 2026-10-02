@@ -38,11 +38,15 @@ from m365_brain.parsers.text import file_checksum, slugify
 log = structlog.get_logger()
 
 
-def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -> SyncStats:
-    """Bring the index in line with the files under `config.roots`."""
-    started = time.monotonic()
-    indexed_before = backend.indexed_files()
+def _scan_roots(
+    config: IndexConfig,
+    indexed_before: dict,
+    full_rebuild: bool,
+) -> tuple[set[str], list[tuple[IndexRoot, Path, str]], int, int, int]:
+    """Walk every configured root and decide which files need (re-)parsing.
 
+    Returns (found_keys, to_parse, total, skipped, errors).
+    """
     found_keys: set[str] = set()
     to_parse: list[tuple[IndexRoot, Path, str]] = []
     total = 0
@@ -66,19 +70,18 @@ def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -
                     continue
             to_parse.append((root, path, key))
 
-    # Prune only within the roots this run actually walked. `--root` filters
-    # `config.roots`, so a scoped run scans one root while `indexed_before`
-    # still holds every key in the index -- and the set difference then deletes
-    # every entity of every root that was NOT selected. `index rebuild --root
-    # m365` silently removed 818 knowledge-root entities that way: an
-    # unscoped prune wearing a scoped flag, reported only as a `pruned=` count
-    # in a line that otherwise said the run succeeded.
-    walked = tuple(f"{root.name}/" for root in config.roots)
-    prunable = {key for key in indexed_before if key.startswith(walked)}
-    pruned = backend.delete_entities(sorted(prunable - found_keys))
-    owners = backend.permalink_owners()
+    return found_keys, to_parse, total, skipped, errors
 
+
+def _parse_and_upsert(
+    to_parse: list[tuple[IndexRoot, Path, str]],
+    config: IndexConfig,
+    backend: IndexBackend,
+    owners: dict[str, str],
+) -> tuple[int, int]:
+    """Parse files in batches and upsert into the backend. Returns (indexed, errors)."""
     indexed = 0
+    errors = 0
     batch: list[Entity] = []
     for root, path, _key in to_parse:
         entity = parse_markdown_file(path, root, config)
@@ -93,6 +96,29 @@ def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -
     if batch:
         backend.upsert_entities(batch)
         indexed += len(batch)
+    return indexed, errors
+
+
+def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -> SyncStats:
+    """Bring the index in line with the files under `config.roots`."""
+    started = time.monotonic()
+    indexed_before = backend.indexed_files()
+
+    found_keys, to_parse, total, skipped, scan_errors = _scan_roots(config, indexed_before, full_rebuild)
+
+    # Prune only within the roots this run actually walked. `--root` filters
+    # `config.roots`, so a scoped run scans one root while `indexed_before`
+    # still holds every key in the index -- and the set difference then deletes
+    # every entity of every root that was NOT selected. `index rebuild --root
+    # m365` silently removed 818 knowledge-root entities that way: an
+    # unscoped prune wearing a scoped flag, reported only as a `pruned=` count
+    # in a line that otherwise said the run succeeded.
+    walked = tuple(f"{root.name}/" for root in config.roots)
+    prunable = {key for key in indexed_before if key.startswith(walked)}
+    pruned = backend.delete_entities(sorted(prunable - found_keys))
+    owners = backend.permalink_owners()
+
+    indexed, parse_errors = _parse_and_upsert(to_parse, config, backend, owners)
 
     resolved = backend.resolve_relations()
     backend.rebuild_text_index()
@@ -103,7 +129,7 @@ def sync_index(config: IndexConfig, backend: IndexBackend, full_rebuild: bool) -
         skipped=skipped,
         pruned=pruned,
         resolved=resolved,
-        errors=errors,
+        errors=scan_errors + parse_errors,
         elapsed_seconds=round(time.monotonic() - started, 3),
     )
 
