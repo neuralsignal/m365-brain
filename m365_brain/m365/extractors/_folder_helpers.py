@@ -8,16 +8,10 @@ from m365_brain.m365.client import GraphApiError, GraphClient
 
 log = structlog.get_logger()
 
-# Graph API folder name → delta endpoint name mapping for well-known folders.
-# These can be used in place of a folder ID for both /me and /users/{address}.
-FOLDER_IDS = {
-    "Inbox": "Inbox",
-    "SentItems": "SentItems",
-    "Drafts": "Drafts",
-    "Archive": "Archive",
-    "DeletedItems": "DeletedItems",
-    "JunkEmail": "JunkEmail",
-}
+# Well-known folder names Graph accepts in place of a folder ID, for both /me and
+# /users/{address}. They are aliases, so they are resolved to the real ID: sync
+# state is keyed by ID, and `Inbox` and a discovered `Posteingang` are one folder.
+WELL_KNOWN_FOLDERS = frozenset({"Inbox", "SentItems", "Drafts", "Archive", "DeletedItems", "JunkEmail"})
 
 # Display names to skip during folder auto-discovery.
 #
@@ -64,42 +58,29 @@ AUTO_DISCOVER_SKIP_DISPLAY = {
 }
 
 
-def resolve_folder_id(
-    client: GraphClient,
-    endpoint_base: str,
-    address: str,
-    folder: str,
-    folder_cache: dict[tuple[str, str], str],
-) -> str:
-    """Resolve a folder display name to its Graph API folder ID for a mailbox.
+def resolve_folder_id(client: GraphClient, endpoint_base: str, address: str, folder: str) -> str:
+    """Resolve a configured folder name to its Graph folder ID for a mailbox.
 
-    Well-known folders (Inbox, SentItems, etc.) use predefined IDs. Custom
-    folders are resolved via Graph API query and cached in the caller-owned
-    ``folder_cache``, keyed by (address, folder).
+    A well-known alias (Inbox, SentItems, ...) is fetched by name; any other name
+    is looked up by display name among the root's children.
     """
-    if folder in FOLDER_IDS:
-        return FOLDER_IDS[folder]
-
-    cache_key = (address, folder)
-    if cache_key in folder_cache:
-        return folder_cache[cache_key]
-
-    safe_folder = folder.replace("'", "''")
-    data = client.get(
-        f"{endpoint_base}/mailFolders",
-        {"$filter": f"displayName eq '{safe_folder}'", "$select": "id,displayName", "$top": "1"},
-    )
-    folders = data.get("value", [])
-
-    if not folders:
-        raise GraphApiError(
-            f"Mail folder not found: '{folder}' (mailbox={address}). "
-            "Check the folder name in Outlook (case-sensitive, top-level folders only).",
-            None,
+    if folder in WELL_KNOWN_FOLDERS:
+        folder_id = client.get(f"{endpoint_base}/mailFolders/{folder}", {"$select": "id,displayName"})["id"]
+    else:
+        safe_folder = folder.replace("'", "''")
+        data = client.get(
+            f"{endpoint_base}/mailFolders",
+            {"$filter": f"displayName eq '{safe_folder}'", "$select": "id,displayName", "$top": "1"},
         )
+        folders = data.get("value", [])
+        if not folders:
+            raise GraphApiError(
+                f"Mail folder not found: '{folder}' (mailbox={address}). "
+                "Check the folder name in Outlook (case-sensitive, top-level folders only).",
+                None,
+            )
+        folder_id = folders[0]["id"]
 
-    folder_id = folders[0]["id"]
-    folder_cache[cache_key] = folder_id
     log.info("email.folder_resolved", mailbox=address, display_name=folder, folder_id=folder_id[:20])
     return folder_id
 
@@ -119,9 +100,8 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
     """Every visible mail folder, at any depth, for auto-discovery.
 
     Returns (display_name, folder_id) tuples with system / noise folders
-    filtered out by display name and the `isHidden` flag. The caller can
-    prime the resolved-id cache via `cache_folder_id` to avoid a second
-    Graph round-trip per folder.
+    filtered out by display name and the `isHidden` flag. Display names may
+    repeat across the tree; sync state is keyed by ID, so that is harmless.
 
     **Two silent ceilings used to sit on these lines**, and `folders: null` is
     documented as "auto-discover all visible folders", so both were losses the
@@ -162,20 +142,5 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
             result.append((display, folder_id))
             if f.get("childFolderCount", 0):
                 pending.append(f"{endpoint_base}/mailFolders/{folder_id}/childFolders")
-    # Delta tokens and the folder-id cache are keyed by display name, so two folders sharing one
-    # anywhere in the tree would silently share a sync position.
-    names = [display for display, _ in result]
-    duplicates = sorted({n for n in names if names.count(n) > 1})
-    if duplicates:
-        raise GraphApiError(
-            f"Duplicate mail folder names in mailbox={address}: {duplicates}. "
-            "Auto-discovery keys sync state by display name; rename one, or list folders explicitly.",
-            None,
-        )
     log.info("email.folders_discovered", mailbox=address, count=len(result))
     return result
-
-
-def cache_folder_id(folder_cache: dict[tuple[str, str], str], address: str, display: str, folder_id: str) -> None:
-    """Insert a (address, display) → folder_id entry into the caller-owned cache."""
-    folder_cache[(address, display)] = folder_id

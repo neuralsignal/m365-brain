@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 import respx
+from hypothesis import given
+from hypothesis import strategies as st
 from pytest_httpx import HTTPXMock
 
 from m365_brain.config import EmailExtractorConfig, GraphConfig, MailboxConfig
@@ -17,6 +19,7 @@ from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors import _attachment_helpers, _folder_helpers, email
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
+from tests.conftest import WELL_KNOWN_FOLDER_URL, well_known_folder_response
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
 
@@ -68,7 +71,7 @@ class TestEmailExtractor:
         state, count = email.run(client, storage, {}, email_config, ctx)
 
         assert count == 2
-        assert "delta_link_me_Inbox" in state
+        assert "delta_link_me_id_Inbox" in state
         assert "last_sync" in state
 
         files = storage.list_files(ctx.paths.inbox_root("email"))
@@ -102,11 +105,11 @@ class TestEmailExtractor:
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
-        existing_state = {"delta_link_me_Inbox": delta_url}
+        existing_state = {"delta_link_me_id_Inbox": delta_url}
         state, count = email.run(client, storage, existing_state, email_config, ctx)
 
         assert count == 1
-        assert state["delta_link_me_Inbox"] == "https://graph.microsoft.com/v1.0/delta?token=new"
+        assert state["delta_link_me_id_Inbox"] == "https://graph.microsoft.com/v1.0/delta?token=new"
         client.close()
 
     def test_empty_response(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config, ctx):
@@ -184,8 +187,8 @@ class TestEmailExtractor:
 
         state, count = email.run(client, storage, {}, config, ctx)
         assert count == 2
-        assert "delta_link_me_Inbox" in state
-        assert "delta_link_me_SentItems" in state
+        assert "delta_link_me_id_Inbox" in state
+        assert "delta_link_me_id_SentItems" in state
         client.close()
 
     def test_initial_sync_logs_sync_type(self, httpx_mock: HTTPXMock, tmp_path, graph_config, email_config, ctx):
@@ -228,7 +231,7 @@ class TestEmailExtractor:
             events.append({"event": event, **kwargs})
 
         with patch.object(email.log, "info", side_effect=capture_log):
-            email.run(client, storage, {"delta_link_me_Inbox": delta_url}, email_config, ctx)
+            email.run(client, storage, {"delta_link_me_id_Inbox": delta_url}, email_config, ctx)
 
         sync_start_events = [e for e in events if e["event"] == "email.folder_sync_start"]
         assert len(sync_start_events) == 1
@@ -544,7 +547,7 @@ class TestDeltaPageBudget:
 
         state, count = email.run(client, storage, {}, self._small_config(), ctx)
         assert count == 2
-        assert state["delta_link_me_Inbox"] == pending
+        assert state["delta_link_me_id_Inbox"] == pending
 
         httpx_mock.add_response(
             url=pending,
@@ -556,7 +559,7 @@ class TestDeltaPageBudget:
         state, count = email.run(client, storage, state, self._small_config(), ctx)
 
         assert count == 1
-        assert state["delta_link_me_Inbox"] == "https://graph.microsoft.com/delta?token=final"
+        assert state["delta_link_me_id_Inbox"] == "https://graph.microsoft.com/delta?token=final"
         assert len(storage.list_files(ctx.paths.inbox_root("email"))) == 3
         client.close()
 
@@ -617,6 +620,10 @@ class _GraphDeltaFolder:
         return httpx.Response(200, json=body)
 
 
+def _respx_well_known_folders() -> None:
+    respx.get(url__regex=WELL_KNOWN_FOLDER_URL.pattern).mock(side_effect=well_known_folder_response)
+
+
 class TestDeltaTopCarriesTheItemBudget:
     """Regression: `$top` is the item budget, so it must be the configured budget."""
 
@@ -636,6 +643,7 @@ class TestDeltaTopCarriesTheItemBudget:
     def test_top_sent_equals_the_configured_budget(self, tmp_path, graph_config, ctx):
         """The one line that would have caught this: no constant may set $top."""
         folder = _GraphDeltaFolder(available=200, server_page_size=10)
+        _respx_well_known_folders()
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         config = self._config(40)
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
@@ -649,6 +657,7 @@ class TestDeltaTopCarriesTheItemBudget:
     def test_initial_sync_fetches_the_whole_budget_not_one_page(self, tmp_path, graph_config, ctx):
         """A 40-message budget against a 200-message folder yields 40, not a page of 10."""
         folder = _GraphDeltaFolder(available=200, server_page_size=10)
+        _respx_well_known_folders()
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
@@ -663,6 +672,7 @@ class TestDeltaTopCarriesTheItemBudget:
     def test_budget_above_folder_size_takes_the_whole_folder(self, tmp_path, graph_config, ctx):
         """The budget is a ceiling, not a demand — a small folder still completes."""
         folder = _GraphDeltaFolder(available=25, server_page_size=10)
+        _respx_well_known_folders()
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
@@ -670,7 +680,7 @@ class TestDeltaTopCarriesTheItemBudget:
         state, count = email.run(client, storage, {}, self._config(40), ctx)
 
         assert count == 25
-        assert state["delta_link_me_Inbox"] == "https://graph.example/delta?token=done"
+        assert state["delta_link_me_id_Inbox"] == "https://graph.example/delta?token=done"
         client.close()
 
 
@@ -687,6 +697,7 @@ class TestInitialDeltaSendsNoFilter:
     @respx.mock
     def test_initial_round_sends_no_filter(self, tmp_path, graph_config, ctx, email_config):
         folder = _GraphDeltaFolder(available=5, server_page_size=10)
+        _respx_well_known_folders()
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
 
@@ -699,6 +710,7 @@ class TestInitialDeltaSendsNoFilter:
     def test_initial_sync_takes_messages_of_any_age(self, tmp_path, graph_config, ctx, email_config):
         """The documented consequence: an initial sync enumerates the whole folder."""
         folder = _AgedDeltaFolder(received="2019-01-04T09:00:00Z")
+        _respx_well_known_folders()
         respx.get(url__regex=r".*/messages/delta.*").mock(side_effect=folder)
         storage = LocalBackend(str(tmp_path / "vault"))
         client = GraphClient(graph_config, lambda: "test-token", prefer_immutable_ids=False)
@@ -1322,7 +1334,7 @@ class TestSharedMailbox:
         state, count = email.run(client, storage, {}, config, ctx)
 
         assert count == 1
-        assert "delta_link_ai@example.com_Inbox" in state
+        assert "delta_link_ai@example.com_id_Inbox" in state
 
         # Storage path must be namespaced under the output_subdir
         files = storage.list_files(ctx.paths.inbox_root("email"))
@@ -1366,8 +1378,8 @@ class TestSharedMailbox:
         state, count = email.run(client, storage, {}, config, ctx)
 
         assert count == 2
-        assert "delta_link_me_Inbox" in state
-        assert "delta_link_ai@example.com_Inbox" in state
+        assert "delta_link_me_id_Inbox" in state
+        assert "delta_link_ai@example.com_id_Inbox" in state
 
         files = storage.list_files(ctx.paths.inbox_root("email"))
         personal = [f for f in files if f.startswith(ctx.paths.inbox_item("email", "2026") + "/")]
@@ -1399,15 +1411,14 @@ class TestSharedMailbox:
             },
         )
 
-        # Inbox delta (uses well-known "Inbox" as the folder ID)
+        # Discovered folders sync by the ID discovery returned
         httpx_mock.add_response(
-            url=re.compile(r".*/users/ai@example\.com/mailFolders/Inbox/messages/delta.*"),
+            url=re.compile(r".*/users/ai@example\.com/mailFolders/id-inbox/messages/delta.*"),
             json={
                 "value": [self._msg("m-1", "in inbox", "2026-05-08T10:00:00Z")],
                 "@odata.deltaLink": "https://delta?token=inbox",
             },
         )
-        # Projects delta — uses the resolved folder id from discovery cache
         httpx_mock.add_response(
             url=re.compile(r".*/users/ai@example\.com/mailFolders/id-projects/messages/delta.*"),
             json={
@@ -1424,141 +1435,11 @@ class TestSharedMailbox:
         # Only Inbox + Projects synced; Drafts/Junk/Deleted skipped by displayName,
         # Internal skipped by isHidden=true.
         assert count == 2
-        assert "delta_link_ai@example.com_Inbox" in state
-        assert "delta_link_ai@example.com_Projects" in state
-        assert "delta_link_ai@example.com_Drafts" not in state
-        assert "delta_link_ai@example.com_Junk Email" not in state
-        assert "delta_link_ai@example.com_Deleted Items" not in state
-        assert "delta_link_ai@example.com_Internal" not in state
+        assert {k for k in state if k.startswith("delta_link_")} == {
+            "delta_link_ai@example.com_id_id-inbox",
+            "delta_link_ai@example.com_id_id-projects",
+        }
         client.close()
-
-
-# ---------------------------------------------------------------------------
-# Custom folder resolution (_resolve_folder_id)
-# ---------------------------------------------------------------------------
-
-
-class TestResolveFolderId:
-    """Tests for resolve_folder_id: well-known folders, Graph API lookup, and caching."""
-
-    def test_well_known_folder_returns_predefined_id(self):
-        """Well-known folders (Inbox, SentItems, etc.) return their predefined ID without calling the API."""
-        client = MagicMock(spec=GraphClient)
-        cache: dict[tuple[str, str], str] = {}
-        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "Inbox", cache) == "Inbox"
-        assert _folder_helpers.resolve_folder_id(client, "/me", "me", "SentItems", cache) == "SentItems"
-        client.get.assert_not_called()
-
-    def test_custom_folder_resolved_via_graph_api(self):
-        """Custom folder name is resolved to its ID via Graph API query."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {"value": [{"id": "abc123", "displayName": "Archive-Custom"}]}
-        cache: dict[tuple[str, str], str] = {}
-
-        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "Archive-Custom", cache)
-
-        assert result == "abc123"
-        client.get.assert_called_once_with(
-            "/me/mailFolders",
-            {"$filter": "displayName eq 'Archive-Custom'", "$select": "id,displayName", "$top": "1"},
-        )
-
-    def test_single_quotes_escaped_in_odata_filter(self):
-        """Single quotes in folder names are doubled to prevent OData filter injection."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {"value": [{"id": "obrien-id", "displayName": "O'Brien"}]}
-
-        result = _folder_helpers.resolve_folder_id(client, "/me", "me", "O'Brien", {})
-
-        assert result == "obrien-id"
-        client.get.assert_called_once_with(
-            "/me/mailFolders",
-            {"$filter": "displayName eq 'O''Brien'", "$select": "id,displayName", "$top": "1"},
-        )
-
-    def test_custom_folder_cached_after_first_resolution(self):
-        """Second call with the same custom folder name uses cache — Graph API not called again."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {"value": [{"id": "folder-xyz", "displayName": "Projects"}]}
-        cache: dict[tuple[str, str], str] = {}
-
-        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
-        second = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
-
-        assert first == "folder-xyz"
-        assert second == "folder-xyz"
-        assert client.get.call_count == 1
-
-    def test_custom_folder_not_found_raises_graph_api_error(self):
-        """Empty response from Graph API raises GraphApiError with helpful message."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {"value": []}
-        cache: dict[tuple[str, str], str] = {}
-
-        with pytest.raises(GraphApiError, match="Mail folder not found: 'NonExistent'"):
-            _folder_helpers.resolve_folder_id(client, "/me", "me", "NonExistent", cache)
-
-    def test_not_found_folder_not_cached(self):
-        """Failed resolution does not pollute the cache."""
-        client = MagicMock(spec=GraphClient)
-        client.get.return_value = {"value": []}
-        cache: dict[tuple[str, str], str] = {}
-
-        with pytest.raises(GraphApiError):
-            _folder_helpers.resolve_folder_id(client, "/me", "me", "Ghost", cache)
-
-        assert ("me", "Ghost") not in cache
-
-    def test_custom_folder_cache_keyed_by_mailbox(self):
-        """The same folder name in different mailboxes resolves independently."""
-        client = MagicMock(spec=GraphClient)
-        client.get.side_effect = [
-            {"value": [{"id": "id-personal", "displayName": "Projects"}]},
-            {"value": [{"id": "id-shared", "displayName": "Projects"}]},
-        ]
-        cache: dict[tuple[str, str], str] = {}
-
-        first = _folder_helpers.resolve_folder_id(client, "/me", "me", "Projects", cache)
-        second = _folder_helpers.resolve_folder_id(client, "/users/ai@example.com", "ai@example.com", "Projects", cache)
-
-        assert first == "id-personal"
-        assert second == "id-shared"
-        assert client.get.call_count == 2
-        assert client.get.call_args_list[1].args[0] == "/users/ai@example.com/mailFolders"
-
-
-class TestFolderCacheIsolation:
-    """Concurrent extractions for different users must not share folder-id state."""
-
-    def test_concurrent_users_get_independent_caches(self):
-        """Two threads resolving the same folder name get independent cache dicts."""
-        import threading
-
-        results: dict[str, str] = {}
-        errors: list[Exception] = []
-
-        def resolve_for_user(address: str, expected_id: str) -> None:
-            try:
-                client = MagicMock(spec=GraphClient)
-                client.get.return_value = {"value": [{"id": expected_id, "displayName": "Projects"}]}
-                cache: dict[tuple[str, str], str] = {}
-                result = _folder_helpers.resolve_folder_id(client, f"/users/{address}", address, "Projects", cache)
-                results[address] = result
-                assert (address, "Projects") in cache
-            except Exception as exc:
-                errors.append(exc)
-
-        t1 = threading.Thread(target=resolve_for_user, args=("alice@example.com", "id-alice"))
-        t2 = threading.Thread(target=resolve_for_user, args=("bob@example.com", "id-bob"))
-
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-
-        assert not errors, f"Thread errors: {errors}"
-        assert results["alice@example.com"] == "id-alice"
-        assert results["bob@example.com"] == "id-bob"
 
 
 class TestNarrowedExceptionHandling:
@@ -1857,3 +1738,114 @@ class TestListAllFoldersGuardBranches:
         result = _folder_helpers.list_all_folders(client, "/me", "me")
 
         assert result == [("Sent", "id-good")]
+
+
+# ---------------------------------------------------------------------------
+# Delta state keyed by folder ID, and the migration off name keys (#392)
+# ---------------------------------------------------------------------------
+
+
+def _mailbox_client(folders: list[dict], alias_ids: dict[str, str]) -> MagicMock:
+    """A client with one root page of `folders`, alias lookups, and empty delta rounds.
+
+    Every delta round returns a link naming the folder path it was asked for.
+    """
+    client = MagicMock(spec=GraphClient)
+    client.max_pages = 10
+    client.get_pages.side_effect = lambda path, params, cap: (folders if path.endswith("/mailFolders") else [], False)
+    client.get.side_effect = lambda path, params: {"id": alias_ids[path.rsplit("/", 1)[1]]}
+    client.get_delta.side_effect = lambda path, delta_link, params, max_pages: ([], f"new:{path}")
+    return client
+
+
+def _run(client: MagicMock, state: dict, folders: list[str] | None, tmp_path, ctx) -> dict:
+    config = EmailExtractorConfig(
+        enabled=True,
+        poll_interval_minutes=3,
+        mailboxes=[MailboxConfig(address="me", folders=folders, output_subdir="")],
+        max_items_per_sync=100,
+        download_attachments=False,
+        max_attachment_size_mb=25,
+        attachment_convert_extensions=[],
+    )
+    state, _ = email.run(client, LocalBackend(str(tmp_path / "vault")), state, config, ctx)
+    return state
+
+
+def _delta_keys(state: dict) -> dict[str, str]:
+    return {k: v for k, v in state.items() if k.startswith("delta_link_")}
+
+
+class TestDeltaStateKeyedByFolderId:
+    def test_same_named_folders_keep_separate_sync_positions(self, tmp_path, ctx):
+        client = _mailbox_client(
+            [{"id": "id-r1", "displayName": "Receipts"}, {"id": "id-r2", "displayName": "Receipts"}], {}
+        )
+        state = _run(client, {}, None, tmp_path, ctx)
+        assert _delta_keys(state) == {
+            "delta_link_me_id_id-r1": "new:/me/mailFolders/id-r1/messages/delta",
+            "delta_link_me_id_id-r2": "new:/me/mailFolders/id-r2/messages/delta",
+        }
+
+    def test_explicit_alias_and_discovered_folder_share_one_key(self, tmp_path, ctx):
+        """`Inbox` in config and a discovered `Posteingang` are the same folder."""
+        explicit = _run(_mailbox_client([], {"Inbox": "id-in"}), {}, ["Inbox"], tmp_path, ctx)
+        discovered = _run(_mailbox_client([{"id": "id-in", "displayName": "Posteingang"}], {}), {}, None, tmp_path, ctx)
+        assert _delta_keys(explicit).keys() == _delta_keys(discovered).keys() == {"delta_link_me_id_id-in"}
+
+    def test_name_keyed_link_is_adopted_without_a_re_pull(self, tmp_path, ctx):
+        client = _mailbox_client([], {"Inbox": "id-in"})
+        state = _run(client, {"delta_link_me_Inbox": "old-inbox"}, ["Inbox"], tmp_path, ctx)
+
+        assert client.get_delta.call_args.args[1] == "old-inbox"
+        assert _delta_keys(state) == {"delta_link_me_id_id-in": "new:/me/mailFolders/id-in/messages/delta"}
+
+    def test_alias_and_display_keys_for_one_folder_keep_the_display_one(self, tmp_path, ctx):
+        client = _mailbox_client([{"id": "id-in", "displayName": "Posteingang"}], {"Inbox": "id-in"})
+        with patch.object(email.log, "warning") as warning:
+            state = _run(
+                client, {"delta_link_me_Inbox": "old-inbox", "delta_link_me_Posteingang": "old-de"}, None, tmp_path, ctx
+            )
+
+        assert client.get_delta.call_args.args[1] == "old-de"
+        assert _delta_keys(state) == {"delta_link_me_id_id-in": "new:/me/mailFolders/id-in/messages/delta"}
+        warning.assert_called_once()
+        assert warning.call_args.kwargs["key"] == "delta_link_me_Inbox"
+
+
+class TestAdoptNameKeyedDeltaLinks:
+    def test_without_the_display_key_the_alphabetically_first_alias_wins(self):
+        state = {"delta_link_me_SentItems": "b", "delta_link_me_Inbox": "a"}
+        email.adopt_name_keyed_delta_links(state, "me", [("X", "id-x")], {"Inbox": "id-x", "SentItems": "id-x"})
+        assert state == {"delta_link_me_id_id-x": "a"}
+
+    def test_existing_id_key_wins_and_stale_name_key_is_dropped(self):
+        state = {"delta_link_me_id_id-p": "current", "delta_link_me_Projects": "stale"}
+        email.adopt_name_keyed_delta_links(state, "me", [("Projects", "id-p")], {})
+        assert state == {"delta_link_me_id_id-p": "current"}
+
+    def test_already_migrated_state_is_untouched(self):
+        state = {"delta_link_me_id_id-p": "current", "delta_link_me_Other": "unrelated"}
+        email.adopt_name_keyed_delta_links(state, "me", [("Projects", "id-p")], {})
+        assert state == {"delta_link_me_id_id-p": "current", "delta_link_me_Other": "unrelated"}
+
+    @given(
+        names=st.lists(st.sampled_from(["Inbox", "Posteingang", "Projects"]), unique=True),
+        has_id_key=st.booleans(),
+    )
+    def test_idempotent_and_no_folder_loses_its_position(self, names: list[str], has_id_key: bool):
+        state = {f"delta_link_me_{n}": f"tok-{n}" for n in names}
+        if has_id_key:
+            state["delta_link_me_id_id-in"] = "tok-id"
+        folders = [("Posteingang", "id-in"), ("Projects", "id-p")]
+        aliases = {"Inbox": "id-in"}
+
+        email.adopt_name_keyed_delta_links(state, "me", folders, aliases)
+        once = dict(state)
+        email.adopt_name_keyed_delta_links(state, "me", folders, aliases)
+
+        assert state == once
+        assert not any(k == f"delta_link_me_{n}" for k in state for n in names)
+        if has_id_key or {"Inbox", "Posteingang"} & set(names):
+            assert "delta_link_me_id_id-in" in state
+        assert ("delta_link_me_id_id-p" in state) == ("Projects" in names)

@@ -7,11 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from m365_brain.m365.client import GraphApiError, GraphClient
-from m365_brain.m365.extractors._folder_helpers import (
-    cache_folder_id,
-    list_all_folders,
-    resolve_folder_id,
-)
+from m365_brain.m365.extractors._folder_helpers import list_all_folders, resolve_folder_id
 
 
 def _client(response: dict) -> MagicMock:
@@ -21,46 +17,30 @@ def _client(response: dict) -> MagicMock:
 
 
 class TestResolveFolderId:
-    def test_well_known_folder_needs_no_graph_call(self) -> None:
-        client = _client({})
-        cache: dict[tuple[str, str], str] = {}
-        assert resolve_folder_id(client, "/me", "me", "SentItems", cache) == "SentItems"
-        client.get.assert_not_called()
-        assert cache == {}
+    def test_well_known_alias_resolves_to_the_real_id(self) -> None:
+        """`Inbox` is an alias; state keyed by it would not match the discovered folder."""
+        client = _client({"id": "AAMk-inbox", "displayName": "Posteingang"})
+        assert resolve_folder_id(client, "/users/a@x.test", "a@x.test", "SentItems") == "AAMk-inbox"
+        client.get.assert_called_once_with("/users/a@x.test/mailFolders/SentItems", {"$select": "id,displayName"})
 
-    def test_custom_folder_is_resolved_then_cached(self) -> None:
+    def test_custom_folder_is_resolved_by_display_name(self) -> None:
         client = _client({"value": [{"id": "AAMk-custom-1", "displayName": "Projects"}]})
-        cache: dict[tuple[str, str], str] = {}
-
-        first = resolve_folder_id(client, "/users/a@x.test", "a@x.test", "Projects", cache)
-        second = resolve_folder_id(client, "/users/a@x.test", "a@x.test", "Projects", cache)
-
-        assert first == second == "AAMk-custom-1"
-        assert cache == {("a@x.test", "Projects"): "AAMk-custom-1"}
-        client.get.assert_called_once()
+        assert resolve_folder_id(client, "/users/a@x.test", "a@x.test", "Projects") == "AAMk-custom-1"
         assert client.get.call_args.args[0] == "/users/a@x.test/mailFolders"
 
     def test_apostrophe_in_name_is_odata_escaped(self) -> None:
         client = _client({"value": [{"id": "AAMk-obrien", "displayName": "O'Brien"}]})
-        resolve_folder_id(client, "/me", "me", "O'Brien", {})
+        resolve_folder_id(client, "/me", "me", "O'Brien")
         params = client.get.call_args.args[1]
         assert params["$filter"] == "displayName eq 'O''Brien'"
 
     def test_missing_folder_raises_with_an_actionable_message(self) -> None:
         client = _client({"value": []})
         with pytest.raises(GraphApiError) as exc_info:
-            resolve_folder_id(client, "/me", "me@x.test", "Nope", {})
+            resolve_folder_id(client, "/me", "me@x.test", "Nope")
         assert "Mail folder not found: 'Nope'" in str(exc_info.value)
         assert "mailbox=me@x.test" in str(exc_info.value)
         assert exc_info.value.status_code is None
-
-    def test_primed_cache_short_circuits_the_graph_call(self) -> None:
-        client = _client({"value": [{"id": "should-not-be-used"}]})
-        cache: dict[tuple[str, str], str] = {}
-        cache_folder_id(cache, "a@x.test", "Projects", "AAMk-primed")
-
-        assert resolve_folder_id(client, "/users/a@x.test", "a@x.test", "Projects", cache) == "AAMk-primed"
-        client.get.assert_not_called()
 
 
 def _paging_client(pages: dict[str, list[dict]], max_pages: int = 10) -> MagicMock:
@@ -180,8 +160,8 @@ class TestGermanMailboxAndDuplicates:
             ("Posteingang", "id-in"),
         ]
 
-    def test_duplicate_display_names_fail_loud(self) -> None:
-        """Two folders named alike would share one delta token."""
+    def test_duplicate_display_names_are_both_returned(self) -> None:
+        """Same-named folders are distinct folders; sync state is keyed by ID."""
         client = _paging_client(
             {
                 "/me/mailFolders": [
@@ -191,5 +171,8 @@ class TestGermanMailboxAndDuplicates:
                 "/me/mailFolders/id-a/childFolders": [{"id": "id-r2", "displayName": "Receipts"}],
             }
         )
-        with pytest.raises(GraphApiError, match="Duplicate mail folder names.*Receipts"):
-            list_all_folders(client, "/me", "me")
+        assert sorted(list_all_folders(client, "/me", "me")) == [
+            ("Archiv", "id-a"),
+            ("Receipts", "id-r"),
+            ("Receipts", "id-r2"),
+        ]
