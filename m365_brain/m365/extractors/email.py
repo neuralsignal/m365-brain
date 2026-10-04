@@ -27,6 +27,7 @@ import structlog
 
 from m365_brain.config import EmailExtractorConfig, MailboxConfig
 from m365_brain.m365.client import GraphClient
+from m365_brain.m365.errors import GraphNotFoundError
 from m365_brain.m365.extractors._email_writer import EmailSyncContext, write_email
 from m365_brain.m365.extractors._folder_helpers import (
     WELL_KNOWN_FOLDERS,
@@ -87,7 +88,10 @@ def run(
 
     for mailbox in config.mailboxes:
         folders = _folders_for_mailbox(client, mailbox)
-        adopt_name_keyed_delta_links(state, mailbox.address, folders, _legacy_alias_ids(client, state, mailbox.address))
+        names = name_keyed_folders(state, mailbox.address, [m.address for m in config.mailboxes])
+        if names:
+            alias_ids = _legacy_alias_ids(client, mailbox.address, names)
+            adopt_name_keyed_delta_links(state, mailbox.address, names, folders, alias_ids)
 
         for folder, folder_id in folders:
             state_key = delta_state_key(mailbox.address, folder_id)
@@ -123,58 +127,75 @@ def _name_state_key(address: str, folder: str) -> str:
     return f"delta_link_{address}_{folder}"
 
 
-def _legacy_alias_ids(client: GraphClient, state: dict, address: str) -> dict[str, str]:
-    """Real IDs of the well-known aliases that still own a name-keyed delta link."""
+def name_keyed_folders(state: dict, address: str, addresses: list[str]) -> list[str]:
+    """Folder names of this mailbox's pre-#392 delta links, sorted.
+
+    A key matching several mailboxes' prefixes (`me` and `me_x@...`) belongs to
+    the longest one.
+    """
+    prefix = _name_state_key(address, "")
+    longer = [_name_state_key(a, "") for a in addresses if len(a) > len(address)]
+    return sorted(
+        key[len(prefix) :]
+        for key in state
+        if key.startswith(prefix)
+        and not key.startswith(delta_state_key(address, ""))
+        and not any(key.startswith(p) for p in longer)
+    )
+
+
+def _legacy_alias_ids(client: GraphClient, address: str, names: list[str]) -> dict[str, str]:
+    """Real IDs of the well-known aliases among `names`; an alias with no folder is left out."""
     endpoint_base = _endpoint_base(address)
-    return {
-        alias: resolve_folder_id(client, endpoint_base, address, alias)
-        for alias in sorted(WELL_KNOWN_FOLDERS)
-        if _name_state_key(address, alias) in state
-    }
+    alias_ids = {}
+    for alias in sorted(WELL_KNOWN_FOLDERS.intersection(names)):
+        try:
+            alias_ids[alias] = resolve_folder_id(client, endpoint_base, address, alias)
+        except GraphNotFoundError:
+            log.warning("email.legacy_alias_missing", mailbox=address, alias=alias)
+    return alias_ids
 
 
 def adopt_name_keyed_delta_links(
     state: dict,
     address: str,
+    names: list[str],
     folders: list[tuple[str, str]],
     alias_ids: dict[str, str],
 ) -> None:
-    """Move delta links stored under a folder's name onto its ID key, so no folder re-pulls.
+    """Move pre-#392 delta links, keyed by folder name, onto folder-ID keys. One-time.
 
-    A folder's old keys are its display name and every well-known alias that
-    resolves to it. Two of them (`Inbox` and `Posteingang`) keep the one under the
-    current display name, else the alphabetically first. An ID key that already
-    exists wins over all of them. Every old key is removed, so a second call is a
-    no-op.
+    A folder claims the names equal to its display name or to a well-known alias
+    that resolves to it. If its ID key is absent it adopts one: the display name,
+    else the alphabetically first. Every name key in `names` is then deleted, and
+    each one not adopted is logged with the reason, so no name key outlives the pass.
     """
+    reasons = dict.fromkeys(names, "no synced folder claims it")
     for display, folder_id in folders:
-        names = {display} | {alias for alias, alias_id in alias_ids.items() if alias_id == folder_id}
-        old = sorted(n for n in names if _name_state_key(address, n) in state)
-        if not old:
+        claimed = [n for n in names if (n == display or alias_ids.get(n) == folder_id) and reasons[n] is not None]
+        if not claimed:
             continue
         id_key = delta_state_key(address, folder_id)
-        if id_key not in state:
-            kept = display if display in old else old[0]
-            state[id_key] = state[_name_state_key(address, kept)]
-            log.info(
-                "email.delta_link_migrated",
-                mailbox=address,
-                folder=display,
-                from_key=_name_state_key(address, kept),
-                to_key=id_key,
+        if id_key in state:
+            reasons.update(dict.fromkeys(claimed, "the folder's ID key is already set"))
+            continue
+        kept = display if display in claimed else claimed[0]
+        state[id_key] = state[_name_state_key(address, kept)]
+        reasons.update(dict.fromkeys(claimed, "another key for the same folder was kept"))
+        reasons[kept] = None
+        log.info(
+            "email.delta_link_migrated",
+            mailbox=address,
+            folder=display,
+            from_key=_name_state_key(address, kept),
+            to_key=id_key,
+        )
+    for name, reason in reasons.items():
+        del state[_name_state_key(address, name)]
+        if reason is not None:
+            log.warning(
+                "email.delta_link_discarded", mailbox=address, key=_name_state_key(address, name), reason=reason
             )
-        else:
-            kept = None
-        for name in old:
-            del state[_name_state_key(address, name)]
-            if name != kept:
-                log.warning(
-                    "email.delta_link_discarded",
-                    mailbox=address,
-                    folder=display,
-                    key=_name_state_key(address, name),
-                    kept_key=id_key,
-                )
 
 
 def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> list[tuple[str, str]]:
