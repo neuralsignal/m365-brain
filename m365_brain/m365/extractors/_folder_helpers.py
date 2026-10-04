@@ -107,12 +107,14 @@ def _is_discoverable_folder(folder: dict) -> tuple[str, str] | None:
     return display, folder_id
 
 
-def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> list[tuple[str, str]]:
+def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> tuple[list[tuple[str, str]], bool]:
     """Every visible mail folder, at any depth, for auto-discovery.
 
-    Returns (display_name, folder_id) tuples with system / noise folders
-    filtered out by display name and the `isHidden` flag. Display names may
+    Returns ((display_name, folder_id) tuples, truncated). System / noise folders
+    are filtered out by display name and the `isHidden` flag. Display names may
     repeat across the tree; sync state is keyed by ID, so that is harmless.
+    `truncated` is True when any page walk hit `graph.max_pages`, so the list
+    may be missing folders.
 
     **Two silent ceilings used to sit on these lines**, and `folders: null` is
     documented as "auto-discover all visible folders", so both were losses the
@@ -138,9 +140,11 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
     `AUTO_DISCOVER_SKIP_DISPLAY` for the localized display-name list.
     """
     result: list[tuple[str, str]] = []
+    any_truncated = False
     pending = [f"{endpoint_base}/mailFolders"]
     while pending:
         folders, truncated = client.get_pages(pending.pop(), {"$select": FOLDER_SELECT}, client.max_pages)
+        any_truncated = any_truncated or truncated
         if truncated:
             log.warning("email.folder_discovery_truncated", mailbox=address, max_pages=client.max_pages)
         for f in folders:
@@ -152,4 +156,4 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
             if f.get("childFolderCount", 0):
                 pending.append(f"{endpoint_base}/mailFolders/{folder_id}/childFolders")
     log.info("email.folders_discovered", mailbox=address, count=len(result))
-    return result
+    return result, any_truncated

@@ -74,15 +74,26 @@ class TestListAllFolders:
                 ]
             }
         )
-        assert list_all_folders(client, "/me", "me") == [("Inbox", "id-inbox"), ("Projects", "id-projects")]
+        assert list_all_folders(client, "/me", "me")[0] == [("Inbox", "id-inbox"), ("Projects", "id-projects")]
 
     def test_requests_the_fields_the_filter_and_the_walk_depend_on(self) -> None:
         client = _paging_client({})
-        assert list_all_folders(client, "/users/a@x.test", "a@x.test") == []
+        assert list_all_folders(client, "/users/a@x.test", "a@x.test")[0] == []
         path, params, cap = client.get_pages.call_args.args
         assert path == "/users/a@x.test/mailFolders"
         assert params["$select"] == "id,displayName,isHidden,childFolderCount"
         assert cap == client.max_pages, "the collection is paged under graph.max_pages"
+
+
+class TestDiscoveryReportsTruncation:
+    def test_a_truncated_page_walk_is_reported(self) -> None:
+        client = _paging_client({})
+        client.get_pages.side_effect = lambda path, params, cap: ([{"id": "id-p", "displayName": "Projects"}], True)
+        assert list_all_folders(client, "/me", "me") == ([("Projects", "id-p")], True)
+
+    def test_a_complete_walk_is_not_truncated(self) -> None:
+        client = _paging_client({"/me/mailFolders": [{"id": "id-p", "displayName": "Projects"}]})
+        assert list_all_folders(client, "/me", "me") == ([("Projects", "id-p")], False)
 
 
 class TestAutoDiscoveryReachesEveryVisibleFolder:
@@ -112,7 +123,7 @@ class TestAutoDiscoveryReachesEveryVisibleFolder:
             }
         )
 
-        assert sorted(list_all_folders(client, "/me", "me")) == [
+        assert sorted(list_all_folders(client, "/me", "me")[0]) == [
             ("2025", "id-2025"),
             ("2026", "id-2026"),
             ("Inbox", "id-inbox"),
@@ -132,7 +143,7 @@ class TestAutoDiscoveryReachesEveryVisibleFolder:
             }
         )
 
-        assert list_all_folders(client, "/me", "me") == []
+        assert list_all_folders(client, "/me", "me")[0] == []
 
 
 class TestGermanMailboxAndDuplicates:
@@ -154,7 +165,7 @@ class TestGermanMailboxAndDuplicates:
                 "/me/mailFolders/id-arch/childFolders": [{"id": "id-t", "displayName": "Data & platform"}],
             }
         )
-        assert sorted(list_all_folders(client, "/me", "me")) == [
+        assert sorted(list_all_folders(client, "/me", "me")[0]) == [
             ("Archiv", "id-arch"),
             ("Data & platform", "id-t"),
             ("Posteingang", "id-in"),
@@ -171,7 +182,7 @@ class TestGermanMailboxAndDuplicates:
                 "/me/mailFolders/id-a/childFolders": [{"id": "id-r2", "displayName": "Receipts"}],
             }
         )
-        assert sorted(list_all_folders(client, "/me", "me")) == [
+        assert sorted(list_all_folders(client, "/me", "me")[0]) == [
             ("Archiv", "id-a"),
             ("Receipts", "id-r"),
             ("Receipts", "id-r2"),
