@@ -1703,7 +1703,7 @@ class TestListAllFoldersGuardBranches:
             {"id": "id-no-name", "displayName": None, "isHidden": False},
         )
 
-        result = _folder_helpers.list_all_folders(client, "/me", "me")
+        result = _folder_helpers.list_all_folders(client, "/me", "me")[0]
 
         assert result == [("Projects", "id-valid")]
 
@@ -1714,7 +1714,7 @@ class TestListAllFoldersGuardBranches:
             {"id": "id-missing-key", "isHidden": False},
         )
 
-        result = _folder_helpers.list_all_folders(client, "/me", "me")
+        result = _folder_helpers.list_all_folders(client, "/me", "me")[0]
 
         assert result == [("Inbox", "id-valid")]
 
@@ -1725,7 +1725,7 @@ class TestListAllFoldersGuardBranches:
             {"id": None, "displayName": "Broken", "isHidden": False},
         )
 
-        result = _folder_helpers.list_all_folders(client, "/me", "me")
+        result = _folder_helpers.list_all_folders(client, "/me", "me")[0]
 
         assert result == [("Archive", "id-good")]
 
@@ -1736,7 +1736,7 @@ class TestListAllFoldersGuardBranches:
             {"displayName": "NoId", "isHidden": False},
         )
 
-        result = _folder_helpers.list_all_folders(client, "/me", "me")
+        result = _folder_helpers.list_all_folders(client, "/me", "me")[0]
 
         assert result == [("Sent", "id-good")]
 
@@ -1843,14 +1843,23 @@ class TestDeltaStateKeyedByFolderId:
             _run(client, {"delta_link_me_Inbox": "old-inbox"}, None, tmp_path, ctx)
 
 
+_SHARED = "ai@example.test"
+
+
 class TestLiveDeploymentMigration:
-    """The name-keyed state the dev-box deployment held when #392 shipped."""
+    """The name-keyed state the dev-box deployment held when #392 shipped.
+
+    Both mailboxes auto-discover. `me` is de-DE and carries the alias keys of an
+    older explicit config beside the display-name keys discovery wrote; the
+    shared mailbox is English, so `Sent Items` is a display name, not an alias.
+    """
 
     PAGES = {
         "/me/mailFolders": [
             {"id": "id-in", "displayName": "Posteingang"},
             {"id": "id-sent", "displayName": "Gesendete Elemente"},
             {"id": "id-arch", "displayName": "Archiv", "childFolderCount": 1},
+            {"id": "id-ai", "displayName": "AI adoption & tools"},
         ],
         "/me/mailFolders/id-arch/childFolders": [{"id": "id-ret", "displayName": "_retired", "childFolderCount": 3}],
         "/me/mailFolders/id-ret/childFolders": [
@@ -1858,27 +1867,33 @@ class TestLiveDeploymentMigration:
             {"id": "id-trips", "displayName": "Trips"},
             {"id": "id-ommax", "displayName": "ommax"},
         ],
+        f"/users/{_SHARED}/mailFolders": [
+            {"id": "sh-in", "displayName": "Inbox"},
+            {"id": "sh-sent", "displayName": "Sent Items"},
+            {"id": "sh-arch", "displayName": "Archive"},
+        ],
     }
     ALIASES = {
         "/me/mailFolders/Inbox": "id-in",
         "/me/mailFolders/SentItems": "id-sent",
         "/me/mailFolders/Archive": "id-arch",
-        "/users/ai@sanoptis.com/mailFolders/Inbox": "ai-in",
-        "/users/ai@sanoptis.com/mailFolders/SentItems": "ai-sent",
-        "/users/ai@sanoptis.com/mailFolders/Archive": "ai-arch",
+        f"/users/{_SHARED}/mailFolders/Inbox": "sh-in",
+        f"/users/{_SHARED}/mailFolders/Archive": "sh-arch",
     }
+    ME_NAMES = [
+        "Archive", "Inbox", "SentItems", "MTF", "Trips", "ommax",
+        "Posteingang", "Gesendete Elemente", "Archiv", "AI adoption & tools",
+    ]  # fmt: skip
     STATE = {
-        **{f"delta_link_me_{n}": f"old-me-{n}" for n in ["Archive", "Inbox", "SentItems", "MTF", "Trips", "ommax"]},
-        **{f"delta_link_ai@sanoptis.com_{n}": f"old-ai-{n}" for n in ["Archive", "Inbox", "Sent Items"]},
+        **{f"delta_link_me_{n}": f"old-me-{n}" for n in ME_NAMES},
+        **{f"delta_link_{_SHARED}_{n}": f"old-sh-{n}" for n in ["Archive", "Inbox", "Sent Items"]},
     }
 
     def _run(self, client: MagicMock, state: dict, tmp_path, ctx) -> dict:
         config = _config(
             [
                 MailboxConfig(address="me", folders=None, output_subdir=""),
-                MailboxConfig(
-                    address="ai@sanoptis.com", folders=["Inbox", "SentItems", "Archive"], output_subdir="ai-sanoptis"
-                ),
+                MailboxConfig(address=_SHARED, folders=None, output_subdir="shared"),
             ]
         )
         state, _ = email.run(client, LocalBackend(str(tmp_path / "vault")), state, config, ctx)
@@ -1889,50 +1904,76 @@ class TestLiveDeploymentMigration:
         with patch.object(email.log, "warning") as warning:
             state = self._run(client, dict(self.STATE), tmp_path, ctx)
 
-        sent = client.delta_links_sent
-        me, ai = "/me/mailFolders", "/users/ai@sanoptis.com/mailFolders"
-        assert sent[f"{me}/id-in/messages/delta"] == "old-me-Inbox"
-        assert sent[f"{me}/id-sent/messages/delta"] == "old-me-SentItems"
-        assert sent[f"{me}/id-arch/messages/delta"] == "old-me-Archive"
-        assert sent[f"{me}/id-mtf/messages/delta"] == "old-me-MTF"
-        assert sent[f"{me}/id-ret/messages/delta"] is None
-        assert sent[f"{ai}/ai-in/messages/delta"] == "old-ai-Inbox"
-        assert sent[f"{ai}/ai-sent/messages/delta"] is None, "`Sent Items` is not the `SentItems` alias"
-        assert sent[f"{ai}/ai-arch/messages/delta"] == "old-ai-Archive"
-
+        me, sh = "/me/mailFolders", f"/users/{_SHARED}/mailFolders"
+        assert client.delta_links_sent == {
+            f"{me}/id-in/messages/delta": "old-me-Posteingang",
+            f"{me}/id-sent/messages/delta": "old-me-Gesendete Elemente",
+            f"{me}/id-arch/messages/delta": "old-me-Archiv",
+            f"{me}/id-ai/messages/delta": "old-me-AI adoption & tools",
+            f"{me}/id-ret/messages/delta": None,
+            f"{me}/id-mtf/messages/delta": "old-me-MTF",
+            f"{me}/id-trips/messages/delta": "old-me-Trips",
+            f"{me}/id-ommax/messages/delta": "old-me-ommax",
+            f"{sh}/sh-in/messages/delta": "old-sh-Inbox",
+            f"{sh}/sh-sent/messages/delta": "old-sh-Sent Items",
+            f"{sh}/sh-arch/messages/delta": "old-sh-Archive",
+        }
         assert all("_id_" in k for k in _delta_keys(state))
-        assert [c.kwargs["key"] for c in warning.call_args_list if c.args == ("email.delta_link_discarded",)] == [
-            "delta_link_ai@sanoptis.com_Sent Items"
+        assert sorted(c.kwargs["key"] for c in warning.call_args_list if c.args == ("email.delta_link_discarded",)) == [
+            "delta_link_me_Archive",
+            "delta_link_me_Inbox",
+            "delta_link_me_SentItems",
         ]
 
         client.get.reset_mock()
         with patch.object(email.log, "info") as info:
             self._run(client, state, tmp_path, ctx)
+        client.get.assert_not_called()
         assert not [c for c in info.call_args_list if c.args == ("email.delta_link_migrated",)]
-        # Only the explicit list's own resolution remains; discovery needs none.
-        assert sorted(c.args[0] for c in client.get.call_args_list) == [
-            f"{ai}/Archive",
-            f"{ai}/Inbox",
-            f"{ai}/SentItems",
-        ]
+
+
+class TestTruncatedDiscoveryDefersDiscard:
+    """A truncated folder walk may have missed the folder an unclaimed key belongs to."""
+
+    def test_unclaimed_key_survives_while_claimed_one_is_adopted(self, tmp_path, ctx):
+        client = _mailbox_client({}, {})
+        client.get_pages.side_effect = lambda path, params, cap: ([{"id": "id-p", "displayName": "Projects"}], True)
+        state = {"delta_link_me_Projects": "old-p", "delta_link_me_Unseen": "old-u"}
+
+        with patch.object(email.log, "warning") as warning:
+            state = _run(client, state, None, tmp_path, ctx)
+
+        assert client.delta_links_sent == {"/me/mailFolders/id-p/messages/delta": "old-p"}
+        assert state["delta_link_me_Unseen"] == "old-u"
+        assert "delta_link_me_Projects" not in state
+        events = [c.args[0] for c in warning.call_args_list]
+        assert "email.delta_link_discard_deferred" in events
+        assert "email.delta_link_discarded" not in events
+
+    def test_pure_pass_keeps_unclaimed_but_drops_superseded_keys(self):
+        state = {"delta_link_me_Inbox": "a", "delta_link_me_Posteingang": "b", "delta_link_me_Unseen": "c"}
+        email.adopt_name_keyed_delta_links(
+            state, "me", ["Inbox", "Posteingang", "Unseen"], [("Posteingang", "id-in")], {"Inbox": "id-in"}, False
+        )
+        assert state == {"delta_link_me_id_id-in": "b", "delta_link_me_Unseen": "c"}
 
 
 class TestAdoptNameKeyedDeltaLinks:
     def test_without_the_display_key_the_alphabetically_first_alias_wins(self):
         state = {"delta_link_me_SentItems": "b", "delta_link_me_Inbox": "a"}
         email.adopt_name_keyed_delta_links(
-            state, "me", ["Inbox", "SentItems"], [("X", "id-x")], {"Inbox": "id-x", "SentItems": "id-x"}
+            state, "me", ["Inbox", "SentItems"], [("X", "id-x")], {"Inbox": "id-x", "SentItems": "id-x"}, True
         )
         assert state == {"delta_link_me_id_id-x": "a"}
 
     def test_existing_id_key_wins_and_stale_name_key_is_dropped(self):
         state = {"delta_link_me_id_id-p": "current", "delta_link_me_Projects": "stale"}
-        email.adopt_name_keyed_delta_links(state, "me", ["Projects"], [("Projects", "id-p")], {})
+        email.adopt_name_keyed_delta_links(state, "me", ["Projects"], [("Projects", "id-p")], {}, True)
         assert state == {"delta_link_me_id_id-p": "current"}
 
     def test_unclaimed_name_key_is_dropped(self):
         state = {"delta_link_me_id_id-p": "current", "delta_link_me_Gone": "orphan"}
-        email.adopt_name_keyed_delta_links(state, "me", ["Gone"], [("Projects", "id-p")], {})
+        email.adopt_name_keyed_delta_links(state, "me", ["Gone"], [("Projects", "id-p")], {}, True)
         assert state == {"delta_link_me_id_id-p": "current"}
 
     def test_name_keys_belong_to_the_longest_matching_mailbox(self):
@@ -1953,7 +1994,7 @@ class TestAdoptNameKeyedDeltaLinks:
         folders = [("Posteingang", "id-in"), ("Projects", "id-p")]
 
         email.adopt_name_keyed_delta_links(
-            state, "me", email.name_keyed_folders(state, "me", ["me"]), folders, {"Inbox": "id-in"}
+            state, "me", email.name_keyed_folders(state, "me", ["me"]), folders, {"Inbox": "id-in"}, True
         )
 
         assert email.name_keyed_folders(state, "me", ["me"]) == []

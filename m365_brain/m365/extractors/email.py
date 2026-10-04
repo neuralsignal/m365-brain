@@ -87,11 +87,11 @@ def run(
     )
 
     for mailbox in config.mailboxes:
-        folders = _folders_for_mailbox(client, mailbox)
+        folders, complete = _folders_for_mailbox(client, mailbox)
         names = name_keyed_folders(state, mailbox.address, [m.address for m in config.mailboxes])
         if names:
             alias_ids = _legacy_alias_ids(client, mailbox.address, names)
-            adopt_name_keyed_delta_links(state, mailbox.address, names, folders, alias_ids)
+            adopt_name_keyed_delta_links(state, mailbox.address, names, folders, alias_ids, complete)
 
         for folder, folder_id in folders:
             state_key = delta_state_key(mailbox.address, folder_id)
@@ -125,6 +125,9 @@ def delta_state_key(address: str, folder_id: str) -> str:
 def _name_state_key(address: str, folder: str) -> str:
     """The pre-#392 key, by display name or alias. Read only to migrate it."""
     return f"delta_link_{address}_{folder}"
+
+
+_UNCLAIMED = "no synced folder claims it"
 
 
 def name_keyed_folders(state: dict, address: str, addresses: list[str]) -> list[str]:
@@ -162,6 +165,7 @@ def adopt_name_keyed_delta_links(
     names: list[str],
     folders: list[tuple[str, str]],
     alias_ids: dict[str, str],
+    folders_complete: bool,
 ) -> None:
     """Move pre-#392 delta links, keyed by folder name, onto folder-ID keys. One-time.
 
@@ -169,8 +173,10 @@ def adopt_name_keyed_delta_links(
     that resolves to it. If its ID key is absent it adopts one: the display name,
     else the alphabetically first. Every name key in `names` is then deleted, and
     each one not adopted is logged with the reason, so no name key outlives the pass.
+    Unless `folders` is incomplete (truncated discovery): then a key no folder
+    claimed may belong to a folder not listed, so it is kept for the next run.
     """
-    reasons = dict.fromkeys(names, "no synced folder claims it")
+    reasons = dict.fromkeys(names, _UNCLAIMED)
     for display, folder_id in folders:
         claimed = [n for n in names if (n == display or alias_ids.get(n) == folder_id) and reasons[n] is not None]
         if not claimed:
@@ -191,6 +197,9 @@ def adopt_name_keyed_delta_links(
             to_key=id_key,
         )
     for name, reason in reasons.items():
+        if reason == _UNCLAIMED and not folders_complete:
+            log.warning("email.delta_link_discard_deferred", mailbox=address, key=_name_state_key(address, name))
+            continue
         del state[_name_state_key(address, name)]
         if reason is not None:
             log.warning(
@@ -198,16 +207,21 @@ def adopt_name_keyed_delta_links(
             )
 
 
-def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> list[tuple[str, str]]:
-    """(display name, folder ID) for every folder of a mailbox.
+def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> tuple[list[tuple[str, str]], bool]:
+    """((display name, folder ID) for every folder of a mailbox, complete).
 
-    If `mailbox.folders` is None, auto-discover via Graph API. Otherwise resolve
-    the configured names, which stay the display name.
+    If `mailbox.folders` is None, auto-discover via Graph API; `complete` is False
+    when discovery was truncated. Otherwise resolve the configured names, which
+    stay the display name, and the list is complete by definition.
     """
     endpoint_base = _endpoint_base(mailbox.address)
     if mailbox.folders is None:
-        return list_all_folders(client, endpoint_base, mailbox.address)
-    return [(folder, resolve_folder_id(client, endpoint_base, mailbox.address, folder)) for folder in mailbox.folders]
+        folders, truncated = list_all_folders(client, endpoint_base, mailbox.address)
+        return folders, not truncated
+    resolved = [
+        (folder, resolve_folder_id(client, endpoint_base, mailbox.address, folder)) for folder in mailbox.folders
+    ]
+    return resolved, True
 
 
 def _sync_folder(
