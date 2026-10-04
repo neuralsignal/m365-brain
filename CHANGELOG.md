@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/neuralsignal/m365-brain/compare/v1.2.5...v1.3.0) (2026-10-04)
+
+
+### Features
+
+* key email delta state by folder id ([#393](https://github.com/neuralsignal/m365-brain/issues/393)) ([2c75e21](https://github.com/neuralsignal/m365-brain/commit/2c75e219a147b7bb2d13106f04a59d4449b4b49c)), closes [#392](https://github.com/neuralsignal/m365-brain/issues/392)
+
+
+### Bug Fixes
+
+* bump anyio&gt;=4.14.2 to resolve CVE-2026-63374 and CVE-2026-64847 ([#375](https://github.com/neuralsignal/m365-brain/issues/375)) ([#376](https://github.com/neuralsignal/m365-brain/issues/376)) ([4a92718](https://github.com/neuralsignal/m365-brain/commit/4a92718ac07e96cc67fd55632df1eb5897c8b698))
+* request immutable ids for outbox drafts ([#378](https://github.com/neuralsignal/m365-brain/issues/378)) ([bde2bb2](https://github.com/neuralsignal/m365-brain/commit/bde2bb2aa9cfcdd1d505a16e1269c879fbaeda68))
+* scope outbox receipts, save the token cache atomically ([cece5ad](https://github.com/neuralsignal/m365-brain/commit/cece5ad0ea0a1ede263b56b015e16cf5cfa01a7e))
+* skip German system folders in mail auto-discovery ([#391](https://github.com/neuralsignal/m365-brain/issues/391)) ([4a8c454](https://github.com/neuralsignal/m365-brain/commit/4a8c4545e198932328ed87611207d765e8bc3dc7))
+
 ## [1.2.5](https://github.com/neuralsignal/m365-brain/compare/v1.2.4...v1.2.5) (2026-09-21)
 
 
