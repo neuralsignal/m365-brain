@@ -17,6 +17,7 @@ from m365_brain.config import GraphConfig, TeamsChatsExtractorConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.extractors import _teams_attachment_helpers as helpers
 from m365_brain.m365.extractors import _teams_hosted_content as hosted_content
+from m365_brain.m365.extractors._teams_attachment_download import encode_share_url
 from m365_brain.m365.extractors._teams_context import TeamsContext
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.paths import VaultPaths
@@ -75,7 +76,7 @@ def _ctx(
 class TestEncodeShareUrl:
     def test_roundtrip(self) -> None:
         url = "https://contoso.sharepoint.com/sites/x/Shared Documents/spec.pdf"
-        encoded = helpers._encode_share_url(url)
+        encoded = encode_share_url(url)
         assert encoded.startswith("u!")
         # Re-pad and decode to verify it round-trips to the original URL
         body = encoded[2:]
@@ -87,7 +88,7 @@ class TestEncodeShareUrl:
 class TestDownloadMessageAttachments:
     def test_reference_attachment_written(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
@@ -151,7 +152,7 @@ class TestDownloadMessageAttachments:
 
     def test_oversized_attachment_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/huge.zip"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
@@ -186,7 +187,7 @@ class TestDownloadMessageAttachments:
 
     def test_missing_download_url_skipped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/nourl.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={"id": "drive-item", "size": 100},
@@ -252,7 +253,7 @@ class TestDownloadMessageAttachments:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
@@ -297,7 +298,7 @@ class TestDownloadMessageAttachments:
     ) -> None:
         """When conversion fails, the ref must not carry a dangling converted link."""
         content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
@@ -336,7 +337,7 @@ class TestDownloadMessageAttachments:
 
     def test_path_traversal_in_name_stripped(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/file"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={
@@ -374,7 +375,7 @@ class TestDownloadMessageAttachments:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         # max_retries=1 → the client attempts twice before raising
         for _ in range(2):
             httpx_mock.add_response(
@@ -428,7 +429,7 @@ class TestPermanentFailureSkipList:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths, status, code
     ) -> None:
         content_url = "https://contoso-my.sharepoint.com/personal/other_user/secret.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             status_code=status,
@@ -890,7 +891,7 @@ class TestResolveAttachment:
 
     def test_successful_download_returns_ref(self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/spec.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             json={"id": "di", "size": 64, "@microsoft.graph.downloadUrl": "https://contoso.sharepoint.com/dl?t=x"},
@@ -916,7 +917,7 @@ class TestResolveAttachment:
         self, httpx_mock: HTTPXMock, tmp_path, graph_config, vault_paths
     ) -> None:
         content_url = "https://contoso.sharepoint.com/sites/x/secret.pdf"
-        encoded = helpers._encode_share_url(content_url)
+        encoded = encode_share_url(content_url)
         httpx_mock.add_response(
             url=re.compile(rf".*/shares/{re.escape(encoded)}/driveItem.*"),
             status_code=403,
@@ -1026,12 +1027,12 @@ class TestResolveAttachment:
 class TestEncodeShareUrlProperty:
     @given(url=st.text(min_size=1))
     def test_always_starts_with_u_bang(self, url: str) -> None:
-        assert helpers._encode_share_url(url).startswith("u!")
+        assert encode_share_url(url).startswith("u!")
 
     @given(url=st.text(min_size=1))
     def test_never_contains_base64_padding(self, url: str) -> None:
         """The /shares/{id} route rejects '=' padding, so it must be stripped."""
-        assert "=" not in helpers._encode_share_url(url)
+        assert "=" not in encode_share_url(url)
 
 
 class TestSanitizeFilenameProperty:

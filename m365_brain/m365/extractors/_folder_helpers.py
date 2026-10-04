@@ -96,6 +96,17 @@ traversal exists to fix. `childFolders` is walked by request rather than
 traversal and the expansion only makes the first page heavier."""
 
 
+def _is_discoverable_folder(folder: dict) -> tuple[str, str] | None:
+    """Return (display_name, folder_id) if the folder should be discovered, else None."""
+    display = folder.get("displayName") or ""
+    folder_id = folder.get("id") or ""
+    if not display or not folder_id:
+        return None
+    if folder.get("isHidden", False) or display in AUTO_DISCOVER_SKIP_DISPLAY:
+        return None
+    return display, folder_id
+
+
 def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> list[tuple[str, str]]:
     """Every visible mail folder, at any depth, for auto-discovery.
 
@@ -133,12 +144,10 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
         if truncated:
             log.warning("email.folder_discovery_truncated", mailbox=address, max_pages=client.max_pages)
         for f in folders:
-            display = f.get("displayName") or ""
-            folder_id = f.get("id") or ""
-            if not display or not folder_id:
+            discovered = _is_discoverable_folder(f)
+            if discovered is None:
                 continue
-            if f.get("isHidden", False) or display in AUTO_DISCOVER_SKIP_DISPLAY:
-                continue
+            display, folder_id = discovered
             result.append((display, folder_id))
             if f.get("childFolderCount", 0):
                 pending.append(f"{endpoint_base}/mailFolders/{folder_id}/childFolders")

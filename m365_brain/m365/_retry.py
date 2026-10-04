@@ -68,6 +68,50 @@ def raise_for_response(response: httpx.Response, log_ref: str, error_message_max
     raise GraphApiError(message, response.status_code)
 
 
+def _handle_error_response(
+    response: httpx.Response,
+    attempt: int,
+    request: RequestSpec,
+    policy: RetryPolicy,
+    backoff_base_seconds: float,
+) -> None:
+    """Handle a non-2xx response. Returns normally to signal retry, or raises."""
+    config = policy.config
+
+    if response.status_code == 401:
+        if attempt == 0:
+            log.info("graph.token_expired, refreshing")
+            return
+        error_code, error_message = _extract_graph_error(response.text, config.error_message_max_length)
+        log.error(
+            "graph.401_after_retry",
+            path=request.log_ref,
+            error_code=error_code,
+            error_message=error_message,
+        )
+        raise GraphApiError(_friendly_error(401, error_code, error_message, request.log_ref), 401)
+
+    if response.status_code in RETRYABLE_STATUS_CODES and attempt < config.max_retries:
+        wait = _retry_wait_seconds(
+            response,
+            attempt,
+            backoff_base_seconds,
+            config.max_retry_after_seconds,
+        )
+        log.warning(
+            "graph.retryable_error",
+            status=response.status_code,
+            attempt=attempt + 1,
+            wait_seconds=wait,
+        )
+        time.sleep(wait)
+        return
+
+    if response.status_code in RETRYABLE_STATUS_CODES:
+        log.error("graph.max_retries_exceeded", status=response.status_code, path=request.log_ref)
+    raise_for_response(response, request.log_ref, config.error_message_max_length)
+
+
 def execute_with_retry(
     http_client: httpx.Client,
     headers_fn: Callable[[str | None, str | None], dict[str, str]],
@@ -113,38 +157,7 @@ def execute_with_retry(
         if 200 <= response.status_code < 300:
             return extract(response)
 
-        if response.status_code == 401:
-            if attempt == 0:
-                log.info("graph.token_expired, refreshing")
-                continue
-            error_code, error_message = _extract_graph_error(response.text, config.error_message_max_length)
-            log.error(
-                "graph.401_after_retry",
-                path=request.log_ref,
-                error_code=error_code,
-                error_message=error_message,
-            )
-            raise GraphApiError(_friendly_error(401, error_code, error_message, request.log_ref), 401)
-
-        if response.status_code in RETRYABLE_STATUS_CODES and attempt < config.max_retries:
-            wait = _retry_wait_seconds(
-                response,
-                attempt,
-                backoff_base_seconds,
-                config.max_retry_after_seconds,
-            )
-            log.warning(
-                "graph.retryable_error",
-                status=response.status_code,
-                attempt=attempt + 1,
-                wait_seconds=wait,
-            )
-            time.sleep(wait)
-            continue
-
-        if response.status_code in RETRYABLE_STATUS_CODES:
-            log.error("graph.max_retries_exceeded", status=response.status_code, path=request.log_ref)
-        raise_for_response(response, request.log_ref, config.error_message_max_length)
+        _handle_error_response(response, attempt, request, policy, backoff_base_seconds)
 
     msg = f"Graph API request failed after {config.max_retries} retries: {request.log_ref}"
     raise GraphApiError(msg, None)

@@ -173,6 +173,36 @@ def _extract_user_data(user: dict, manager_link: str, direct_reports_links: list
     )
 
 
+def _build_org_section(data: DirectoryUserData) -> list[str]:
+    """Build the Organization section lines for a directory user."""
+    if not data.manager_link and not data.direct_reports_links:
+        return []
+    parts = ["\n## Organization\n"]
+    if data.manager_link:
+        parts.append(f"- {MANAGER} {data.manager_link}")
+    if data.direct_reports_links:
+        parts.append("- **Direct Reports:**")
+        for link in data.direct_reports_links:
+            parts.append(f"  - {link}")
+    return parts
+
+
+def _build_user_body(data: DirectoryUserData) -> str:
+    """Build the full markdown body for a directory user entry."""
+    parts: list[str] = [f"# {data.display_name}\n", "## Profile\n"]
+    for label, value in [
+        ("Title", data.job_title),
+        ("Department", data.department),
+        ("Office", data.office),
+        ("Email", data.email),
+        ("City", data.city),
+    ]:
+        if value:
+            parts.append(f"- **{label}:** {value}")
+    parts.extend(_build_org_section(data))
+    return "\n".join(parts)
+
+
 def _write_user(
     storage: StorageBackend,
     data: DirectoryUserData,
@@ -181,32 +211,7 @@ def _write_user(
 ) -> bool:
     """Build frontmatter and markdown body for a directory user, then write to storage."""
     fm = build_directory_user_frontmatter(data)
-
-    body_parts = [f"# {data.display_name}\n", "## Profile\n"]
-
-    if data.job_title:
-        body_parts.append(f"- **Title:** {data.job_title}")
-    if data.department:
-        body_parts.append(f"- **Department:** {data.department}")
-    if data.office:
-        body_parts.append(f"- **Office:** {data.office}")
-    if data.email:
-        body_parts.append(f"- **Email:** {data.email}")
-    if data.city:
-        body_parts.append(f"- **City:** {data.city}")
-
-    if data.manager_link or data.direct_reports_links:
-        body_parts.append("\n## Organization\n")
-        if data.manager_link:
-            # A bare token, because `parse_relations` reads the text before the
-            # wikilink as the edge's *type*. See `frontmatter.people.MANAGER`.
-            body_parts.append(f"- {MANAGER} {data.manager_link}")
-        if data.direct_reports_links:
-            body_parts.append("- **Direct Reports:**")
-            for link in data.direct_reports_links:
-                body_parts.append(f"  - {link}")
-
-    content = dumps_markdown(fm, "\n".join(body_parts))
+    content = dumps_markdown(fm, _build_user_body(data))
 
     slug = slugify(data.display_name, 80)
     hsh = short_hash(data.user_id, 6)
@@ -214,6 +219,5 @@ def _write_user(
     file_path = ctx.paths.entry_file(item_dir)
 
     storage.write_file(file_path, content)
-    # The directory, not the entry file -- see email.py.
     path_map[data.user_id] = item_dir
     return True
