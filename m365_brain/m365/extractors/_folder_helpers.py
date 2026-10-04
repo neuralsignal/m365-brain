@@ -57,11 +57,10 @@ AUTO_DISCOVER_SKIP_DISPLAY = {
     "Postausgang",
     "Verlauf der Unterhaltung",
     "Synchronisierungsprobleme",
-    "Konflikte",
-    "Lokale Fehler",
-    "Serverfehler",
     "Erneut erinnern aktiviert",
+    "Geplant",
     "RSS-Feeds",
+    "RSS-Abonnements",
 }
 
 
