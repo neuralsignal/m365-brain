@@ -50,6 +50,18 @@ AUTO_DISCOVER_SKIP_DISPLAY = {
     "RSS Subscriptions",
     "Yammer Root",
     "Files",
+    # German (de-DE) mailbox locale, as Graph returns it
+    "Entwürfe",
+    "Gelöschte Elemente",
+    "Junk-E-Mail",
+    "Postausgang",
+    "Verlauf der Unterhaltung",
+    "Synchronisierungsprobleme",
+    "Konflikte",
+    "Lokale Fehler",
+    "Serverfehler",
+    "Erneut erinnern aktiviert",
+    "RSS-Feeds",
 }
 
 
@@ -151,6 +163,16 @@ def list_all_folders(client: GraphClient, endpoint_base: str, address: str) -> l
             result.append((display, folder_id))
             if f.get("childFolderCount", 0):
                 pending.append(f"{endpoint_base}/mailFolders/{folder_id}/childFolders")
+    # Delta tokens and the folder-id cache are keyed by display name, so two folders sharing one
+    # anywhere in the tree would silently share a sync position.
+    names = [display for display, _ in result]
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    if duplicates:
+        raise GraphApiError(
+            f"Duplicate mail folder names in mailbox={address}: {duplicates}. "
+            "Auto-discovery keys sync state by display name; rename one, or list folders explicitly.",
+            None,
+        )
     log.info("email.folders_discovered", mailbox=address, count=len(result))
     return result
 

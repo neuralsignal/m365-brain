@@ -153,3 +153,43 @@ class TestAutoDiscoveryReachesEveryVisibleFolder:
         )
 
         assert list_all_folders(client, "/me", "me") == []
+
+
+class TestGermanMailboxAndDuplicates:
+    def test_german_system_folders_are_skipped(self) -> None:
+        """A de-DE mailbox names its system folders in German; `Gelöschte Elemente` holds deleted mail."""
+        client = _paging_client(
+            {
+                "/me/mailFolders": [
+                    {"id": "id-in", "displayName": "Posteingang"},
+                    {"id": "id-bin", "displayName": "Gelöschte Elemente", "childFolderCount": 1},
+                    {"id": "id-drafts", "displayName": "Entwürfe"},
+                    {"id": "id-junk", "displayName": "Junk-E-Mail"},
+                    {"id": "id-out", "displayName": "Postausgang"},
+                    {"id": "id-sync", "displayName": "Synchronisierungsprobleme", "childFolderCount": 1},
+                    {"id": "id-arch", "displayName": "Archiv", "childFolderCount": 1},
+                ],
+                "/me/mailFolders/id-bin/childFolders": [{"id": "id-x", "displayName": "Weg"}],
+                "/me/mailFolders/id-sync/childFolders": [{"id": "id-c", "displayName": "Konflikte"}],
+                "/me/mailFolders/id-arch/childFolders": [{"id": "id-t", "displayName": "Data & platform"}],
+            }
+        )
+        assert sorted(list_all_folders(client, "/me", "me")) == [
+            ("Archiv", "id-arch"),
+            ("Data & platform", "id-t"),
+            ("Posteingang", "id-in"),
+        ]
+
+    def test_duplicate_display_names_fail_loud(self) -> None:
+        """Two folders named alike would share one delta token."""
+        client = _paging_client(
+            {
+                "/me/mailFolders": [
+                    {"id": "id-a", "displayName": "Archiv", "childFolderCount": 1},
+                    {"id": "id-r", "displayName": "Receipts"},
+                ],
+                "/me/mailFolders/id-a/childFolders": [{"id": "id-r2", "displayName": "Receipts"}],
+            }
+        )
+        with pytest.raises(GraphApiError, match="Duplicate mail folder names.*Receipts"):
+            list_all_folders(client, "/me", "me")
