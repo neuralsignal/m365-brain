@@ -19,6 +19,8 @@ Every extractor follows the same contract:
 
 Syncs emails from configured mail folders using Graph API delta queries. Subsequent syncs use the stored delta link for incremental updates.
 
+The delta link is stored per Graph folder ID (`delta_link_{mailbox}_id_{folder_id}`), so renaming or moving a folder keeps its position, and two folders with the same display name sync independently. Well-known names in `folders` (`Inbox`, `SentItems`, …) are resolved to the real ID, so an explicit list and auto-discovery (`Inbox` vs. `Posteingang`) share one entry. Links stored under the older name keys are adopted on the first run and the name keys removed; when two name keys map to one folder, the one under the current display name is kept and the other is logged as `email.delta_link_discarded`.
+
 The first sync of a folder enumerates **the whole folder** — there is no time window. A `receivedDateTime` cutoff was tried and provably did nothing (1,062 pre-cutoff messages on a sync with state cleared); *why* is unresolved, since Microsoft documents that `$filter` expression as supported on a message delta, so the knob is gone rather than restored on a doc page. `max_items_per_sync` (sent as `$top`, which on a delta query caps the entire enumeration) is the bound this config expresses; `graph.max_pages` caps the same round in pages and usually stops it first.
 
 ### Graph API Endpoints

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
+import httpx
 import pytest
 
 # Skip test_admin/ and test_worker.py when sqlmodel/reflex is not installed (default env)
@@ -38,6 +40,7 @@ from m365_brain.config import (
 from m365_brain.config.index import IndexConfig
 from m365_brain.config.runtime import HooksConfig, ManifestConfig
 from m365_brain.config.vault import VaultConfig, VaultFilenames, VaultLayout
+from m365_brain.m365.extractors._folder_helpers import WELL_KNOWN_FOLDERS
 from m365_brain.storage.local import LocalBackend
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -46,6 +49,28 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 @pytest.fixture()
 def fixtures_dir():
     return FIXTURES_DIR
+
+
+WELL_KNOWN_FOLDER_URL = re.compile(rf".*/mailFolders/({'|'.join(WELL_KNOWN_FOLDERS)})\?.*")
+
+
+def well_known_folder_response(request: httpx.Request) -> httpx.Response:
+    """Graph resolving a well-known alias to its folder, with the alias as the ID."""
+    alias = WELL_KNOWN_FOLDER_URL.match(str(request.url)).group(1)
+    return httpx.Response(200, json={"id": alias, "displayName": alias})
+
+
+@pytest.fixture(autouse=True)
+def _well_known_mail_folders(request: pytest.FixtureRequest) -> None:
+    """Answer the alias lookup the email extractor makes before every delta round.
+
+    The ID equals the alias, so a test's `/mailFolders/Inbox/messages/delta`
+    mock still matches. Only for tests that already mock Graph via `httpx_mock`.
+    """
+    if "httpx_mock" in request.fixturenames:
+        request.getfixturevalue("httpx_mock").add_callback(
+            well_known_folder_response, url=WELL_KNOWN_FOLDER_URL, is_optional=True, is_reusable=True
+        )
 
 
 # ---------------------------------------------------------------------------
