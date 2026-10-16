@@ -26,6 +26,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import click
 import msal
 
 from m365_brain.config import AuthConfig
@@ -117,7 +118,7 @@ class DeviceCodeAuth:
             flow = self._app.initiate_device_flow(scopes=self._scopes)
         if "user_code" not in flow:
             _fail(f"Failed to initiate device flow: {json.dumps(flow, indent=2)}")
-        print(flow["message"])
+        click.echo(flow["message"])
         _copy_to_clipboard(flow["user_code"])
         sys.stdout.flush()
         with auth_transport_errors():
@@ -202,13 +203,13 @@ def _copy_to_clipboard(text: str) -> None:
         try:
             subprocess.run(tool, input=text.encode(), check=True)
         except (OSError, subprocess.CalledProcessError) as exc:
-            print(f"(could not copy the code to the clipboard via {tool[0]}: {exc})")
+            click.echo(f"(could not copy the code to the clipboard via {tool[0]}: {exc})")
             return
-        print(f"(code {text} copied to clipboard)")
+        click.echo(f"(code {text} copied to clipboard)")
         return
-    print("(no clipboard tool found -- copy the code by hand)")
+    click.echo("(no clipboard tool found -- copy the code by hand)")
 
 
 def _fail(message: str) -> None:
-    print(f"Auth error: {message}", file=sys.stderr)
+    click.echo(f"Auth error: {message}", err=True)
     raise SystemExit(1)
