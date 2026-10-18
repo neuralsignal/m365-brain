@@ -13,7 +13,7 @@ from m365_brain.index.catalog import FileCatalog
 from m365_brain.index.fusion import reciprocal_rank_fusion
 from m365_brain.index.graph import find, observations, traverse
 from m365_brain.index.query import parse_metadata_filter, parse_timeframe, to_fts_query, updated_since
-from m365_brain.index.search import SearchFilters, SearchMode, search
+from m365_brain.index.search import SearchFilters, SearchMode, SearchRequest, search
 from m365_brain.index.sync import sync_index
 from m365_brain.index.vector import (
     EmbeddingProvider,
@@ -30,6 +30,7 @@ __all__ = [
     "MetadataFilter",
     "SearchFilters",
     "SearchMode",
+    "SearchRequest",
     "TextQuery",
     "VectorStore",
     "create_embedding_provider",

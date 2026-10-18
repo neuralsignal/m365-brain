@@ -50,7 +50,7 @@ from m365_brain.ops.names import (
     reverse_comma_name,
 )
 from m365_brain.ops.tiers import assign_rung, compute_tiers, is_stale
-from m365_brain.ops.triage import is_cc_only, is_forward, rejected_references, triage
+from m365_brain.ops.triage import TriageRequest, is_cc_only, is_forward, rejected_references, triage
 from m365_brain.outbox.stores import InMemoryIntentStore
 from m365_brain.parsers.document import parse_markdown_file
 from m365_brain.vault.dispatch import DispatchReceipt
@@ -589,7 +589,7 @@ class TestTriage:
                 ),
             ],
         )
-        result = triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+        result = triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
         assert [item.entity.key for item in result] == (["follow-up"] if sent_offset < 0 else [])
 
     @pytest.fixture()
@@ -613,7 +613,9 @@ class TestTriage:
         return store
 
     def keys(self, corpus, store):
-        return [item.entity.permalink for item in triage(corpus, store, TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)]
+        return [
+            item.entity.permalink for item in triage(corpus, store, TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
+        ]
 
     def test_a_message_with_no_reply_is_reported(self, corpus, store):
         assert "m-open" in self.keys(corpus, store)
@@ -631,7 +633,9 @@ class TestTriage:
         assert "m-sent" not in self.keys(corpus, store)
 
     def test_the_forward_and_cc_flags_come_from_the_message(self, corpus, store):
-        items = {i.entity.permalink: i for i in triage(corpus, store, TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)}
+        items = {
+            i.entity.permalink: i for i in triage(corpus, store, TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
+        }
         assert (items["m-fwd"].is_forward, items["m-fwd"].is_cc_only) == (True, True)
         assert (items["m-open"].is_forward, items["m-open"].is_cc_only) == (False, False)
 
@@ -660,7 +664,7 @@ class TestTriage:
     def test_a_message_missing_a_required_observation_is_named_not_skipped(self, backend):
         corpus = loaded(backend, [entity("m-broken", "Broken", "email", [observation("folder", "Inbox")])])
         with pytest.raises(ValueError, match="m-broken"):
-            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
     def test_rejected_references_skips_missing_envelope(self):
         store = InMemoryIntentStore()
@@ -688,7 +692,7 @@ class TestTriage:
             ],
         )
         with pytest.raises(ValueError, match=r"m-bad-date.*date.*not a.*ISO timestamp.*not-a-date"):
-            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
     def test_a_blank_conversation_id_is_refused_rather_than_grouped(self, backend):
         """An empty thread id is worse than a missing one: it collides.
@@ -713,7 +717,7 @@ class TestTriage:
             ],
         )
         with pytest.raises(ValueError, match="m-blank"):
-            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, "7d", NOW, PAGE_SIZE)
+            triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
 
 # ---------------------------------------------------------------------------
@@ -783,7 +787,9 @@ class TestTriageOverExtractorOutput:
         return loaded(backend, entities)
 
     def items(self, corpus):
-        return triage(corpus, InMemoryIntentStore(), SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, "7d", NOW, PAGE_SIZE)
+        return triage(
+            corpus, InMemoryIntentStore(), SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, TriageRequest("7d", NOW, PAGE_SIZE)
+        )
 
     def test_exactly_the_message_with_no_reply_is_reported(self, corpus):
         """One of the two received messages has a sent sibling; only the other survives."""
@@ -801,7 +807,7 @@ class TestTriageOverExtractorOutput:
         store = InMemoryIntentStore()
         rejected_reply(store, "intent-one", "msg-Budget question")
 
-        assert triage(corpus, store, SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, "7d", NOW, PAGE_SIZE) == []
+        assert triage(corpus, store, SHIPPED_TRIAGE, SHIPPED_TRIAGE.fields, TriageRequest("7d", NOW, PAGE_SIZE)) == []
 
     def test_the_shipped_categories_are_the_ones_the_builder_writes(self):
         """The config-side half of the same agreement, stated once, in one place."""

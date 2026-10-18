@@ -5,8 +5,8 @@ from __future__ import annotations
 import base64
 import binascii
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
 
 import httpx
 import structlog
@@ -14,13 +14,21 @@ import structlog
 from m365_brain.config import EmailExtractorConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.converters.document import DocumentConversionError, convert_document
+from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.storage.base import StorageBackend
 from m365_brain.storage.exceptions import StorageError
 
-if TYPE_CHECKING:
-    from m365_brain.m365.extractors.base import ExtractorContext
-
 log = structlog.get_logger()
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentDeps:
+    """Infrastructure dependencies shared across attachment operations."""
+
+    client: GraphClient
+    storage: StorageBackend
+    config: EmailExtractorConfig
+    ctx: ExtractorContext
 
 
 def _basename(name: str) -> str:
@@ -37,12 +45,9 @@ def _basename(name: str) -> str:
 
 def _process_attachment(
     att: dict,
-    client: GraphClient,
-    storage: StorageBackend,
+    deps: AttachmentDeps,
     message_id: str,
     email_dir: str,
-    config: EmailExtractorConfig,
-    ctx: ExtractorContext,
 ) -> None:
     """Process a single attachment: validate, download, store, and optionally convert."""
     raw_name = att.get("name", "")
@@ -53,7 +58,7 @@ def _process_attachment(
     if att.get("isInline", False):
         return
     size = att.get("size", 0)
-    if size > config.max_attachment_size_mb * 1024 * 1024:
+    if size > deps.config.max_attachment_size_mb * 1024 * 1024:
         log.warning("email.attachment_too_large", name=att_name, size_mb=size // (1024 * 1024))
         return
     download_url = att.get("@microsoft.graph.downloadUrl")
@@ -63,38 +68,35 @@ def _process_attachment(
         return
     try:
         if download_url:
-            data = client.get_bytes(download_url)
+            data = deps.client.get_bytes(download_url)
         else:
             data = base64.b64decode(content_bytes_b64)
-        storage.write_bytes(ctx.paths.attachment(email_dir, att_name), data)
+        deps.storage.write_bytes(deps.ctx.paths.attachment(email_dir, att_name), data)
         ext = Path(att_name).suffix.lower()
-        if ext in config.attachment_convert_extensions:
+        if ext in deps.config.attachment_convert_extensions:
             convert_and_store(
-                storage,
+                deps.storage,
                 data,
                 att_name,
-                ctx.paths.converted_attachment(email_dir, f"{att_name}.md"),
-                ctx.converters,
+                deps.ctx.paths.converted_attachment(email_dir, f"{att_name}.md"),
+                deps.ctx.converters,
             )
     except (GraphApiError, httpx.TransportError, binascii.Error, StorageError, OSError) as exc:
         log.warning("email.attachment_download_failed", name=att_name, error=str(exc))
 
 
 def download_attachments(
-    client: GraphClient,
-    storage: StorageBackend,
+    deps: AttachmentDeps,
     endpoint_base: str,
     message_id: str,
     email_dir: str,
-    config: EmailExtractorConfig,
-    ctx: ExtractorContext,
 ) -> None:
     """Download email attachments and optionally convert them to markdown."""
     path = f"{endpoint_base}/messages/{message_id}/attachments"
     params = {"$top": "20"}
     try:
-        for att in client.get_paginated(path, params, max_pages=5):
-            _process_attachment(att, client, storage, message_id, email_dir, config, ctx)
+        for att in deps.client.get_paginated(path, params, max_pages=5):
+            _process_attachment(att, deps, message_id, email_dir)
     except (GraphApiError, httpx.TransportError) as exc:
         log.warning("email.attachments_fetch_failed", message_id=message_id, error=str(exc))
 

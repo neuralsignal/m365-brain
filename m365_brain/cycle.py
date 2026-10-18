@@ -57,7 +57,7 @@ from m365_brain.schedule import INDEX_UNIT, Unit, due, mark_failure, mark_succes
 from m365_brain.schedule import units_from_config as _units_from_config
 from m365_brain.state import CYCLES, EXTRACTOR_STATE, StateStore
 from m365_brain.storage.base import StorageBackend
-from m365_brain.sync import build_context, run_one
+from m365_brain.sync import SyncRuntime, build_context, run_one
 from m365_brain.vault.paths import manifest_directory
 
 log = structlog.get_logger()
@@ -216,7 +216,7 @@ def _run_extractor(runtime: Runtime, client: GraphClient, unit: Unit) -> Extract
     error: str | None = None
     count = 0
     try:
-        updated, count = run_one(runtime.config, client, storage, ctx, state, unit.name)
+        updated, count = run_one(SyncRuntime(runtime.config, client, storage, ctx), state, unit.name)
     except Exception as exc:  # noqa: BLE001 -- recorded on the manifest, next unit still runs
         error = str(exc) or type(exc).__name__
         log.exception("cycle.extractor_failed", extractor=unit.name)

@@ -34,7 +34,7 @@ app = rx.App()
 if os.environ.get("M365_ADMIN_CONFIG"):
     from m365_admin.config_loader import get_config, get_config_path, get_engine
     from m365_admin.services.token_service import TokenService, TokenServiceAdapter
-    from m365_brain.worker import start_worker_thread
+    from m365_brain.worker import WorkerServices, start_worker_thread
 
     _config = get_config()
     _engine = get_engine()
@@ -46,6 +46,6 @@ if os.environ.get("M365_ADMIN_CONFIG"):
     _first_config = _config_path.split(",")[0].strip()
     _state_dir = str(Path(_first_config).resolve().parent / "state")
 
-    _worker_stop = start_worker_thread(_config, _engine, _token_adapter, _state_dir)
+    _worker_stop = start_worker_thread(WorkerServices(_config, _engine, _token_adapter, _state_dir))
 else:
     _worker_stop = None

@@ -9,7 +9,7 @@ import structlog
 from m365_brain.config import EmailExtractorConfig
 from m365_brain.m365.client import GraphClient
 from m365_brain.m365.converters.html_to_md import html_to_markdown
-from m365_brain.m365.extractors._attachment_helpers import download_attachments
+from m365_brain.m365.extractors._attachment_helpers import AttachmentDeps, download_attachments
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.frontmatter import EmailData, build_email_frontmatter
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
@@ -112,14 +112,12 @@ def write_email(
     sync_ctx.path_map[message_id] = email_dir
 
     if sync_ctx.config.download_attachments and msg.get("hasAttachments"):
-        download_attachments(
-            sync_ctx.client,
-            sync_ctx.storage,
-            endpoint_base,
-            message_id,
-            email_dir,
-            sync_ctx.config,
-            sync_ctx.ctx,
+        deps = AttachmentDeps(
+            client=sync_ctx.client,
+            storage=sync_ctx.storage,
+            config=sync_ctx.config,
+            ctx=sync_ctx.ctx,
         )
+        download_attachments(deps, endpoint_base, message_id, email_dir)
 
     return True

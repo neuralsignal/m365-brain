@@ -10,7 +10,7 @@ from m365_brain.config.errors import ConfigError
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.state import EXTRACTOR_STATE, InMemoryStateStore
-from m365_brain.sync import EXTRACTORS, UnknownExtractor, run_extractors, run_one
+from m365_brain.sync import EXTRACTORS, SyncRuntime, UnknownExtractor, run_extractors, run_one
 
 
 def _make_mock_extractor(return_value: tuple = ({}, 0), side_effect: Exception | None = None) -> MagicMock:
@@ -178,4 +178,4 @@ class TestRunExtractors:
 class TestRunOne:
     def test_unknown_extractor_raises(self, vaulted_config):
         with pytest.raises(UnknownExtractor, match="nonexistent"):
-            run_one(vaulted_config, MagicMock(), MagicMock(), MagicMock(), {}, "nonexistent")
+            run_one(SyncRuntime(vaulted_config, MagicMock(), MagicMock(), MagicMock()), {}, "nonexistent")

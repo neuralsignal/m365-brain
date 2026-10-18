@@ -19,6 +19,8 @@ from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.models import ExtractorPreference, ExtractorStatus, User
 from m365_brain.worker import (
     _KNOWN_ERRORS,
+    StatusUpdate,
+    WorkerServices,
     _lock_key,
     _require_worker_config,
     _run_cycle,
@@ -87,7 +89,7 @@ class TestGetUserExtractors:
 
 class TestUpsertExtractorStatus:
     def test_inserts_new(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, UID_1, "email", "running", 0, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("running", 0, None))
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -101,8 +103,8 @@ class TestUpsertExtractorStatus:
             assert row.items_synced == 0
 
     def test_updates_existing(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, UID_1, "email", "running", 0, None)
-        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 42, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("running", 0, None))
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("success", 42, None))
 
         with Session(seeded_engine) as session:
             rows = session.exec(
@@ -116,7 +118,7 @@ class TestUpsertExtractorStatus:
             assert rows[0].items_synced == 42
 
     def test_stores_error(self, seeded_engine):
-        upsert_extractor_status(seeded_engine, UID_1, "email", "failed", 0, "Token expired")
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("failed", 0, "Token expired"))
 
         with Session(seeded_engine) as session:
             row = session.exec(select(ExtractorStatus).where(ExtractorStatus.user_id == UID_1)).first()
@@ -140,7 +142,7 @@ class TestGetDueJobs:
             session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
             session.commit()
 
-        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 10, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("success", 10, None))
 
         due = get_due_jobs(seeded_engine, full_config)
         pairs = [(u.user_id, ext) for u, ext in due]
@@ -152,7 +154,7 @@ class TestGetDueJobs:
             session.add(ExtractorPreference(user_id=UID_1, extractor_name="email", enabled=True))
             session.commit()
 
-        upsert_extractor_status(seeded_engine, UID_1, "email", "success", 10, None)
+        upsert_extractor_status(seeded_engine, UID_1, "email", StatusUpdate("success", 10, None))
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -191,7 +193,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", return_value=42) as mock_run,
             patch("m365_brain.worker.release_advisory_lock"),
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         mock_run.assert_called_once()
 
@@ -215,7 +219,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", side_effect=GraphApiError("Graph API down", None)),
             patch("m365_brain.worker.release_advisory_lock"),
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -235,7 +241,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", side_effect=ExtractorError("bad extractor")),
             patch("m365_brain.worker.release_advisory_lock") as mock_release,
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -256,7 +264,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", side_effect=ConfigError("bad config")),
             patch("m365_brain.worker.release_advisory_lock"),
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -276,7 +286,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", side_effect=TokenRefreshError("token expired")),
             patch("m365_brain.worker.release_advisory_lock"),
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -297,7 +309,9 @@ class TestRunSingleExtractor:
             patch("m365_brain.worker.run_extractors", side_effect=GraphApiError("boom", None)),
             patch("m365_brain.worker.release_advisory_lock") as mock_release,
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         mock_release.assert_called_once_with(seeded_engine, UID_1, "email")
 
@@ -309,7 +323,9 @@ class TestRunSingleExtractor:
             session.refresh(bad_user)
 
             with pytest.raises(ConfigError, match="Invalid user_id format"):
-                run_single_extractor(full_config, engine, FakeTokenAdapter(), bad_user, "email", str(tmp_path))
+                run_single_extractor(
+                    WorkerServices(full_config, engine, FakeTokenAdapter(), str(tmp_path)), bad_user, "email"
+                )
 
 
 class TestLockKey:
@@ -344,7 +360,9 @@ class TestGetDueJobsEdgeCases:
 class TestStartWorkerThread:
     def test_returns_stop_event(self, full_config, engine):
         with patch("m365_brain.worker.get_due_jobs", return_value=[]):
-            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            stop = start_worker_thread(
+                WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            )
             assert isinstance(stop, threading.Event)
             stop.set()
 
@@ -357,7 +375,9 @@ class TestStartWorkerThread:
             return []
 
         with patch("m365_brain.worker.get_due_jobs", side_effect=fake_get_due_jobs):
-            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            stop = start_worker_thread(
+                WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            )
             # Let the loop run at least once
             import time
 
@@ -375,7 +395,7 @@ class TestWorkerLoop:
     def test_keyboard_interrupt_exits(self, full_config, engine):
         """worker_loop exits cleanly on KeyboardInterrupt."""
         with patch("m365_brain.worker.get_due_jobs", side_effect=KeyboardInterrupt):
-            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            worker_loop(WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state"))
 
     def test_cycle_unexpected_exception_crashes(self, full_config, engine):
         """worker_loop re-raises unexpected exceptions instead of swallowing them."""
@@ -384,7 +404,7 @@ class TestWorkerLoop:
             patch("m365_brain.worker.time.sleep"),
             pytest.raises(RuntimeError, match="db gone"),
         ):
-            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            worker_loop(WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state"))
 
     def test_cycle_known_error_resilience(self, full_config, engine):
         """worker_loop survives a known error and continues."""
@@ -401,7 +421,7 @@ class TestWorkerLoop:
             patch("m365_brain.worker.get_due_jobs", side_effect=fake_get_due_jobs),
             patch("m365_brain.worker.time.sleep"),
         ):
-            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            worker_loop(WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state"))
         assert call_count == 2
 
     def test_submits_due_jobs(self, seeded_engine, full_config, tmp_path):
@@ -422,7 +442,7 @@ class TestWorkerLoop:
             patch("m365_brain.worker.run_single_extractor") as mock_run,
             patch("m365_brain.worker.time.sleep"),
         ):
-            worker_loop(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path))
+            worker_loop(WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)))
 
         mock_run.assert_called_once()
 
@@ -444,7 +464,7 @@ class TestWorkerLoop:
             patch("m365_brain.worker.run_single_extractor") as mock_run,
             patch("m365_brain.worker.time.sleep"),
         ):
-            worker_loop(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path))
+            worker_loop(WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)))
 
         mock_run.assert_not_called()
 
@@ -513,7 +533,7 @@ class TestRunCycleFutureErrors:
             patch("m365_brain.worker.run_single_extractor", side_effect=GraphApiError("boom", None)),
             patch("m365_brain.worker.log") as mock_log,
         ):
-            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+            _run_cycle(WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), 1)
 
         error_events = [c.args[0] for c in mock_log.error.call_args_list if c.args]
         assert "worker.job_error" in error_events
@@ -531,7 +551,7 @@ class TestRunCycleFutureErrors:
             patch("m365_brain.worker.log") as mock_log,
             pytest.raises(RuntimeError, match="surprise"),
         ):
-            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+            _run_cycle(WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), 1)
 
         critical_events = [c.args[0] for c in mock_log.critical.call_args_list if c.args]
         assert "worker.job_unhandled_error" in critical_events
@@ -558,7 +578,7 @@ class TestStartWorkerThreadErrorPaths:
             patch("m365_brain.worker._run_cycle", side_effect=fake_run_cycle),
             patch("m365_brain.worker.log") as mock_log,
         ):
-            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            stop = start_worker_thread(WorkerServices(full_config, engine, FakeTokenAdapter(), str(tmp_path)))
             self._run_until_seen(seen, stop)
 
         error_events = [c.args[0] for c in mock_log.error.call_args_list if c.args]
@@ -576,7 +596,7 @@ class TestStartWorkerThreadErrorPaths:
             patch("m365_brain.worker._run_cycle", side_effect=fake_run_cycle),
             patch("m365_brain.worker.log") as mock_log,
         ):
-            start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            start_worker_thread(WorkerServices(full_config, engine, FakeTokenAdapter(), str(tmp_path)))
             assert seen.wait(timeout=5), "mocked cycle was never called"
             for t in threading.enumerate():
                 if t.name == "sync-worker":
@@ -617,7 +637,9 @@ class TestAuthTransportErrorIsKnown:
             patch("m365_brain.worker.run_extractors", side_effect=AuthTransportError("ConnectionError: no route")),
             patch("m365_brain.worker.release_advisory_lock"),
         ):
-            run_single_extractor(full_config, seeded_engine, FakeTokenAdapter(), user, "email", str(tmp_path))
+            run_single_extractor(
+                WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), user, "email"
+            )
 
         with Session(seeded_engine) as session:
             row = session.exec(
@@ -640,7 +662,7 @@ class TestAuthTransportErrorIsKnown:
             patch("m365_brain.worker.run_single_extractor", side_effect=AuthTransportError("ReadTimeout: idp")),
             patch("m365_brain.worker.log") as mock_log,
         ):
-            _run_cycle(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path), 1)
+            _run_cycle(WorkerServices(full_config, seeded_engine, FakeTokenAdapter(), str(tmp_path)), 1)
 
         assert "worker.job_error" in [c.args[0] for c in mock_log.error.call_args_list if c.args]
 
@@ -659,7 +681,7 @@ class TestAuthTransportErrorIsKnown:
             patch("m365_brain.worker.get_due_jobs", side_effect=fake_get_due_jobs),
             patch("m365_brain.worker.time.sleep"),
         ):
-            worker_loop(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state")
+            worker_loop(WorkerServices(full_config, engine, FakeTokenAdapter(), "/tmp/test-worker-state"))
 
         assert call_count == 2
 
@@ -676,7 +698,7 @@ class TestAuthTransportErrorIsKnown:
             patch("m365_brain.worker._run_cycle", side_effect=fake_run_cycle),
             patch("m365_brain.worker.log") as mock_log,
         ):
-            stop = start_worker_thread(full_config, engine, FakeTokenAdapter(), str(tmp_path))
+            stop = start_worker_thread(WorkerServices(full_config, engine, FakeTokenAdapter(), str(tmp_path)))
             assert seen.wait(timeout=5), "mocked cycle was never called"
             alive = [t for t in threading.enumerate() if t.name == "sync-worker" and t.is_alive()]
             stop.set()
