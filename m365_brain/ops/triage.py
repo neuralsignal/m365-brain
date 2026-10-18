@@ -114,16 +114,23 @@ def rejected_references(store: IntentStore) -> frozenset[str]:
     return frozenset(references)
 
 
+@dataclass(frozen=True, slots=True)
+class TriageRequest:
+    """Per-invocation query parameters for a triage pass."""
+
+    timeframe: str
+    now: datetime
+    page_size: int
+
+
 def triage(
     backend: IndexBackend,
     store: IntentStore,
     config: TriageConfig,
     fields: TriageFieldsConfig,
-    timeframe: str,
-    now: datetime,
-    page_size: int,
+    request: TriageRequest,
 ) -> list[TriageItem]:
-    """Messages inside `timeframe` that are unanswered and not declined.
+    """Messages inside `request.timeframe` that are unanswered and not declined.
 
     `fields` is `config.fields` for every caller that is not overriding it from
     the command line, and is passed separately so that an override is visible in
@@ -133,10 +140,10 @@ def triage(
     the window: a reply written after the window closed still answers the
     message, and a window-limited search would resurface it forever.
     """
-    moment = _as_utc(now)
-    since = moment - parse_timeframe(timeframe)
+    moment = _as_utc(request.now)
+    since = moment - parse_timeframe(request.timeframe)
     messages = [
-        _message(backend, entity, fields) for entity in indexed_entities(backend, fields.entity_type, page_size)
+        _message(backend, entity, fields) for entity in indexed_entities(backend, fields.entity_type, request.page_size)
     ]
 
     last_sent: dict[str, datetime] = {}

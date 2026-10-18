@@ -23,6 +23,7 @@ treatment `directory.py` got in #264 for the same shape.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -41,6 +42,15 @@ name = "contacts"
 required_scopes = ["Contacts.Read"]
 
 
+@dataclass(frozen=True, slots=True)
+class _ContactsSyncContext:
+    """Infrastructure shared across all contact sync calls within one run."""
+
+    client: GraphClient
+    storage: StorageBackend
+    ctx: ExtractorContext
+
+
 def run(
     client: GraphClient,
     storage: StorageBackend,
@@ -54,24 +64,18 @@ def run(
     """
     total_written = 0
     path_map: dict[str, str] = state.setdefault(PATH_MAP_STATE_KEY, {})
+    sync_ctx = _ContactsSyncContext(client, storage, ctx)
 
     # Sync default contacts folder
     delta_link = state.get("delta_link")
-    written, new_delta_link = _sync_contacts(
-        client,
-        storage,
-        "/me/contacts/delta",
-        delta_link,
-        ctx,
-        path_map,
-    )
+    written, new_delta_link = _sync_contacts(sync_ctx, "/me/contacts/delta", delta_link, path_map)
     if new_delta_link:
         state["delta_link"] = new_delta_link
     total_written += written
 
     # Sync contact sub-folders if enabled
     if config.include_contact_folders:
-        folder_written = _sync_contact_folders(client, storage, state, ctx, path_map)
+        folder_written = _sync_contact_folders(sync_ctx, state, path_map)
         total_written += folder_written
 
     state["last_sync"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -80,15 +84,15 @@ def run(
 
 
 def _sync_contact_folders(
-    client: GraphClient,
-    storage: StorageBackend,
+    sync_ctx: _ContactsSyncContext,
     state: dict,
-    ctx: ExtractorContext,
     path_map: dict[str, str],
 ) -> int:
     """Sync contacts from all contact sub-folders."""
     folders = list(
-        client.get_paginated("/me/contactFolders", params={"$select": "id,displayName"}, max_pages=client.max_pages)
+        sync_ctx.client.get_paginated(
+            "/me/contactFolders", params={"$select": "id,displayName"}, max_pages=sync_ctx.client.max_pages
+        )
     )
     written = 0
 
@@ -101,14 +105,7 @@ def _sync_contact_folders(
         delta_link = state.get(folder_key)
         path = f"/me/contactFolders/{folder_id}/contacts/delta"
 
-        folder_written, new_delta_link = _sync_contacts(
-            client,
-            storage,
-            path,
-            delta_link,
-            ctx,
-            path_map,
-        )
+        folder_written, new_delta_link = _sync_contacts(sync_ctx, path, delta_link, path_map)
 
         if new_delta_link:
             state[folder_key] = new_delta_link
@@ -118,11 +115,9 @@ def _sync_contact_folders(
 
 
 def _sync_contacts(
-    client: GraphClient,
-    storage: StorageBackend,
+    sync_ctx: _ContactsSyncContext,
     path: str,
     delta_link: str | None,
-    ctx: ExtractorContext,
     path_map: dict[str, str],
 ) -> tuple[int, str | None]:
     """Sync contacts from a single delta endpoint. Returns (items_written, new_delta_link)."""
@@ -130,7 +125,9 @@ def _sync_contacts(
     # there is no item budget. Everything fetched IS processed; slicing after
     # the fetch would skip the tail forever once the (resume) delta link is
     # persisted.
-    contacts, new_delta_link = client.get_delta(path, delta_link, params=None, max_pages=client.max_pages)
+    contacts, new_delta_link = sync_ctx.client.get_delta(
+        path, delta_link, params=None, max_pages=sync_ctx.client.max_pages
+    )
 
     written = 0
     for contact in contacts:
@@ -141,13 +138,13 @@ def _sync_contacts(
         # entry also carries no displayName, so it would otherwise be
         # dropped by _extract_contact_data as invalid, silently.
         if "@removed" in contact:
-            ctx.removal.remove(extractor=name, upstream_id=contact.get("id", ""), path_map=path_map)
+            sync_ctx.ctx.removal.remove(extractor=name, upstream_id=contact.get("id", ""), path_map=path_map)
             continue
         extracted = _extract_contact_data(contact)
         if extracted is None:
             continue
         contact_data, notes = extracted
-        if _write_contact(storage, contact_data, notes, ctx, path_map):
+        if _write_contact(sync_ctx.storage, contact_data, notes, sync_ctx.ctx, path_map):
             written += 1
 
     log.info("contacts.batch_synced", fetched=len(contacts), written=written)

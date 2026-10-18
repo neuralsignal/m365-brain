@@ -12,7 +12,7 @@ from m365_brain.config import EmailExtractorConfig, MailboxConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.converters.document import DocumentConversionError
 from m365_brain.m365.extractors import _attachment_helpers as helpers
-from m365_brain.m365.extractors._attachment_helpers import convert_and_store, download_attachments
+from m365_brain.m365.extractors._attachment_helpers import AttachmentDeps, convert_and_store, download_attachments
 from m365_brain.m365.extractors.base import ExtractorContext
 from m365_brain.storage.local import LocalBackend
 
@@ -42,7 +42,8 @@ def _client(attachments: list[dict]) -> MagicMock:
 
 
 def _download(client: MagicMock, storage: LocalBackend, config: EmailExtractorConfig, ctx: ExtractorContext) -> None:
-    download_attachments(client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", ITEM), config, ctx)
+    deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
+    download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", ITEM))
 
 
 class TestDownloadAttachments:

@@ -53,6 +53,15 @@ class _SyncState:
     path_map: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class _FolderTarget:
+    """One (mailbox, folder) delta-sync target."""
+
+    folder: str
+    folder_id: str
+    delta_link: str | None
+
+
 def _endpoint_base(address: str) -> str:
     """Return the Graph API root path for a mailbox.
 
@@ -95,17 +104,9 @@ def run(
 
         for folder, folder_id in folders:
             state_key = delta_state_key(mailbox.address, folder_id)
-            delta_link = state.get(state_key)
+            target = _FolderTarget(folder, folder_id, state.get(state_key))
 
-            items, new_delta_link = _sync_folder(
-                sync_ctx,
-                mailbox.address,
-                mailbox.output_subdir,
-                folder,
-                folder_id,
-                delta_link,
-                ss,
-            )
+            items, new_delta_link = _sync_folder(sync_ctx, mailbox, target, ss)
 
             if new_delta_link:
                 state[state_key] = new_delta_link
@@ -226,19 +227,16 @@ def _folders_for_mailbox(client: GraphClient, mailbox: MailboxConfig) -> tuple[l
 
 def _sync_folder(
     sync_ctx: EmailSyncContext,
-    address: str,
-    output_subdir: str,
-    folder: str,
-    folder_id: str,
-    delta_link: str | None,
+    mailbox: MailboxConfig,
+    target: _FolderTarget,
     ss: _SyncState,
 ) -> tuple[int, str | None]:
     """Sync a single (mailbox, folder). Returns (items_written, new_delta_link)."""
-    endpoint_base = _endpoint_base(address)
-    path = f"{endpoint_base}/mailFolders/{folder_id}/messages/delta"
+    endpoint_base = _endpoint_base(mailbox.address)
+    path = f"{endpoint_base}/mailFolders/{target.folder_id}/messages/delta"
 
-    sync_type = "incremental" if delta_link else "initial"
-    log.info("email.folder_sync_start", mailbox=address, folder=folder, sync_type=sync_type)
+    sync_type = "incremental" if target.delta_link else "initial"
+    log.info("email.folder_sync_start", mailbox=mailbox.address, folder=target.folder, sync_type=sync_type)
 
     params = {
         "$select": "id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,"
@@ -247,7 +245,7 @@ def _sync_folder(
     }
 
     messages, new_delta_link = sync_ctx.client.get_delta(
-        path, delta_link, params=params, max_pages=sync_ctx.client.max_pages
+        path, target.delta_link, params=params, max_pages=sync_ctx.client.max_pages
     )
 
     written = 0
@@ -258,17 +256,17 @@ def _sync_folder(
         if write_email(
             sync_ctx,
             msg,
-            folder,
-            address,
-            output_subdir,
+            target.folder,
+            mailbox.address,
+            mailbox.output_subdir,
             endpoint_base,
         ):
             written += 1
 
     log.info(
         "email.folder_synced",
-        mailbox=address,
-        folder=folder,
+        mailbox=mailbox.address,
+        folder=target.folder,
         sync_type=sync_type,
         fetched=len(messages),
         written=written,

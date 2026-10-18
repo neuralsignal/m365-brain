@@ -18,7 +18,7 @@ import pytest
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.index.query import parse_metadata_filter
-from m365_brain.index.search import SearchFilters, search
+from m365_brain.index.search import SearchFilters, SearchRequest, search
 from m365_brain.index.vector import HashEmbeddingProvider, InMemoryVectorStore
 from m365_brain.index.vector.chunking import chunk_key_for
 from m365_brain.model import Chunk, Entity
@@ -80,11 +80,13 @@ class Harness:
             self.backend,
             self.provider if vectors else None,
             self.store if vectors else None,
-            text,
-            mode,
-            filters,
-            page,
-            self.config.search.page_size,
+            SearchRequest(
+                text=text,
+                mode=mode,
+                filters=filters,
+                page=page,
+                page_size=self.config.search.page_size,
+            ),
         )
 
 

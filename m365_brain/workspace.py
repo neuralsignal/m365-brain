@@ -27,7 +27,7 @@ from m365_brain.index.backends import IndexBackend, create_index_backend
 from m365_brain.index.catalog import FileCatalog
 from m365_brain.index.graph import find, observations, traverse
 from m365_brain.index.query import updated_since
-from m365_brain.index.search import SearchFilters, SearchMode, search
+from m365_brain.index.search import SearchFilters, SearchMode, SearchRequest, search
 from m365_brain.index.sync import sync_index
 from m365_brain.index.vector import create_embedding_provider, create_vector_store, sync_vectors
 from m365_brain.index.vector.base import EmbeddingProvider, VectorStore
@@ -104,7 +104,13 @@ class Workspace:
         a limit above the configured size silently could not be reached: asking
         for 100 hits out of 23,012 returned 20, with nothing saying why.
         """
-        return search(self._index, self._backend, self._provider, self._store, text, mode, filters, page, page_size)
+        return search(
+            self._index,
+            self._backend,
+            self._provider,
+            self._store,
+            SearchRequest(text=text, mode=mode, filters=filters, page=page, page_size=page_size),
+        )
 
     def find(self, identifier: str, by_permalink: bool) -> EntityRef | None:
         """One entity by permalink, or by title with alias and partial fallbacks."""

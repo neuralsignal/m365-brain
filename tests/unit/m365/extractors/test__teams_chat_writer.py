@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from m365_brain.m365.extractors._message_store import StoredMessage
 from m365_brain.m365.extractors._teams_chat_writer import chat_title_and_dir, write_chat
+from m365_brain.m365.extractors._teams_context import TeamsContext
 from m365_brain.m365.markdown_writer import loads_markdown
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.paths import VaultPaths
@@ -60,7 +63,16 @@ class TestWriteChat:
             ),
         }
 
-        path = write_chat(local_storage, chat, store, "teams-chats/test", False, vault_paths, "teams_chats")
+        ctx = TeamsContext(
+            client=MagicMock(),
+            storage=local_storage,
+            settings=MagicMock(),
+            converters_config={},
+            failed_attachments={},
+            conv_dir="teams-chats/test",
+            paths=vault_paths,
+        )
+        path = write_chat(ctx, chat, store, False, "teams_chats")
 
         assert local_storage.file_exists(path)
         content = local_storage.read_file(path)

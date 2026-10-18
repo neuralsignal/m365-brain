@@ -240,9 +240,7 @@ def _save_and_write_chat(
 
     if not merged_ids:
         return None
-    file_path = write_chat(
-        ctx.storage, chat, merged, ctx.conv_dir, state["history_complete"].get(chat_id, False), ctx.paths, name
-    )
+    file_path = write_chat(ctx, chat, merged, state["history_complete"].get(chat_id, False), name)
     path_map[chat_id] = file_path
     return file_path, merged_ids
 

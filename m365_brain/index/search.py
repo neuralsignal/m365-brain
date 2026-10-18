@@ -37,6 +37,17 @@ class SearchFilters:
 
 
 @dataclass(frozen=True, slots=True)
+class SearchRequest:
+    """What to search for — query text, ranking mode, filters, and pagination."""
+
+    text: str | None
+    mode: SearchMode
+    filters: SearchFilters
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True, slots=True)
 class _SearchContext:
     """Validated query-execution state shared by the vector and hybrid paths."""
 
@@ -53,32 +64,28 @@ def search(
     backend: IndexBackend,
     provider: EmbeddingProvider | None,
     store: VectorStore | None,
-    text: str | None,
-    mode: SearchMode,
-    filters: SearchFilters,
-    page: int,
-    page_size: int,
+    request: SearchRequest,
 ) -> SearchPage:
-    """One page of results, ranked by `mode`.
+    """One page of results, ranked by `request.mode`.
 
-    `text` may be None only for `mode="text"`, which then lists everything the
-    filters allow, newest first. Vector recall without a query has nothing to
-    measure distance from.
+    `request.text` may be None only for `mode="text"`, which then lists
+    everything the filters allow, newest first. Vector recall without a query
+    has nothing to measure distance from.
     """
-    if mode == "text":
-        return backend.text_search(_text_query(text, filters, page, page_size))
+    if request.mode == "text":
+        return backend.text_search(_text_query(request.text, request.filters, request.page, request.page_size))
 
-    if text is None:
-        raise ValueError(f"{mode} search requires query text; there is nothing to embed")
-    provider, store = _require_vectors(config, provider, store, mode)
-    _reject_unsupported_filters(filters, mode)
+    if request.text is None:
+        raise ValueError(f"{request.mode} search requires query text; there is nothing to embed")
+    provider, store = _require_vectors(config, provider, store, request.mode)
+    _reject_unsupported_filters(request.filters, request.mode)
 
-    ctx = _SearchContext(config, backend, provider, store, text, filters)
-    if mode == "vector":
-        return _vector_page(ctx, page, page_size)
-    if mode == "hybrid":
-        return _hybrid_page(ctx, page, page_size)
-    raise ValueError(f"unknown search mode {mode!r}; expected text, vector or hybrid")
+    ctx = _SearchContext(config, backend, provider, store, request.text, request.filters)
+    if request.mode == "vector":
+        return _vector_page(ctx, request.page, request.page_size)
+    if request.mode == "hybrid":
+        return _hybrid_page(ctx, request.page, request.page_size)
+    raise ValueError(f"unknown search mode {request.mode!r}; expected text, vector or hybrid")
 
 
 # -- text -----------------------------------------------------------------
@@ -197,4 +204,4 @@ def _similarity(distance: float) -> float:
     return 1.0 / (1.0 + max(distance, 0.0))
 
 
-__all__ = ["SearchFilters", "SearchMode", "search"]
+__all__ = ["SearchFilters", "SearchMode", "SearchRequest", "search"]
