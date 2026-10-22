@@ -12,7 +12,7 @@ import pytest
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.device_code import DeviceCodeAuth, _copy_to_clipboard
-from m365_brain.m365.errors import AuthRequiredError, TokenCacheError
+from m365_brain.m365.errors import AuthFlowError, AuthRequiredError, TokenCacheError
 
 # `graph.timeout_seconds` in production; MSAL is mocked in every test here.
 TIMEOUT_SECONDS = 30
@@ -103,18 +103,18 @@ class TestDeviceCodeAuth:
         assert "Mail.Read" in called_scopes
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
-    def test_failed_device_flow_exits(self, mock_app_cls, auth_config):
+    def test_failed_device_flow_raises(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
         mock_app.get_accounts.return_value = []
         mock_app.initiate_device_flow.return_value = {"error": "something went wrong"}
 
         auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
-        with pytest.raises(SystemExit):
+        with pytest.raises(AuthFlowError, match="Failed to initiate device flow"):
             auth.login()
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")
-    def test_token_acquisition_failure_exits(self, mock_app_cls, auth_config):
+    def test_token_acquisition_failure_raises(self, mock_app_cls, auth_config):
         mock_app = MagicMock()
         mock_app_cls.return_value = mock_app
         mock_app.get_accounts.return_value = []
@@ -128,7 +128,7 @@ class TestDeviceCodeAuth:
         }
 
         auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
-        with pytest.raises(SystemExit):
+        with pytest.raises(AuthFlowError, match="User cancelled"):
             auth.login()
 
     @patch("m365_brain.m365.auth.device_code.msal.PublicClientApplication")

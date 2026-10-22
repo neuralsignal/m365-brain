@@ -13,7 +13,13 @@ from __future__ import annotations
 import pytest
 
 from m365_brain.m365 import client as client_module
-from m365_brain.m365.errors import AuthTransportError, GraphApiError, GraphConflictError, GraphNotFoundError
+from m365_brain.m365.errors import (
+    AuthFlowError,
+    AuthTransportError,
+    GraphApiError,
+    GraphConflictError,
+    GraphNotFoundError,
+)
 
 SUBCLASSES = (GraphNotFoundError, GraphConflictError)
 
@@ -58,6 +64,18 @@ def test_auth_transport_error_declares_itself_transient():
     or is archived as permanently failed. Dropping the attribute turns a
     network blip into a silently, permanently dropped email draft."""
     assert AuthTransportError("ConnectionError: boom").transient is True
+
+
+def test_auth_flow_error_is_not_a_graph_error():
+    """Per-item handlers catch GraphApiError; an auth flow failure must not
+    be swallowed per item -- it would skip every item and report success."""
+    assert not issubclass(AuthFlowError, GraphApiError)
+
+
+def test_auth_flow_error_is_not_transient():
+    """A failed device-code flow does not fix itself on retry -- the user
+    must re-authenticate interactively."""
+    assert getattr(AuthFlowError("boom"), "transient", False) is False
 
 
 def test_nothing_else_reads_as_transient():

@@ -109,6 +109,22 @@ class TokenCacheError(Exception):
     """
 
 
+class AuthFlowError(Exception):
+    """The interactive device-code flow failed.
+
+    Either MSAL could not initiate the flow (no ``user_code`` in the response)
+    or the token acquisition itself completed with an error (cancelled, timed
+    out, denied). Raised from the library so the CLI layer decides how to
+    display the message -- ``_fail()`` used to ``click.echo`` *and*
+    ``SystemExit(1)`` from inside the library, which killed a daemon outright
+    if ``_extract_token`` ever ran outside an interactive session.
+
+    **Deliberately not a ``GraphApiError``** for the same hierarchy reason as
+    ``AuthRequiredError`` and ``AuthTransportError``: per-item handlers must
+    not swallow it.
+    """
+
+
 class AuthRequiredError(Exception):
     """The cache holds no usable token and nobody can be asked for one.
 

@@ -18,7 +18,7 @@ from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.auth_code import AuthCodeAuth
 from m365_brain.m365.auth.device_code import DeviceCodeAuth
 from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
-from m365_brain.m365.errors import AuthTransportError
+from m365_brain.m365.errors import AuthFlowError, AuthTransportError
 
 TIMEOUT_SECONDS = 17
 
@@ -164,7 +164,7 @@ class TestTranslation:
             app.acquire_token_by_device_flow.return_value = {"error": "invalid_grant"}
 
             auth = DeviceCodeAuth(auth_config, TIMEOUT_SECONDS)
-            with pytest.raises(SystemExit):
+            with pytest.raises(AuthFlowError):
                 auth.login()
 
     def test_a_dns_failure_during_silent_refresh_is_translated(self, auth_config):

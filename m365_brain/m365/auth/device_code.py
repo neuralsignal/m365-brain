@@ -31,7 +31,7 @@ import msal
 
 from m365_brain.config import AuthConfig
 from m365_brain.m365.auth.msal_http import TimeoutSession, auth_transport_errors
-from m365_brain.m365.errors import AuthRequiredError, TokenCacheError
+from m365_brain.m365.errors import AuthFlowError, AuthRequiredError, TokenCacheError
 
 _RESERVED_SCOPES = {"offline_access", "openid", "profile"}
 
@@ -117,7 +117,7 @@ class DeviceCodeAuth:
         with auth_transport_errors():
             flow = self._app.initiate_device_flow(scopes=self._scopes)
         if "user_code" not in flow:
-            _fail(f"Failed to initiate device flow: {json.dumps(flow, indent=2)}")
+            raise AuthFlowError(f"Failed to initiate device flow: {json.dumps(flow, indent=2)}")
         click.echo(flow["message"])
         _copy_to_clipboard(flow["user_code"])
         sys.stdout.flush()
@@ -165,8 +165,7 @@ class DeviceCodeAuth:
         if "access_token" in result:
             return result["access_token"]
         error = result.get("error_description", result.get("error", "unknown error"))
-        _fail(f"Token acquisition failed: {error}")
-        return ""  # pragma: no cover
+        raise AuthFlowError(f"Token acquisition failed: {error}")
 
 
 @contextmanager
@@ -210,8 +209,3 @@ def _copy_to_clipboard(text: str) -> None:
         click.echo(f"(code {text} copied to clipboard)")
         return
     click.echo("(no clipboard tool found -- copy the code by hand)")
-
-
-def _fail(message: str) -> None:
-    click.echo(f"Auth error: {message}", err=True)
-    raise SystemExit(1)
