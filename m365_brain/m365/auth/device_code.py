@@ -192,7 +192,9 @@ def _copy_to_clipboard(text: str) -> None:
 
     Convenience only: a missing or failing clipboard tool must not break a
     login that is otherwise fine, so it says so and carries on. Gated on a tty
-    so a test run or a piped daemon never overwrites the real clipboard.
+    so a test run or a piped daemon never overwrites the real clipboard. A tool
+    that exists but fails is the usual case over SSH or outside a GUI session
+    (pbcopy has no pasteboard to reach), so it gets the same hand-copy hint.
     """
     if not sys.stdout.isatty():
         return
@@ -200,9 +202,9 @@ def _copy_to_clipboard(text: str) -> None:
         if shutil.which(tool[0]) is None:
             continue
         try:
-            subprocess.run(tool, input=text.encode(), check=True)
-        except (OSError, subprocess.CalledProcessError) as exc:
-            print(f"(could not copy the code to the clipboard via {tool[0]}: {exc})")
+            subprocess.run(tool, input=text.encode(), check=True, capture_output=True)
+        except (OSError, subprocess.CalledProcessError):
+            print(f"({tool[0]} could not reach a clipboard in this session -- copy the code by hand)")
             return
         print(f"(code {text} copied to clipboard)")
         return
