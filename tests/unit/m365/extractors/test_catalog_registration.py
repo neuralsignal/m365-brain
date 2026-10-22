@@ -40,7 +40,7 @@ from m365_brain.m365.client import GraphClient
 from m365_brain.manifest import ChangeRecorder, RecordingStorage
 from m365_brain.model import CatalogQuery
 from m365_brain.storage.local import LocalBackend
-from m365_brain.sync import build_context, run_one
+from m365_brain.sync import SyncRuntime, build_context, run_one
 
 PDF_BYTES = b"%PDF-1.4 quarterly figures"
 TXT_BYTES = b"plain text attachment"
@@ -240,7 +240,7 @@ def _run(name: str, config, httpx_mock: HTTPXMock, tmp_path) -> tuple[BinarySpy,
     ctx = build_context(config, storage, recorder)
     client = GraphClient(config.graph, lambda: "test-token", prefer_immutable_ids=False)
     try:
-        run_one(config, client, storage, ctx, {}, name)
+        run_one(SyncRuntime(config, client, storage, ctx), {}, name)
     finally:
         client.close()
     return spy, _open_catalog(config)
@@ -319,12 +319,13 @@ def test_a_second_run_does_not_duplicate_or_reset_rows(httpx_mock: HTTPXMock, tm
     ctx = build_context(config, storage, recorder)
     client = GraphClient(config.graph, lambda: "test-token", prefer_immutable_ids=False)
     try:
-        run_one(config, client, storage, ctx, {}, "email")
+        rt = SyncRuntime(config, client, storage, ctx)
+        run_one(rt, {}, "email")
         catalog = _open_catalog(config)
         first = _rows(catalog)
         catalog.set_status(first[0].original_path, "converted", "somewhere.md", None)
 
-        run_one(config, client, storage, ctx, {}, "email")
+        run_one(rt, {}, "email")
     finally:
         client.close()
 

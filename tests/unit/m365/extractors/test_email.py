@@ -18,6 +18,7 @@ from m365_brain.config import EmailExtractorConfig, GraphConfig, MailboxConfig
 from m365_brain.m365.client import GraphApiError, GraphClient
 from m365_brain.m365.errors import GraphNotFoundError
 from m365_brain.m365.extractors import _attachment_helpers, _folder_helpers, email
+from m365_brain.m365.extractors._attachment_helpers import AttachmentDeps
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.removal import PATH_MAP_STATE_KEY
 from tests.conftest import WELL_KNOWN_FOLDER_URL, well_known_folder_response
@@ -1456,9 +1457,8 @@ class TestNarrowedExceptionHandling:
         client.get_bytes.side_effect = GraphApiError("404 Not Found", 404)
 
         config = _attachment_config()
-        _attachment_helpers.download_attachments(
-            client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"), config, ctx
-        )
+        deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
+        _attachment_helpers.download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"))
 
     def test_fetch_attachments_graph_api_error_caught(self, tmp_path, ctx):
         """GraphApiError during attachment list fetch is caught (log-and-continue)."""
@@ -1467,9 +1467,8 @@ class TestNarrowedExceptionHandling:
         client.get_paginated.side_effect = GraphApiError("500 Server Error", 500)
 
         config = _attachment_config()
-        _attachment_helpers.download_attachments(
-            client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"), config, ctx
-        )
+        deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
+        _attachment_helpers.download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"))
 
     def test_download_type_error_propagates(self, tmp_path, ctx):
         """TypeError during attachment download propagates (programming error)."""
@@ -1481,10 +1480,9 @@ class TestNarrowedExceptionHandling:
         client.get_bytes.side_effect = TypeError("unexpected None")
 
         config = _attachment_config()
+        deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
         with pytest.raises(TypeError):
-            _attachment_helpers.download_attachments(
-                client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"), config, ctx
-            )
+            _attachment_helpers.download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"))
 
     def test_fetch_attachments_type_error_propagates(self, tmp_path, ctx):
         """TypeError during attachment list fetch propagates (programming error)."""
@@ -1493,10 +1491,9 @@ class TestNarrowedExceptionHandling:
         client.get_paginated.side_effect = TypeError("bad argument")
 
         config = _attachment_config()
+        deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
         with pytest.raises(TypeError):
-            _attachment_helpers.download_attachments(
-                client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"), config, ctx
-            )
+            _attachment_helpers.download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"))
 
     def test_convert_os_error_caught(self, tmp_path):
         """OSError during attachment conversion is caught (log-and-continue)."""
@@ -1669,9 +1666,8 @@ class TestAttachmentEmptyPathName:
         )
 
         config = _attachment_config()
-        _attachment_helpers.download_attachments(
-            client, storage, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"), config, ctx
-        )
+        deps = AttachmentDeps(client=client, storage=storage, config=config, ctx=ctx)
+        _attachment_helpers.download_attachments(deps, "/me", "msg-1", ctx.paths.inbox_item("email", "2026", "dir"))
 
         client.get_bytes.assert_not_called()
         assert storage.list_files(ctx.paths.inbox_root("email")) == []

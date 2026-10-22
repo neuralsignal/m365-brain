@@ -7,6 +7,7 @@ where web modules imported private functions from the CLI layer.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any
@@ -73,15 +74,22 @@ def build_context(config: Config, storage: StorageBackend, recorder: ChangeRecor
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SyncRuntime:
+    """The four stable collaborators every extractor call threads through."""
+
+    config: Config
+    client: GraphClient
+    storage: StorageBackend
+    ctx: ExtractorContext
+
+
 class UnknownExtractor(Exception):
     """A name that is not one of the eight this package implements."""
 
 
 def run_one(
-    config: Config,
-    client: GraphClient,
-    storage: StorageBackend,
-    ctx: ExtractorContext,
+    runtime: SyncRuntime,
     state: dict,
     name: str,
 ) -> tuple[dict, int]:
@@ -105,8 +113,8 @@ def run_one(
         module, config_getter = EXTRACTORS[name]
     except KeyError:
         raise UnknownExtractor(f"no extractor named {name!r}; implemented: {sorted(EXTRACTORS)}") from None
-    with catalog_writes(config.index, storage, name, lambda: datetime.now(UTC)) as cataloging:
-        return module.run(client, cataloging, state, config_getter(config), ctx)
+    with catalog_writes(runtime.config.index, runtime.storage, name, lambda: datetime.now(UTC)) as cataloging:
+        return module.run(runtime.client, cataloging, state, config_getter(runtime.config), runtime.ctx)
 
 
 def run_extractors(
@@ -120,6 +128,7 @@ def run_extractors(
     total_items = 0
     ctx = build_context(config, storage, ChangeRecorder())
     with GraphClient(config.graph, token_provider, prefer_immutable_ids=False) as client:
+        runtime = SyncRuntime(config, client, storage, ctx)
         for ext_name in names:
             if ext_name not in EXTRACTORS:
                 log.warning("sync.unknown_extractor", name=ext_name)
@@ -127,9 +136,7 @@ def run_extractors(
 
             log.info("sync.running_extractor", name=ext_name)
             try:
-                updated_state, count = run_one(
-                    config, client, storage, ctx, state.get(EXTRACTOR_STATE, ext_name), ext_name
-                )
+                updated_state, count = run_one(runtime, state.get(EXTRACTOR_STATE, ext_name), ext_name)
                 state.put(EXTRACTOR_STATE, ext_name, updated_state)
                 total_items += count
                 log.info("sync.extractor_done", name=ext_name, items=count)

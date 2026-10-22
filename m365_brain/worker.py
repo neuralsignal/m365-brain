@@ -13,6 +13,7 @@ import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,6 +52,25 @@ def _require_worker_config(config: Config) -> WorkerConfig:
 _KNOWN_ERRORS = (GraphApiError, ExtractorError, ConfigError, TokenRefreshError, AuthTransportError)
 
 
+@dataclass(frozen=True, slots=True)
+class StatusUpdate:
+    """What happened to one extractor job."""
+
+    status: str
+    items_synced: int
+    error_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerServices:
+    """Stable infrastructure shared across every job in a worker cycle."""
+
+    config: Config
+    engine: Engine
+    token_adapter: TokenStoreProtocol
+    state_dir: str
+
+
 def _lock_key(user_id: str, extractor_name: str) -> int:
     """Derive a stable int64 key for PostgreSQL advisory locks."""
     digest = hashlib.sha256(f"{user_id}:{extractor_name}".encode()).digest()
@@ -76,9 +96,7 @@ def upsert_extractor_status(
     engine: Engine,
     user_id: str,
     extractor_name: str,
-    status: str,
-    items_synced: int,
-    error_message: str | None,
+    update: StatusUpdate,
 ) -> None:
     """Insert or update the ExtractorStatus row for a (user, extractor) pair."""
     with Session(engine) as session:
@@ -90,19 +108,19 @@ def upsert_extractor_status(
         now = datetime.now(tz=UTC)
 
         if existing:
-            existing.status = status
+            existing.status = update.status
             existing.last_run_at = now
-            existing.items_synced = items_synced
-            existing.error_message = error_message
+            existing.items_synced = update.items_synced
+            existing.error_message = update.error_message
             session.add(existing)
         else:
             row = ExtractorStatus(
                 user_id=user_id,
                 extractor_name=extractor_name,
-                status=status,
+                status=update.status,
                 last_run_at=now,
-                items_synced=items_synced,
-                error_message=error_message,
+                items_synced=update.items_synced,
+                error_message=update.error_message,
             )
             session.add(row)
         session.commit()
@@ -167,44 +185,39 @@ def get_due_jobs(engine: Engine, config: Config) -> list[tuple[User, str]]:
 
 
 def run_single_extractor(
-    config: Config,
-    engine: Engine,
-    token_adapter: TokenStoreProtocol,
+    services: WorkerServices,
     user: User,
     extractor_name: str,
-    state_dir: str,
 ) -> None:
     """Run one extractor for one user. Unit of work for the thread pool."""
     validate_user_id(user.user_id)
     log.info("worker.job_started", user_id=user.user_id, extractor=extractor_name)
-    upsert_extractor_status(engine, user.user_id, extractor_name, "running", 0, None)
+    upsert_extractor_status(services.engine, user.user_id, extractor_name, StatusUpdate("running", 0, None))
 
     try:
-        token_provider = make_web_token_provider(token_adapter, user.user_id, config.auth, config.graph.timeout_seconds)
-        storage = create_user_storage(config.storage, user.user_id)
+        token_provider = make_web_token_provider(
+            services.token_adapter, user.user_id, services.config.auth, services.config.graph.timeout_seconds
+        )
+        storage = create_user_storage(services.config.storage, user.user_id)
 
-        state = JsonStateStore(Path(state_dir) / user.user_id)
+        state = JsonStateStore(Path(services.state_dir) / user.user_id)
 
-        total_items = run_extractors(config, token_provider, storage, state, [extractor_name])
+        total_items = run_extractors(services.config, token_provider, storage, state, [extractor_name])
 
-        upsert_extractor_status(engine, user.user_id, extractor_name, "success", total_items, None)
+        upsert_extractor_status(
+            services.engine, user.user_id, extractor_name, StatusUpdate("success", total_items, None)
+        )
         log.info("worker.job_completed", user_id=user.user_id, extractor=extractor_name, items=total_items)
     except _KNOWN_ERRORS as exc:
-        upsert_extractor_status(engine, user.user_id, extractor_name, "failed", 0, str(exc))
+        upsert_extractor_status(services.engine, user.user_id, extractor_name, StatusUpdate("failed", 0, str(exc)))
         log.error("worker.job_failed", user_id=user.user_id, extractor=extractor_name, error=str(exc))
     finally:
-        release_advisory_lock(engine, user.user_id, extractor_name)
+        release_advisory_lock(services.engine, user.user_id, extractor_name)
 
 
-def _run_cycle(
-    config: Config,
-    engine: Engine,
-    token_adapter: TokenStoreProtocol,
-    state_dir: str,
-    max_workers: int,
-) -> None:
+def _run_cycle(services: WorkerServices, max_workers: int) -> None:
     """Execute one polling cycle: get due jobs, acquire locks, submit to pool, collect results."""
-    due = get_due_jobs(engine, config)
+    due = get_due_jobs(services.engine, services.config)
     if not due:
         return
 
@@ -212,16 +225,8 @@ def _run_cycle(
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {}
         for user, ext_name in due:
-            if try_advisory_lock(engine, user.user_id, ext_name):
-                future = pool.submit(
-                    run_single_extractor,
-                    config,
-                    engine,
-                    token_adapter,
-                    user,
-                    ext_name,
-                    state_dir,
-                )
+            if try_advisory_lock(services.engine, user.user_id, ext_name):
+                future = pool.submit(run_single_extractor, services, user, ext_name)
                 futures[future] = (user.user_id, ext_name)
             else:
                 log.debug("worker.job_locked", user_id=user.user_id, extractor=ext_name)
@@ -230,27 +235,25 @@ def _run_cycle(
             try:
                 future.result()
             except _KNOWN_ERRORS:
-                # run_single_extractor handles these internally; reaching here
-                # means the finally block or another path re-raised.
                 log.error("worker.job_error", user_id=uid, extractor=ext, exc_info=True)
             except Exception:
                 log.critical("worker.job_unhandled_error", user_id=uid, extractor=ext, exc_info=True)
                 raise
 
 
-def worker_loop(config: Config, engine: Engine, token_adapter: TokenStoreProtocol, state_dir: str) -> None:
+def worker_loop(services: WorkerServices) -> None:
     """Main worker loop. Polls for due jobs, submits to thread pool."""
-    worker_config = _require_worker_config(config)
+    worker_config = _require_worker_config(services.config)
     max_workers = worker_config.max_concurrent_jobs
     poll_interval = worker_config.poll_interval_seconds
 
-    log.info("worker.started", max_workers=max_workers, poll_interval=poll_interval, state_dir=state_dir)
-    Path(state_dir).mkdir(parents=True, exist_ok=True)
+    log.info("worker.started", max_workers=max_workers, poll_interval=poll_interval, state_dir=services.state_dir)
+    Path(services.state_dir).mkdir(parents=True, exist_ok=True)
 
     try:
         while True:
             try:
-                _run_cycle(config, engine, token_adapter, state_dir, max_workers)
+                _run_cycle(services, max_workers)
             except _KNOWN_ERRORS:
                 log.error("worker.cycle_failed", exc_info=True)
             except Exception:
@@ -262,18 +265,13 @@ def worker_loop(config: Config, engine: Engine, token_adapter: TokenStoreProtoco
         log.info("worker.stopped")
 
 
-def start_worker_thread(
-    config: Config,
-    engine: Engine,
-    token_adapter: TokenStoreProtocol,
-    state_dir: str,
-) -> threading.Event:
+def start_worker_thread(services: WorkerServices) -> threading.Event:
     """Start worker loop in a background daemon thread.
 
     Returns a threading.Event that the caller can set() to stop the loop.
     Used by the Reflex app for single-container deployment.
     """
-    worker_config = _require_worker_config(config)
+    worker_config = _require_worker_config(services.config)
     max_workers = worker_config.max_concurrent_jobs
     poll_interval = worker_config.poll_interval_seconds
 
@@ -281,11 +279,11 @@ def start_worker_thread(
 
     def _loop() -> None:
         log.info("worker.thread_started", max_workers=max_workers, poll_interval=poll_interval)
-        Path(state_dir).mkdir(parents=True, exist_ok=True)
+        Path(services.state_dir).mkdir(parents=True, exist_ok=True)
 
         while not stop.is_set():
             try:
-                _run_cycle(config, engine, token_adapter, state_dir, max_workers)
+                _run_cycle(services, max_workers)
             except _KNOWN_ERRORS:
                 log.error("worker.cycle_failed", exc_info=True)
             except Exception:

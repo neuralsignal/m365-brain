@@ -6,9 +6,9 @@ import structlog
 
 from m365_brain.m365.extractors._message_renderer import render_chat_body
 from m365_brain.m365.extractors._message_store import StoredMessage, sort_key
+from m365_brain.m365.extractors._teams_context import TeamsContext
 from m365_brain.m365.frontmatter import TeamsChatData, build_teams_chat_frontmatter, participant_relations
 from m365_brain.m365.markdown_writer import dumps_markdown, short_hash, slugify
-from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.paths import VaultPaths
 
 log = structlog.get_logger()
@@ -28,16 +28,14 @@ def chat_title_and_dir(
 
 
 def write_chat(
-    storage: StorageBackend,
+    ctx: TeamsContext,
     chat: dict,
     store: dict[str, StoredMessage],
-    chat_dir: str,
     history_complete: bool,
-    paths: VaultPaths,
     extractor_name: str,
 ) -> str:
     """Render the store and write messages.md. Returns the written path."""
-    title, _, participants = chat_title_and_dir(chat, paths, extractor_name)
+    title, _, participants = chat_title_and_dir(chat, ctx.paths, extractor_name)
     ordered = sorted(store.values(), key=sort_key)
     last_message_time = ordered[-1].created if ordered else ""
 
@@ -67,7 +65,7 @@ def write_chat(
     body_parts.append("## Messages\n")
     body_parts.append(render_chat_body(store))
 
-    file_path = paths.conversation_file(chat_dir)
-    storage.write_file(file_path, dumps_markdown(fm, "\n".join(body_parts)))
+    file_path = ctx.paths.conversation_file(ctx.conv_dir)
+    ctx.storage.write_file(file_path, dumps_markdown(fm, "\n".join(body_parts)))
     log.debug("teams_chats.wrote", title=title, messages=len(store))
     return file_path

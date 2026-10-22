@@ -26,7 +26,7 @@ from m365_brain.config import Config, require_section
 from m365_brain.config.ops import OpsConfig, TriageFieldsConfig
 from m365_brain.ops.links import resolve_links
 from m365_brain.ops.tiers import compute_tiers
-from m365_brain.ops.triage import triage
+from m365_brain.ops.triage import TriageRequest, triage
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
 from m365_brain.storage import create_storage
 from m365_brain.vault.paths import VaultPaths
@@ -162,7 +162,9 @@ def triage_command(
     )
 
     with open_workspace(config) as workspace:
-        items = triage(workspace.backend, store, ops.triage, fields, timeframe, datetime.now(UTC), page_size)
+        items = triage(
+            workspace.backend, store, ops.triage, fields, TriageRequest(timeframe, datetime.now(UTC), page_size)
+        )
 
     payload = {
         "messages": [

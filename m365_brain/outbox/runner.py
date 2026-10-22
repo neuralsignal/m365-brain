@@ -90,6 +90,15 @@ class PushCounts:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class _IntentRef:
+    """Per-intent identity carried through the push pass."""
+
+    uuid: str
+    kind: str
+    message_id: str | None
+
+
 @dataclass
 class _Failure:
     reason: NonDispatchReason
@@ -112,7 +121,7 @@ def push(store: IntentStore, registry: OutboxRegistry, router: AuthorityRouter) 
             counts.contended += 1
             continue
         except IntentParseError as exc:
-            _record(store, uuid, "", None, _Failure("parse_error", str(exc)), counts)
+            _record(store, _IntentRef(uuid, "", None), _Failure("parse_error", str(exc)), counts)
             continue
         _dispatch_one(services, outbox_name, uuid, envelope, counts)
     counts.inflight = len(store.inflight())
@@ -128,19 +137,18 @@ def _dispatch_one(
     envelope: IntentEnvelope,
     counts: PushCounts,
 ) -> None:
+    ref = _IntentRef(uuid, envelope.kind, None)
     try:
         outbox = services.registry.get(outbox_name)
     except UnknownOutbox as exc:
-        _record(services.store, uuid, envelope.kind, None, _Failure("unknown_outbox", str(exc)), counts)
+        _record(services.store, ref, _Failure("unknown_outbox", str(exc)), counts)
         return
 
     action = services.router.next_action(outbox.authority, "pending")
     if action == "await_admin":
         _record(
             services.store,
-            uuid,
-            envelope.kind,
-            None,
+            ref,
             _Failure("tier_blocked", f"outbox {outbox_name!r} is authority {outbox.authority.value}", blocked=True),
             counts,
         )
@@ -148,9 +156,7 @@ def _dispatch_one(
     if action == "await_approval":
         _record(
             services.store,
-            uuid,
-            envelope.kind,
-            None,
+            ref,
             _Failure("no_approval_recorded", f"outbox {outbox_name!r} requires an approval this build cannot record"),
             counts,
         )
@@ -165,7 +171,7 @@ def _dispatch_one(
             log.warning("outbox.dispatch_deferred", uuid=uuid, outbox=outbox_name, error=str(exc))
             return
         log.error("outbox.dispatch_failed", uuid=uuid, outbox=outbox_name, error=str(exc), exc_info=True)
-        _record(services.store, uuid, envelope.kind, None, _classify_failure(exc), counts)
+        _record(services.store, ref, _classify_failure(exc), counts)
         return
 
     services.store.archive(
@@ -199,18 +205,16 @@ def _classify_failure(exc: Exception) -> _Failure:
     return _Failure("graph_error", str(exc))
 
 
-def _record(
-    store: IntentStore, uuid: str, kind: str, message_id: str | None, failure: _Failure, counts: PushCounts
-) -> None:
+def _record(store: IntentStore, ref: _IntentRef, failure: _Failure, counts: PushCounts) -> None:
     """Archive a non-dispatch as an outcome. Never raises out of the pass."""
     store.archive(
-        uuid,
+        ref.uuid,
         DispatchReceipt(
-            uuid=uuid,
-            kind=kind,
+            uuid=ref.uuid,
+            kind=ref.kind,
             outcome="blocked" if failure.blocked else "failed",
             dispatched_at=datetime.now(UTC),
-            graph_message_id=message_id,
+            graph_message_id=ref.message_id,
             reason=failure.reason,
             detail=failure.detail,
         ),
@@ -219,7 +223,7 @@ def _record(
         counts.blocked += 1
     else:
         counts.failed += 1
-    log.info("outbox.not_dispatched", uuid=uuid, reason=failure.reason, detail=failure.detail)
+    log.info("outbox.not_dispatched", uuid=ref.uuid, reason=failure.reason, detail=failure.detail)
 
 
 def reconcile(store: IntentStore, fetch: FetchMessage, markers: QuoteMarkers) -> list[ReconcileOutcome]:
