@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.1](https://github.com/neuralsignal/m365-brain/compare/v1.3.0...v1.3.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* bump urllib3 &gt;=2.8.0 to resolve 3 CVEs ([#397](https://github.com/neuralsignal/m365-brain/issues/397)) ([#400](https://github.com/neuralsignal/m365-brain/issues/400)) ([e38b741](https://github.com/neuralsignal/m365-brain/commit/e38b741a01da693be4cc19f0d5f7b6bf404883f1))
+* get CI green and fold in the open bot PRs ([#405](https://github.com/neuralsignal/m365-brain/issues/405), [#406](https://github.com/neuralsignal/m365-brain/issues/406)) ([#408](https://github.com/neuralsignal/m365-brain/issues/408)) ([4a6b354](https://github.com/neuralsignal/m365-brain/commit/4a6b354b7ab1df1d97f29e283b75cf92b4190565))
+* make the name-key delta migration one-time ([#394](https://github.com/neuralsignal/m365-brain/issues/394)) ([3b1bae9](https://github.com/neuralsignal/m365-brain/commit/3b1bae9b1416b725540849a296581f35e30c1c4f))
+* quiet clipboard fallback when pbcopy has no pasteboard ([#407](https://github.com/neuralsignal/m365-brain/issues/407)) ([8fb4be8](https://github.com/neuralsignal/m365-brain/commit/8fb4be82cc98a6349a606fe309877d55c18b2492))
+
 ## [1.3.0](https://github.com/neuralsignal/m365-brain/compare/v1.2.5...v1.3.0) (2026-10-04)
 
 
