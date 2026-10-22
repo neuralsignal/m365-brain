@@ -209,12 +209,13 @@ class TestTiersCommand:
         vault.mkdir(exist_ok=True)
 
         for day in (1, 5, 9, 13, 17, 21):
+            received_at = (datetime.now(UTC) - timedelta(days=day)).strftime("%Y-%m-%dT%H:%M:%SZ")
             (vault / f"email-{day}.md").write_text(
                 _entity_md(
                     f"Message {day}",
                     f"email-{day}",
                     "email",
-                    {"from": "anna@example.com", "received_at": f"2026-07-{day:02d}T09:00:00Z"},
+                    {"from": "anna@example.com", "received_at": received_at},
                 ),
                 encoding="utf-8",
             )
