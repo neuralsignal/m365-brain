@@ -316,7 +316,7 @@ class TestCopyToClipboard:
     def test_clipboard_tool_oserror(self, mock_run, mock_which, monkeypatch, capsys):
         self._enable_tty(monkeypatch)
         _copy_to_clipboard("ABC123")
-        assert "copy the code by hand" in capsys.readouterr().out
+        assert "could not copy the code to the clipboard" in capsys.readouterr().out
 
     @patch(
         "m365_brain.m365.auth.device_code.shutil.which",
@@ -326,7 +326,7 @@ class TestCopyToClipboard:
     def test_clipboard_tool_called_process_error(self, mock_run, mock_which, monkeypatch, capsys):
         self._enable_tty(monkeypatch)
         _copy_to_clipboard("ABC123")
-        assert "copy the code by hand" in capsys.readouterr().out
+        assert "could not copy the code to the clipboard" in capsys.readouterr().out
 
     @patch("m365_brain.m365.auth.device_code.shutil.which", return_value=None)
     def test_no_clipboard_tool_found(self, mock_which, monkeypatch, capsys):

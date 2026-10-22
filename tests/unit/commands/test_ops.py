@@ -208,13 +208,15 @@ class TestTiersCommand:
         vault = tmp_path / "vault"
         vault.mkdir(exist_ok=True)
 
-        for day in (1, 5, 9, 13, 17, 21):
-            (vault / f"email-{day}.md").write_text(
+        now = datetime.now(UTC)
+        for offset in (5, 10, 15, 20, 25, 30):
+            ts = (now - timedelta(days=offset)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            (vault / f"email-{offset}.md").write_text(
                 _entity_md(
-                    f"Message {day}",
-                    f"email-{day}",
+                    f"Message {offset}",
+                    f"email-{offset}",
                     "email",
-                    {"from": "anna@example.com", "received_at": f"2026-07-{day:02d}T09:00:00Z"},
+                    {"from": "anna@example.com", "received_at": ts},
                 ),
                 encoding="utf-8",
             )
