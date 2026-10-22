@@ -35,6 +35,11 @@ from typing import Protocol, runtime_checkable
 
 from m365_brain.atomic_json import read_json, write_json
 
+
+class StateError(ValueError):
+    """Raised when persisted state data is corrupt or invalid."""
+
+
 EXTRACTOR_STATE = "extractor_state"
 """Delta tokens and watermarks -- what an extractor hands its next run."""
 
@@ -108,7 +113,7 @@ class JsonStateStore:
         if data is None:
             return {}
         if not isinstance(data, dict):
-            raise ValueError(f"state namespace {namespace!r} is not a JSON object: {self._path(namespace)}")
+            raise StateError(f"state namespace {namespace!r} is not a JSON object: {self._path(namespace)}")
         return data
 
 

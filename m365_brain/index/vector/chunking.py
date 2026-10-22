@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import re
 
+from m365_brain.index.errors import VectorError
+
 _HEADER_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 
 # A chunk is addressed by its position in the split. The prefix is named here
@@ -37,7 +39,7 @@ def chunk_index(chunk_key: str) -> int:
     chunks from every document long enough to have ten of them.
     """
     if not chunk_key.startswith(CHUNK_KEY_PREFIX):
-        raise ValueError(f"not a chunk key: {chunk_key!r}; expected a {CHUNK_KEY_PREFIX!r} prefix")
+        raise VectorError(f"not a chunk key: {chunk_key!r}; expected a {CHUNK_KEY_PREFIX!r} prefix")
     return int(chunk_key[len(CHUNK_KEY_PREFIX) :])
 
 

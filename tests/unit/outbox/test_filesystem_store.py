@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from m365_brain.outbox.filesystem_store import FilesystemIntentStore
+from m365_brain.outbox.registry import UnknownOutbox
 from m365_brain.storage.local import LocalBackend
 from m365_brain.vault.dispatch import DispatchReceipt
 
@@ -107,7 +108,7 @@ class TestListing:
         assert list(fs_store.pending()) == [("email.draft", "abc")]
 
     def test_putting_into_an_unconfigured_outbox_raises(self, fs_store):
-        with pytest.raises(KeyError):
+        with pytest.raises(UnknownOutbox):
             fs_store.put("file.update", "abc", "content")
 
     def test_the_reconciled_marker_is_not_mistaken_for_a_receipt(self, fs_store):

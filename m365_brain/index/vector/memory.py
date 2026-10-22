@@ -17,6 +17,7 @@ import math
 import random
 from collections.abc import Mapping, Sequence, Set
 
+from m365_brain.index.errors import VectorError
 from m365_brain.index.vector.chunking import chunk_index
 from m365_brain.model import Chunk, PruneStats, VectorHit
 from m365_brain.parsers.text import content_hash
@@ -73,10 +74,10 @@ class InMemoryVectorStore:
 
     def write_chunks(self, chunks: Sequence[Chunk], embeddings: Sequence[Sequence[float]]) -> None:
         if len(chunks) != len(embeddings):
-            raise ValueError(f"write_chunks got {len(chunks)} chunks and {len(embeddings)} embeddings")
+            raise VectorError(f"write_chunks got {len(chunks)} chunks and {len(embeddings)} embeddings")
         for chunk, embedding in zip(chunks, embeddings, strict=True):
             if self._dimensions is not None and len(embedding) != self._dimensions:
-                raise ValueError(
+                raise VectorError(
                     f"embedding for {chunk.entity_id}/{chunk.chunk_key} has {len(embedding)} dimensions, "
                     f"store was initialized at {self._dimensions}"
                 )

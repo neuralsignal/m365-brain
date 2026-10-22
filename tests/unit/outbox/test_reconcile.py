@@ -28,6 +28,7 @@ from m365_brain.outbox.reconcile import (
     normalize_whitespace,
     user_portion,
 )
+from m365_brain.outbox.registry import OutboxConfigurationError
 from m365_brain.vault.dispatch import DispatchReceipt
 
 # The six the previous implementation compiled in. They live in config now;
@@ -63,7 +64,7 @@ def _receipt(message_id: str | None = "MSG-1") -> DispatchReceipt:
 
 class TestMarkerCompilation:
     def test_a_bad_regex_crashes_at_load_naming_the_pattern(self):
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(OutboxConfigurationError) as excinfo:
             QuoteMarkers.from_config(["(unclosed"])
 
         assert "(unclosed" in str(excinfo.value)

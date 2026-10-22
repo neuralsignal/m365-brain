@@ -18,6 +18,7 @@ import structlog
 
 from m365_brain.config.index import VectorConfig
 from m365_brain.index.backends.base import IndexBackend
+from m365_brain.index.errors import VectorError
 from m365_brain.index.vector.base import EmbeddingProvider, VectorStore
 from m365_brain.index.vector.chunking import chunk_key_for, split_into_chunks
 from m365_brain.model import Chunk, VectorSyncStats
@@ -58,7 +59,7 @@ def sync_vectors(
 
     embeddings = provider.embed_documents([chunk.text for chunk in chunks]) if chunks else []
     if len(embeddings) != len(chunks):
-        raise ValueError(
+        raise VectorError(
             f"embedding provider returned {len(embeddings)} vectors for {len(chunks)} chunks; "
             f"the pairing in write_chunks is positional and cannot recover from this"
         )

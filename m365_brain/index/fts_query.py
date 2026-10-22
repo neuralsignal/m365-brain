@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import unicodedata
 
+from m365_brain.index.errors import QueryError
+
 _OPERATORS = frozenset({"AND", "OR", "NOT"})
 _BREAKS = '()"'
 
@@ -144,7 +146,7 @@ def _reject_unary_not(tokens: list[str], text: str) -> None:
             continue
         previous = tokens[position - 1] if position else None
         if previous is None or previous in ("AND", "OR", "NOT", "("):
-            raise ValueError(
+            raise QueryError(
                 f"negation needs something to subtract from: {text!r} "
                 f"(FTS5 has no unary NOT -- try `something {text.strip()}`)"
             )

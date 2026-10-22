@@ -29,6 +29,7 @@ from m365_brain.config.ops import InteractionSourceConfig, TierLevelConfig, Tier
 from m365_brain.index.backends.base import IndexBackend
 from m365_brain.index.query import parse_timeframe
 from m365_brain.model import EntityRef, Observation
+from m365_brain.ops.errors import OpsError
 from m365_brain.ops.links import indexed_entities
 from m365_brain.ops.names import name_key
 
@@ -187,7 +188,7 @@ def _parse_moment(entity: EntityRef, category: str, written: str) -> datetime:
     try:
         return _as_utc(datetime.fromisoformat(written))
     except ValueError as exc:
-        raise ValueError(f"{entity.permalink}: observation [{category}] is not an ISO timestamp: {written!r}") from exc
+        raise OpsError(f"{entity.permalink}: observation [{category}] is not an ISO timestamp: {written!r}") from exc
 
 
 def _as_utc(moment: datetime) -> datetime:

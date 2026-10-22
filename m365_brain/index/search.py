@@ -19,6 +19,7 @@ from typing import Literal
 
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.base import IndexBackend, MetadataFilter, TextQuery
+from m365_brain.index.errors import IndexConfigError, QueryError
 from m365_brain.index.fusion import reciprocal_rank_fusion
 from m365_brain.index.query import to_fts_query
 from m365_brain.index.vector.base import EmbeddingProvider, VectorStore
@@ -76,7 +77,7 @@ def search(
         return backend.text_search(_text_query(request.text, request.filters, request.page, request.page_size))
 
     if request.text is None:
-        raise ValueError(f"{request.mode} search requires query text; there is nothing to embed")
+        raise QueryError(f"{request.mode} search requires query text; there is nothing to embed")
     provider, store = _require_vectors(config, provider, store, request.mode)
     _reject_unsupported_filters(request.filters, request.mode)
 
@@ -85,7 +86,7 @@ def search(
         return _vector_page(ctx, request.page, request.page_size)
     if request.mode == "hybrid":
         return _hybrid_page(ctx, request.page, request.page_size)
-    raise ValueError(f"unknown search mode {request.mode!r}; expected text, vector or hybrid")
+    raise QueryError(f"unknown search mode {request.mode!r}; expected text, vector or hybrid")
 
 
 # -- text -----------------------------------------------------------------
@@ -177,9 +178,9 @@ def _require_vectors(
     config: IndexConfig, provider: EmbeddingProvider | None, store: VectorStore | None, mode: SearchMode
 ) -> tuple[EmbeddingProvider, VectorStore]:
     if not config.vector.enabled:
-        raise ValueError(f"{mode} search needs index.vector.enabled: true, and it is false")
+        raise IndexConfigError(f"{mode} search needs index.vector.enabled: true, and it is false")
     if provider is None or store is None:
-        raise ValueError(
+        raise IndexConfigError(
             f"{mode} search needs an embedding provider and a vector store; "
             f"index.vector.enabled is true but neither was supplied"
         )
@@ -189,7 +190,7 @@ def _require_vectors(
 def _reject_unsupported_filters(filters: SearchFilters, mode: SearchMode) -> None:
     unsupported = [name for name, value in (("tag", filters.tag), ("metadata", filters.metadata or None)) if value]
     if unsupported:
-        raise ValueError(
+        raise QueryError(
             f"{mode} search cannot apply {unsupported} filters: vector recall returns chunks, "
             f"which carry no tags or metadata. Filter by entity_type, or search with mode='text'."
         )

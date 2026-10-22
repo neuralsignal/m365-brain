@@ -41,6 +41,7 @@ from m365_brain.config.ops import TriageConfig, TriageFieldsConfig
 from m365_brain.index.backends.base import IndexBackend
 from m365_brain.index.query import parse_timeframe
 from m365_brain.model import EntityRef, Observation
+from m365_brain.ops.errors import OpsError
 from m365_brain.ops.links import indexed_entities
 from m365_brain.ops.names import email_addresses
 from m365_brain.outbox.reconcile import Verdict
@@ -179,7 +180,7 @@ def _message(backend: IndexBackend, entity: EntityRef, fields: TriageFieldsConfi
     try:
         received_at = _as_utc(datetime.fromisoformat(written))
     except ValueError as exc:
-        raise ValueError(f"{entity.permalink}: [{fields.timestamp}] is not an ISO timestamp: {written!r}") from exc
+        raise OpsError(f"{entity.permalink}: [{fields.timestamp}] is not an ISO timestamp: {written!r}") from exc
 
     return _Message(
         entity=entity,
@@ -216,7 +217,7 @@ def _required(entity: EntityRef, observations: Sequence[Observation], category: 
     """
     content = _first(observations, category)
     if content is None or not content.strip():
-        raise ValueError(f"{entity.permalink}: no observation in category {category!r}; triage cannot judge it")
+        raise OpsError(f"{entity.permalink}: no observation in category {category!r}; triage cannot judge it")
     return content
 
 

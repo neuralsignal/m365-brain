@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from m365_brain.index.errors import IndexConfigError
+
 ENTITY_SQL = """
 CREATE TABLE IF NOT EXISTS entity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,7 +109,7 @@ def search_column_index(column: str) -> int:
     every result and look like a ranking bug.
     """
     if column not in SEARCH_COLUMNS:
-        raise ValueError(
+        raise IndexConfigError(
             f"index.search.snippet.column {column!r} is not a searchable column; expected one of {list(SEARCH_COLUMNS)}"
         )
     return SEARCH_COLUMNS.index(column)

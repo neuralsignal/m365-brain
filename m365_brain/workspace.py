@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from types import TracebackType
 
 from m365_brain.config import Config, load_config, require_section
+from m365_brain.config.errors import ConfigError
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends import IndexBackend, create_index_backend
 from m365_brain.index.catalog import FileCatalog
@@ -140,5 +141,5 @@ class Workspace:
 
     def _require_vectors(self, operation: str) -> tuple[EmbeddingProvider, VectorStore]:
         if self._provider is None or self._store is None:
-            raise ValueError(f"{operation} needs index.vector.enabled: true, and it is false")
+            raise ConfigError(f"{operation} needs index.vector.enabled: true, and it is false")
         return self._provider, self._store

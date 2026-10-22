@@ -31,6 +31,7 @@ from typing import Literal
 from pydantic import BaseModel, SecretStr, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 from m365_brain.config.extractors import ExtractorsConfig
 from m365_brain.config.index import IndexConfig
 from m365_brain.config.ops import OpsConfig
@@ -203,7 +204,7 @@ class Config(BaseModel):
             )
         unknown = [(where, name) for where, name in referenced if name not in available]
         if unknown:
-            raise ValueError(
+            raise ConfigError(
                 "auth profile names must exist in auth.profiles "
                 f"(configured: {sorted(available)}) -- unresolved: {unknown}"
             )

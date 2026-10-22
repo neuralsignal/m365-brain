@@ -11,6 +11,7 @@ from __future__ import annotations
 from pydantic import BaseModel, field_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 
 EXTRACTOR_NAMES: tuple[str, ...] = (
     "email",
@@ -106,7 +107,7 @@ class TeamsChannelsExtractorConfig(BaseModel):
     @classmethod
     def _channels_not_empty(cls, value: list[ExplicitChannel] | None) -> list[ExplicitChannel] | None:
         if value is not None and len(value) == 0:
-            raise ValueError("explicit mode with zero channels is a misconfiguration — use null for discovery mode")
+            raise ConfigError("explicit mode with zero channels is a misconfiguration — use null for discovery mode")
         return value
 
 

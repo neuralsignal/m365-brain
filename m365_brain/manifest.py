@@ -44,6 +44,11 @@ from m365_brain.atomic_json import read_json, write_json
 from m365_brain.config import ManifestConfig
 from m365_brain.storage.base import StorageBackend
 
+
+class ManifestError(ValueError):
+    """Raised when a manifest document is structurally invalid."""
+
+
 MANIFEST_MODEL_CONFIG = ConfigDict(frozen=True, extra="forbid")
 """Frozen and closed, but not `strict`: a manifest is read back from JSON, and
 strict mode would refuse to parse its own ISO timestamps into `datetime`."""
@@ -237,7 +242,7 @@ def _parse(document: object) -> ChangeManifest | None:
     if document is None:
         return None
     if not isinstance(document, dict):
-        raise ValueError(f"a manifest must be a JSON object, got {type(document).__name__}")
+        raise ManifestError(f"a manifest must be a JSON object, got {type(document).__name__}")
     return ChangeManifest.model_validate({k: v for k, v in document.items() if k not in COMPUTED_FIELDS})
 
 
