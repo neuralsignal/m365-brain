@@ -215,10 +215,7 @@ def run_single_extractor(
         release_advisory_lock(services.engine, user.user_id, extractor_name)
 
 
-def _run_cycle(
-    services: WorkerServices,
-    max_workers: int,
-) -> None:
+def _run_cycle(services: WorkerServices, max_workers: int) -> None:
     """Execute one polling cycle: get due jobs, acquire locks, submit to pool, collect results."""
     due = get_due_jobs(services.engine, services.config)
     if not due:
