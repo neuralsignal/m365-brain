@@ -58,7 +58,7 @@ convert = [
     "obsidian-import[markitdown,docling]>=1.2.0,<2",
 ]
 vector = [
-    "fastembed>=0.8,<0.9",
+    "fastembed>=0.9,<1",
     "sqlite-vec>=0.1.6,<0.2",
 ]
 admin = [

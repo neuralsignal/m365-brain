@@ -30,14 +30,14 @@ python-dotenv = ">=1.0, <2"
 pyopenssl = ">=26.0, <27"
 cryptography = ">=50.0.0, <51"
 email-validator = ">=2.2, <3"
-fastembed = ">=0.8, <0.9"
+fastembed = ">=0.9, <1"
 sqlite-vec = ">=0.1.6, <0.2"
 sqlmodel = ">=0.0.22,<1"
 jinja2 = ">=3.1.6, <4"
 m365-brain = {path = ".", editable = true, extras = ["azure", "vector"]}
 obsidian-import = {version = ">=1.2.0,<2", extras = ["markitdown"]}
 lxml = ">=6.1.0, <7"
-pillow = ">=12.3.0, <13"
+pillow = ">=13.0.0, <14"
 pypdf = ">=6.16.1, <7"
 pytest = ">=9.0.3, <10"
 hypothesis = ">=6.100, <7"
@@ -52,6 +52,9 @@ mkdocs = ">=1.6, <2"
 mkdocs-material = ">=9.7.7, <10"
 mkdocstrings = {version = ">=0.29, <1", extras = ["python"]}
 pymdown-extensions = ">=11.0.1, <12"
+
+[pypi-options]
+dependency-overrides = {pillow = ">=13.0.0,<14"}
 
 [tasks]
 lint = "ruff check m365_brain/ m365_admin/ tests/"
