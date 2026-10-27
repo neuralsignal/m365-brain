@@ -29,6 +29,7 @@ dependencies = [
     # it -- see `m365/auth/msal_http.py`. A dependency of a dependency is not a
     # dependency: a future msal release could swap transports and break us
     # silently.
+    "certifi>=2026.10.19,<2027",
     "requests>=2.32,<3",
     "httpx>=0.28,<1",
     "pyyaml>=6.0,<7",
