@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from m365_brain.config.index import CatalogConfig
 from m365_brain.index.backends.base import IndexBackend
+from m365_brain.index.errors import CatalogConversionError
 from m365_brain.model import CatalogEntry, CatalogQuery
 
 
@@ -88,6 +89,6 @@ class FileCatalog:
 
     def _require_known_state(self, state: str) -> None:
         if state not in self._config.conversion_states:
-            raise ValueError(
+            raise CatalogConversionError(
                 f"conversion state {state!r} is not in index.catalog.conversion_states {self._config.conversion_states}"
             )

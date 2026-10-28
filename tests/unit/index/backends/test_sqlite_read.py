@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from m365_brain.index.backends.base import MetadataFilter
+from m365_brain.index.errors import SearchError
 from tests.unit.index.conftest import a_text_query, an_entity, an_observation, make_backend
 
 
@@ -85,7 +86,7 @@ def test_snippet_column_is_validated(index_payload):
     index_payload["search"]["snippet"]["column"] = "permalink"
     backend = make_backend(index_payload, "sqlite")
     indexed(backend, [an_entity(content="Note\ntelescope")])
-    with pytest.raises(ValueError, match="permalink"):
+    with pytest.raises(SearchError, match="permalink"):
         backend.text_search(a_text_query(fts="telescope"))
 
 

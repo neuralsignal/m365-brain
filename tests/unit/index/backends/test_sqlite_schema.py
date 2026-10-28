@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from m365_brain.index.backends import sqlite_schema as schema
+from m365_brain.index.errors import SearchError
 
 
 @pytest.fixture()
@@ -145,5 +146,5 @@ def test_search_column_index_maps_names_to_positions():
 
 
 def test_search_column_index_rejects_an_unsearchable_column():
-    with pytest.raises(ValueError, match="permalink"):
+    with pytest.raises(SearchError, match="permalink"):
         schema.search_column_index("permalink")

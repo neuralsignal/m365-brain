@@ -34,6 +34,10 @@ from m365_brain.index.vector.base import EmbeddingProvider, VectorStore
 from m365_brain.model import EntityRef, GraphEdge, Observation, SearchPage, SyncStats, VectorSyncStats
 
 
+class WorkspaceError(Exception):
+    """Raised when a workspace operation cannot proceed due to missing configuration."""
+
+
 class Workspace:
     """A configured index, ready to sync, search and traverse."""
 
@@ -140,5 +144,5 @@ class Workspace:
 
     def _require_vectors(self, operation: str) -> tuple[EmbeddingProvider, VectorStore]:
         if self._provider is None or self._store is None:
-            raise ValueError(f"{operation} needs index.vector.enabled: true, and it is false")
+            raise WorkspaceError(f"{operation} needs index.vector.enabled: true, and it is false")
         return self._provider, self._store

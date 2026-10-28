@@ -15,6 +15,7 @@ from m365_brain.m365.client import GraphClient
 from m365_brain.m365.outboxes.email import EmailOutbox, load_signature_html
 from m365_brain.m365.outboxes.files import FILE_UPDATE_KIND, FileUpdateOutbox
 from m365_brain.m365.outboxes.teams import TEAMS_POST_KIND, TeamsPostOutbox
+from m365_brain.outbox.registry import OutboxConfigurationError
 from m365_brain.vault.dispatch import OutboxHandler
 
 EMAIL_KINDS = ("email.draft", "email.reply", "email.forward")
@@ -45,7 +46,7 @@ def build_handlers(
     for name, definition in config.definitions.items():
         client = clients.get(definition.auth_profile)
         if client is None:
-            raise KeyError(
+            raise OutboxConfigurationError(
                 f"outbox {name!r} names auth profile {definition.auth_profile!r}, "
                 f"for which no client was supplied (have: {sorted(clients)})"
             )
@@ -73,7 +74,7 @@ def _handler(
         return TeamsPostOutbox(name=name, client=client)
     if name == FILE_UPDATE_KIND:
         return FileUpdateOutbox(name=name, client=client, upload=upload)
-    raise KeyError(
+    raise OutboxConfigurationError(
         f"outboxes.definitions names {name!r}, which no executor implements. "
         f"Known outboxes: {[*EMAIL_KINDS, TEAMS_POST_KIND, FILE_UPDATE_KIND]}"
     )

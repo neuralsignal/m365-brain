@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from m365_brain.config.index import VectorConfig
+from m365_brain.index.errors import VectorStoreError
 
 
 class FastembedProvider:
@@ -57,7 +58,7 @@ class FastembedProvider:
         """
         for embedding in embeddings:
             if len(embedding) != self._dimensions:
-                raise ValueError(
+                raise VectorStoreError(
                     f"index.vector.model {self._model_name!r} produces {len(embedding)}-dimensional "
                     f"vectors, but index.vector.dimensions is {self._dimensions}"
                 )

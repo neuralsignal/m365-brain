@@ -15,11 +15,11 @@ from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.index.catalog import FileCatalog
 from m365_brain.index.catalog_extract import (
-    CatalogConversionError,
     converted_output_path,
     extract_pending,
     pending_batch,
 )
+from m365_brain.index.errors import CatalogConversionError
 
 from .conftest import a_catalog_entry
 
@@ -185,7 +185,7 @@ def test_the_directory_names_come_from_the_caller():
 
 def test_a_binary_outside_an_attachments_directory_raises():
     """A new write path with no home for its markdown is worth a crash."""
-    with pytest.raises(ValueError, match="not under a 'attachments' directory"):
+    with pytest.raises(CatalogConversionError, match="not under a 'attachments' directory"):
         converted_output_path("inbox/onedrive/report.pdf", "attachments", "attachments_converted")
 
 

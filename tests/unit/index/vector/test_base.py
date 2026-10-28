@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector import HashEmbeddingProvider, create_embedding_provider
 from m365_brain.index.vector.base import EmbeddingProvider, VectorStore
 from m365_brain.index.vector.chunking import chunk_key_for
@@ -54,7 +55,7 @@ def test_rewriting_a_chunk_replaces_it(store, seed):
 
 def test_mismatched_chunk_and_embedding_counts_raise(store, seed):
     entity_id = seed(1)[0]
-    with pytest.raises(ValueError):
+    with pytest.raises(VectorStoreError):
         store.write_chunks([a_chunk(entity_id, 0, "a")], vectors(2, DIMENSIONS))
 
 

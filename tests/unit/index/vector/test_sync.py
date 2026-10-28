@@ -18,6 +18,7 @@ import pytest
 
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.sqlite import SqliteIndexBackend
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector import HashEmbeddingProvider, create_vector_store, sync_vectors
 from m365_brain.index.vector.chunking import chunk_key_for, split_into_chunks
 
@@ -171,5 +172,5 @@ def test_a_provider_returning_the_wrong_count_crashes(harness):
         def embed_documents(self, texts):
             return []
 
-    with pytest.raises(ValueError, match="positional"):
+    with pytest.raises(VectorStoreError, match="positional"):
         sync_vectors(config.vector, FakeTextBackend({1: "a note"}), ShortProvider(), store, full_rebuild=False)

@@ -25,6 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from m365_brain.outbox.registry import OutboxConfigurationError
 from m365_brain.vault.dispatch import DispatchReceipt
 
 RECONCILE_SELECT = ["id", "isDraft", "subject", "body", "conversationId", "sentDateTime"]
@@ -51,7 +52,9 @@ class QuoteMarkers:
             try:
                 compiled.append(re.compile(pattern, re.MULTILINE | re.IGNORECASE))
             except re.error as exc:
-                raise ValueError(f"outboxes.reconcile.quote_markers entry {pattern!r} is not a regex: {exc}") from exc
+                raise OutboxConfigurationError(
+                    f"outboxes.reconcile.quote_markers entry {pattern!r} is not a regex: {exc}"
+                ) from exc
         return cls(tuple(compiled))
 
 

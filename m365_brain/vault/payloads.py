@@ -28,6 +28,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from m365_brain.vault.paths import VaultPathError
+
 PAYLOAD_MODEL_CONFIG = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 # Pre-Graph extractors emitted MAPI EntryIDs: 8+ leading zeros then long
@@ -41,15 +43,15 @@ MAX_SUBJECT_LENGTH = 998  # RFC 5322 line-length ceiling for a header
 
 def _reject_path_traversal(value: str) -> str:
     if PurePosixPath(value).is_absolute():
-        raise ValueError(f"absolute attachment path {value!r} is not allowed")
+        raise VaultPathError(f"absolute attachment path {value!r} is not allowed")
     if ".." in PurePosixPath(value).parts:
-        raise ValueError(f"attachment path {value!r} contains '..' segments")
+        raise VaultPathError(f"attachment path {value!r} contains '..' segments")
     return value
 
 
 def _reject_legacy_entry_id(value: str) -> str:
     if LEGACY_MAPI_ENTRY_ID.match(value):
-        raise ValueError(
+        raise VaultPathError(
             f"in_reply_to {value[:30]}... is a legacy MAPI EntryID, not a Graph message id. "
             "Re-ingest the source message so its frontmatter carries a Graph id."
         )

@@ -12,6 +12,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector.chunking import chunk_index, chunk_key_for, split_into_chunks
 
 SIZE = 60
@@ -79,7 +80,7 @@ def test_chunk_keys_round_trip(index):
 
 
 def test_a_key_without_the_prefix_raises():
-    with pytest.raises(ValueError, match="not a chunk key"):
+    with pytest.raises(VectorStoreError, match="not a chunk key"):
         chunk_index("piece_3")
 
 

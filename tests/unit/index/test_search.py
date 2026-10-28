@@ -17,6 +17,7 @@ import pytest
 
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.memory import InMemoryIndexBackend
+from m365_brain.index.errors import SearchError
 from m365_brain.index.query import parse_metadata_filter
 from m365_brain.index.search import SearchFilters, SearchRequest, search
 from m365_brain.index.vector import HashEmbeddingProvider, InMemoryVectorStore
@@ -200,21 +201,21 @@ def test_a_chunk_whose_entity_is_gone_is_dropped(harness):
 
 @pytest.mark.parametrize("mode", ["vector", "hybrid"])
 def test_vector_modes_need_query_text(harness, mode):
-    with pytest.raises(ValueError, match="nothing to embed"):
+    with pytest.raises(SearchError, match="nothing to embed"):
         harness.run(None, mode=mode)
 
 
 @pytest.mark.parametrize("mode", ["vector", "hybrid"])
 def test_a_tag_filter_is_refused_rather_than_dropped(harness, mode):
     """A filtered search that quietly returns unfiltered results is the worse failure."""
-    with pytest.raises(ValueError, match="tag"):
+    with pytest.raises(SearchError, match="tag"):
         harness.run("anything", mode=mode, filters=SearchFilters(entity_type=None, tag="urgent", metadata=()))
 
 
 @pytest.mark.parametrize("mode", ["vector", "hybrid"])
 def test_a_metadata_filter_is_refused_rather_than_dropped(harness, mode):
     filters = SearchFilters(entity_type=None, tag=None, metadata=(parse_metadata_filter("priority>=3"),))
-    with pytest.raises(ValueError, match="metadata"):
+    with pytest.raises(SearchError, match="metadata"):
         harness.run("anything", mode=mode, filters=filters)
 
 
@@ -261,13 +262,13 @@ def test_hybrid_deduplicates(harness):
 def test_disabled_vectors_raise_naming_the_config_key(index_payload, mode):
     index_payload["vector"]["enabled"] = False
     harness = Harness(IndexConfig.model_validate(index_payload))
-    with pytest.raises(ValueError, match="index.vector.enabled"):
+    with pytest.raises(SearchError, match="index.vector.enabled"):
         harness.run("anything", mode=mode)
 
 
 @pytest.mark.parametrize("mode", ["vector", "hybrid"])
 def test_missing_vector_objects_raise_rather_than_falling_back(harness, mode):
-    with pytest.raises(ValueError, match="index.vector.enabled"):
+    with pytest.raises(SearchError, match="index.vector.enabled"):
         harness.run("anything", mode=mode, vectors=False)
 
 
@@ -279,5 +280,5 @@ def test_text_search_still_works_with_vectors_disabled(index_payload):
 
 
 def test_an_unknown_mode_raises(harness):
-    with pytest.raises(ValueError, match="unknown search mode"):
+    with pytest.raises(SearchError, match="unknown search mode"):
         harness.run("anything", mode="telepathy")

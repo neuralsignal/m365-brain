@@ -13,6 +13,7 @@ import pytest
 from m365_brain.config.index import IndexConfig
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.index.catalog import FileCatalog
+from m365_brain.index.errors import CatalogConversionError
 
 from .conftest import a_catalog_entry, a_catalog_query
 
@@ -44,19 +45,19 @@ def test_an_unknown_path_is_none(catalog):
 
 
 def test_upserting_an_unconfigured_state_raises(catalog):
-    with pytest.raises(ValueError, match="conversion_states"):
+    with pytest.raises(CatalogConversionError, match="conversion_states"):
         catalog.upsert(a_catalog_entry(conversion_status="quantum"))
 
 
 def test_setting_an_unconfigured_state_raises(catalog):
     catalog.upsert(a_catalog_entry())
-    with pytest.raises(ValueError, match="conversion_states"):
+    with pytest.raises(CatalogConversionError, match="conversion_states"):
         catalog.set_status("drive/report.docx", "quantum", output_path=None, error=None)
 
 
 def test_searching_an_unconfigured_state_raises(catalog):
     """A typo in a filter would otherwise read as "no files", which is a different fact."""
-    with pytest.raises(ValueError, match="conversion_states"):
+    with pytest.raises(CatalogConversionError, match="conversion_states"):
         catalog.search(a_catalog_query(status="quantum"))
 
 

@@ -13,6 +13,7 @@ import re
 from datetime import datetime, timedelta
 
 from m365_brain.index.backends.base import MetadataFilter
+from m365_brain.index.errors import QueryError
 from m365_brain.index.fts_query import to_fts_query
 
 # `to_fts_query` lives in `fts_query` -- it grew a parser of its own -- but it
@@ -57,7 +58,7 @@ def parse_metadata_filter(expression: str) -> MetadataFilter:
     """
     match = _FIELD_RE.match(expression)
     if not match:
-        raise ValueError(
+        raise QueryError(
             f"cannot parse metadata filter {expression!r}; expected key=value, key>=n, key~a,b or key:lo..hi"
         )
     key, symbol, raw = match.group(1), match.group(2), match.group(3)
@@ -67,14 +68,20 @@ def parse_metadata_filter(expression: str) -> MetadataFilter:
         return MetadataFilter(key=key, op=op, values=tuple(value.strip() for value in raw.split(",")))
     if op == "between":
         if ".." not in raw:
-            raise ValueError(f"range filter {expression!r} needs lo..hi")
+            raise QueryError(f"range filter {expression!r} needs lo..hi")
         low, high = raw.split("..", 1)
-        return MetadataFilter(key=key, op=op, values=(float(low), float(high)))
+        try:
+            return MetadataFilter(key=key, op=op, values=(float(low), float(high)))
+        except ValueError as exc:
+            raise QueryError(f"range filter {expression!r} needs numeric bounds: {exc}") from exc
     if op == "eq":
         return MetadataFilter(key=key, op=op, values=(raw,))
     # The ordering operators are numeric: a text `>=` on frontmatter scalars
     # compares digit strings, where "10" sorts below "3".
-    return MetadataFilter(key=key, op=op, values=(float(raw),))
+    try:
+        return MetadataFilter(key=key, op=op, values=(float(raw),))
+    except ValueError as exc:
+        raise QueryError(f"cannot parse numeric value in {expression!r}: {exc}") from exc
 
 
 def parse_timeframe(text: str) -> timedelta:
@@ -97,7 +104,7 @@ def parse_timeframe(text: str) -> timedelta:
     if spelled:
         return int(spelled.group(1)) * _UNITS[spelled.group(2)[0]]
 
-    raise ValueError(f"cannot parse timeframe {text!r}; try '7d', '3 weeks ago', 'today' or 'last month'")
+    raise QueryError(f"cannot parse timeframe {text!r}; try '7d', '3 weeks ago', 'today' or 'last month'")
 
 
 def updated_since(timeframe: str, now: datetime) -> str:

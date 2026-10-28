@@ -16,6 +16,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from m365_brain.index.errors import QueryError
 from m365_brain.index.fts_query import to_fts_query
 
 # -- to_fts_query ---------------------------------------------------------
@@ -32,7 +33,7 @@ def _fts_accepts(expression: str) -> None:
 def test_never_raises_except_on_a_bare_negation(text):
     try:
         to_fts_query(text)
-    except ValueError as error:
+    except QueryError as error:
         assert "negation" in str(error)
 
 
@@ -48,7 +49,7 @@ def test_output_is_valid_fts5(text):
     """
     try:
         expression = to_fts_query(text)
-    except ValueError:
+    except QueryError:
         return  # rejected deliberately, with a message -- that is the good case
     if expression:
         _fts_accepts(expression)
@@ -57,7 +58,7 @@ def test_output_is_valid_fts5(text):
 @given(st.text())
 def test_quotes_stay_balanced(text):
     """An odd quote count is a parse error inside FTS5, not an empty result."""
-    with contextlib.suppress(ValueError):  # a deliberate rejection is the good case
+    with contextlib.suppress(QueryError):  # a deliberate rejection is the good case
         assert to_fts_query(text).count('"') % 2 == 0
 
 
@@ -116,7 +117,7 @@ def test_a_negation_with_no_left_operand_is_rejected(typed):
     Failing here with a sentence beats letting the driver report a syntax
     error against a generated string the user never typed and cannot read.
     """
-    with pytest.raises(ValueError, match="negation"):
+    with pytest.raises(QueryError, match="negation"):
         to_fts_query(typed)
 
 
@@ -165,5 +166,5 @@ def test_a_dangling_conjunction_is_dropped(typed, expected):
 
 
 def test_a_dangling_negation_still_raises_rather_than_being_dropped():
-    with pytest.raises(ValueError, match="negation"):
+    with pytest.raises(QueryError, match="negation"):
         to_fts_query("cats OR -dogs")

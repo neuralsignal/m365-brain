@@ -15,6 +15,7 @@ from __future__ import annotations
 from pydantic import BaseModel, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 
 
 class LinkResolutionConfig(BaseModel):
@@ -38,7 +39,7 @@ class LinkResolutionConfig(BaseModel):
     @model_validator(mode="after")
     def _target_types_is_not_empty(self) -> LinkResolutionConfig:
         if not self.target_types:
-            raise ValueError("ops.link_resolution.target_types must name at least one entity type")
+            raise ConfigError("ops.link_resolution.target_types must name at least one entity type")
         return self
 
 
@@ -69,7 +70,7 @@ class PartySelector(BaseModel):
     @model_validator(mode="after")
     def _exactly_one(self) -> PartySelector:
         if (self.observation is None) == (self.relation is None):
-            raise ValueError(
+            raise ConfigError(
                 "ops.tiers.interaction_sources[].party_from must set exactly one of "
                 "'observation' or 'relation'; the other is null"
             )
@@ -105,11 +106,11 @@ class TiersConfig(BaseModel):
     @model_validator(mode="after")
     def _ladder_is_named_and_unique(self) -> TiersConfig:
         if not self.ladder:
-            raise ValueError("ops.tiers.ladder must have at least one rung")
+            raise ConfigError("ops.tiers.ladder must have at least one rung")
         names = [rung.name for rung in self.ladder]
         duplicates = sorted({name for name in names if names.count(name) > 1})
         if duplicates:
-            raise ValueError(f"ops.tiers.ladder names must be unique -- duplicated: {duplicates}")
+            raise ConfigError(f"ops.tiers.ladder names must be unique -- duplicated: {duplicates}")
         return self
 
 

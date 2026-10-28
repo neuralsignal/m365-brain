@@ -25,11 +25,8 @@ from dataclasses import dataclass
 
 from m365_brain.config.index import CatalogConfig
 from m365_brain.index.catalog import FileCatalog
+from m365_brain.index.errors import CatalogConversionError
 from m365_brain.model import CatalogEntry, CatalogQuery
-
-
-class CatalogConversionError(Exception):
-    """A conversion that failed for a reason worth recording on the row."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +107,7 @@ def converted_output_path(original_path: str, attachments_dir: str, converted_di
     try:
         position = segments.index(attachments_dir)
     except ValueError:
-        raise ValueError(
+        raise CatalogConversionError(
             f"{original_path!r} is not under a {attachments_dir!r} directory, so there is nowhere "
             f"to put its markdown; extend converted_output_path before cataloguing writes elsewhere"
         ) from None

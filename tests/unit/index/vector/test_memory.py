@@ -12,6 +12,7 @@ import math
 
 import pytest
 
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector.chunking import chunk_key_for
 from m365_brain.index.vector.memory import HashEmbeddingProvider, InMemoryVectorStore
 from m365_brain.model import Chunk
@@ -50,7 +51,7 @@ def test_distance_is_euclidean_over_the_stored_vector():
 def test_writing_a_wrong_width_vector_raises_after_initialize():
     store = InMemoryVectorStore()
     store.initialize(4)
-    with pytest.raises(ValueError, match="dimensions"):
+    with pytest.raises(VectorStoreError, match="dimensions"):
         store.write_chunks([a_chunk(1, 0, "text")], [[0.1, 0.2]])
 
 
