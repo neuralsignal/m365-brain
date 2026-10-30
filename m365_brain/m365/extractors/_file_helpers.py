@@ -16,6 +16,7 @@ from m365_brain.m365.client import GraphApiError
 from m365_brain.m365.converters.document import convert_document
 from m365_brain.m365.extractors._file_types import (
     DriveItemMetadata,
+    FileIdentity,
     FileProcessingContext,
 )
 from m365_brain.m365.frontmatter.files import CONTENT_STATUS
@@ -88,7 +89,6 @@ def _write_stub(
     ctx: FileProcessingContext,
     storage_path: str,
     frontmatter: dict,
-    file_name: str,
     status: str,
     body: str,
 ) -> bool:
@@ -103,8 +103,7 @@ def _eager_convert_and_write(
     item: dict,
     storage_path: str,
     frontmatter: dict,
-    file_name: str,
-    extension: str,
+    file_id: FileIdentity,
 ) -> bool:
     """Download, convert, and write an eagerly-converted drive item."""
     file_size_bytes = item.get("size", 0)
@@ -112,7 +111,7 @@ def _eager_convert_and_write(
     if file_size_mb > ctx.file_config.max_file_size_mb:
         log.warning(
             "file_helpers.file_too_large",
-            file=file_name,
+            file=file_id.name,
             size_mb=round(file_size_mb, 1),
             limit_mb=ctx.file_config.max_file_size_mb,
         )
@@ -120,37 +119,34 @@ def _eager_convert_and_write(
             ctx,
             storage_path,
             frontmatter,
-            file_name,
             "error_too_large",
-            f"# {file_name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB.",
+            f"# {file_id.name}\n\nFile is {file_size_mb:.1f} MB, exceeding limit of {ctx.file_config.max_file_size_mb} MB.",
         )
 
-    download_url = _resolve_download_url(ctx, item, file_name)
+    download_url = _resolve_download_url(ctx, item, file_id.name)
     if not download_url:
-        log.warning("file_helpers.no_download_url", file=file_name)
+        log.warning("file_helpers.no_download_url", file=file_id.name)
         return _write_stub(
             ctx,
             storage_path,
             frontmatter,
-            file_name,
             "error_no_download_url",
-            f"# {file_name}\n\nNo download URL available.",
+            f"# {file_id.name}\n\nNo download URL available.",
         )
 
     try:
         file_bytes = ctx.client.get_bytes(download_url)
     except GraphApiError as exc:
-        log.error("file_helpers.download_failed", file=file_name, error=str(exc))
+        log.error("file_helpers.download_failed", file=file_id.name, error=str(exc))
         return _write_stub(
             ctx,
             storage_path,
             frontmatter,
-            file_name,
             "error_download",
-            f"# {file_name}\n\nDownload failed: {exc}",
+            f"# {file_id.name}\n\nDownload failed: {exc}",
         )
 
-    suffix = extension if extension else ""
+    suffix = file_id.extension if file_id.extension else ""
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = Path(tmp.name)
@@ -161,11 +157,11 @@ def _eager_convert_and_write(
             converters_config=ctx.file_config.converters_config,
         )
         frontmatter[CONTENT_STATUS] = "converted"
-        body = f"# {file_name}\n\n{markdown_text}"
+        body = f"# {file_id.name}\n\n{markdown_text}"
     except (ImportError, ValueError, OSError) as exc:
-        log.error("file_helpers.conversion_failed", file=file_name, error=str(exc))
+        log.error("file_helpers.conversion_failed", file=file_id.name, error=str(exc))
         frontmatter[CONTENT_STATUS] = "error_conversion"
-        body = f"# {file_name}\n\nConversion failed: {exc}"
+        body = f"# {file_id.name}\n\nConversion failed: {exc}"
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -190,7 +186,7 @@ def process_drive_item(
     is_eager = should_eager_convert(file_name, ctx.file_config.eager_patterns)
 
     if is_convertible and is_eager:
-        return _eager_convert_and_write(ctx, item, storage_path, frontmatter, file_name, extension)
+        return _eager_convert_and_write(ctx, item, storage_path, frontmatter, FileIdentity(file_name, extension))
 
     # Non-eager or non-convertible: write a metadata stub
     frontmatter[CONTENT_STATUS] = "pending" if is_convertible else "not_convertible"

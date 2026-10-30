@@ -149,12 +149,19 @@ def _classify_attachment(
     return name, content_url
 
 
+@dataclass(frozen=True)
+class AttachmentDownloadArgs:
+    """Groups the identity and target for a single attachment download."""
+
+    content_url: str
+    max_bytes: int
+    msg_id: str
+    name: str
+
+
 def _download_attachment_bytes(
     client: GraphClient,
-    content_url: str,
-    max_bytes: int,
-    msg_id: str,
-    name: str,
+    args: AttachmentDownloadArgs,
     failed_attachments: dict[str, str],
 ) -> bytes | None:
     """Download attachment bytes via the shares endpoint with error handling.
@@ -162,31 +169,31 @@ def _download_attachment_bytes(
     Records permanent failures (403/404) into ``failed_attachments``.
     """
     try:
-        return resolve_reference_bytes(client, content_url, max_bytes)
+        return resolve_reference_bytes(client, args.content_url, args.max_bytes)
     except GraphApiError as exc:
-        failure_key = f"{msg_id}:{name}"
+        failure_key = f"{args.msg_id}:{args.name}"
         if exc.status_code in _PERMANENT_FAILURE_STATUSES:
             failed_attachments[failure_key] = f"http_{exc.status_code}"
             log.warning(
                 "teams_attachments.attachment_download_failed_permanently",
-                msg_id=msg_id,
-                name=name,
+                msg_id=args.msg_id,
+                name=args.name,
                 status=exc.status_code,
                 error=str(exc),
             )
         else:
             log.warning(
                 "teams_attachments.attachment_download_failed",
-                msg_id=msg_id,
-                name=name,
+                msg_id=args.msg_id,
+                name=args.name,
                 error=str(exc),
             )
         return None
     except httpx.TransportError as exc:
         log.warning(
             "teams_attachments.attachment_download_failed",
-            msg_id=msg_id,
-            name=name,
+            msg_id=args.msg_id,
+            name=args.name,
             error=str(exc),
         )
         return None
@@ -243,7 +250,8 @@ def _resolve_attachment(
         return None
     name, content_url = classified
 
-    data = _download_attachment_bytes(ctx.client, content_url, max_bytes, msg_id, name, ctx.failed_attachments)
+    download_args = AttachmentDownloadArgs(content_url=content_url, max_bytes=max_bytes, msg_id=msg_id, name=name)
+    data = _download_attachment_bytes(ctx.client, download_args, ctx.failed_attachments)
     if data is None:
         return None
 
