@@ -19,6 +19,7 @@ is NOT advanced (loud refusal beats silent loss — the next cycle retries).
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
@@ -224,25 +225,32 @@ def _load_and_ingest_messages(
     return store, fetched
 
 
+@dataclass
+class ChatWriteArgs:
+    """Groups the per-chat values that ``_save_and_write_chat`` needs beyond the TeamsContext."""
+
+    chat: dict
+    merged: dict[str, StoredMessage]
+    merged_ids: list[str]
+    store_path: str
+    state: dict
+    chat_id: str
+    path_map: dict[str, str]
+
+
 def _save_and_write_chat(
     ctx: TeamsContext,
-    chat: dict,
-    merged: dict[str, StoredMessage],
-    merged_ids: list[str],
-    store_path: str,
-    state: dict,
-    chat_id: str,
-    path_map: dict[str, str],
+    args: ChatWriteArgs,
 ) -> tuple[str, list[str]] | None:
     """Persist the merged store and write the chat markdown if there are changes."""
-    if merged_ids or not ctx.storage.file_exists(store_path):
-        save_store(ctx.storage, store_path, merged)
+    if args.merged_ids or not ctx.storage.file_exists(args.store_path):
+        save_store(ctx.storage, args.store_path, args.merged)
 
-    if not merged_ids:
+    if not args.merged_ids:
         return None
-    file_path = write_chat(ctx, chat, merged, state["history_complete"].get(chat_id, False), name)
-    path_map[chat_id] = file_path
-    return file_path, merged_ids
+    file_path = write_chat(ctx, args.chat, args.merged, args.state["history_complete"].get(args.chat_id, False), name)
+    args.path_map[args.chat_id] = file_path
+    return file_path, args.merged_ids
 
 
 def _process_chat(
@@ -286,4 +294,13 @@ def _process_chat(
     # Recorded even though Graph offers chats no removal signal under delegated
     # permissions -- see CONTRACTS.md. The map is what a future signal, and
     # `vault purge` today, need in order to find the file again.
-    return _save_and_write_chat(ctx, chat, merged, merged_ids, store_path, state, chat_id, path_map)
+    write_args = ChatWriteArgs(
+        chat=chat,
+        merged=merged,
+        merged_ids=merged_ids,
+        store_path=store_path,
+        state=state,
+        chat_id=chat_id,
+        path_map=path_map,
+    )
+    return _save_and_write_chat(ctx, write_args)
