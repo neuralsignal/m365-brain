@@ -1,19 +1,13 @@
 """Teams chat extractor — merge-based incremental sync of 1:1 and group chats.
 
 Uses /me/chats for the chat list and /me/chats/{id}/messages for messages.
-Each chat is a folder ``teams-chats/<slug>_<hash>/`` containing:
+Each chat produces ``messages.jsonl`` (source of truth) and ``messages.md``
+(rendered timeline) under ``teams-chats/<slug>_<hash>/``.
 
-- ``messages.jsonl`` — per-chat message store, the source of truth
-- ``messages.md`` — rendered day-grouped timeline (derived artifact)
-- ``attachments/<msg-id>/<name>`` and ``attachments_converted/<msg-id>/<name>.md``
-
-Incremental sync keys off a per-chat ``lastModifiedDateTime`` watermark kept
-in extractor state. The Graph chat-messages endpoint applies ``$filter`` only
-when ``$orderby`` targets the same property — the two are always paired here.
-Fetched messages merge into the store, so history older than the current
-fetch window is never lost. Incremental fetches are bounded by the global
-``graph.max_pages``; if even that bound truncates the window, the watermark
-is NOT advanced (loud refusal beats silent loss — the next cycle retries).
+Incremental sync keys off a per-chat ``lastModifiedDateTime`` watermark.
+Fetched messages merge into the store so older history is never lost.
+If ``graph.max_pages`` truncates an incremental window, the watermark is
+NOT advanced (the next cycle retries).
 """
 
 from __future__ import annotations
