@@ -15,6 +15,7 @@ from m365_brain.config import (
     UploadConfig,
 )
 from m365_brain.m365.outboxes import build_handlers
+from m365_brain.outbox.registry import OutboxConfigurationError
 
 
 @pytest.fixture()
@@ -60,7 +61,7 @@ def test_build_handlers_missing_client(tmp_path, upload, signature):
             ),
         },
     )
-    with pytest.raises(KeyError, match=re.escape("missing_profile")):
+    with pytest.raises(OutboxConfigurationError, match=re.escape("missing_profile")):
         build_handlers(config, upload, clients={})
 
 
@@ -75,5 +76,5 @@ def test_handler_unknown_kind(tmp_path, upload, signature, client):
             ),
         },
     )
-    with pytest.raises(KeyError, match=re.escape("carrier.pigeon")):
+    with pytest.raises(OutboxConfigurationError, match=re.escape("carrier.pigeon")):
         build_handlers(config, upload, clients={"main": client})

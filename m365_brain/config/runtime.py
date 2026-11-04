@@ -13,6 +13,7 @@ import re
 from pydantic import BaseModel, field_validator, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 
 _HOOK_SPEC = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*:[A-Za-z_]\w*$")
 
@@ -32,7 +33,7 @@ def is_hook_spec(value: str) -> bool:
 def _check_specs(field: str, specs: list[str]) -> list[str]:
     bad = [spec for spec in specs if not is_hook_spec(spec)]
     if bad:
-        raise ValueError(f"hooks.{field} entries must be 'module.path:callable' -- rejected: {bad}")
+        raise ConfigError(f"hooks.{field} entries must be 'module.path:callable' -- rejected: {bad}")
     return specs
 
 
@@ -69,7 +70,7 @@ class UploadConfig(BaseModel):
     @model_validator(mode="after")
     def _chunk_is_a_graph_multiple(self) -> UploadConfig:
         if self.chunk_bytes % UPLOAD_CHUNK_MULTIPLE_BYTES != 0:
-            raise ValueError(
+            raise ConfigError(
                 f"m365.upload.chunk_bytes ({self.chunk_bytes}) must be a multiple of "
                 f"{UPLOAD_CHUNK_MULTIPLE_BYTES} (320 KiB) -- the upload-session API rejects anything else"
             )

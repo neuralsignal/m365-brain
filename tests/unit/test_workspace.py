@@ -17,9 +17,10 @@ import yaml
 from m365_brain.config import ConfigError
 from m365_brain.index.backends.memory import InMemoryIndexBackend
 from m365_brain.index.catalog import FileCatalog
+from m365_brain.index.errors import QueryError
 from m365_brain.index.search import SearchFilters
 from m365_brain.index.vector.memory import HashEmbeddingProvider, InMemoryVectorStore
-from m365_brain.workspace import Workspace
+from m365_brain.workspace import Workspace, WorkspaceError
 from tests.unit.conftest import index_payload_for
 from tests.unit.test_config_sections import _legacy_sections
 
@@ -120,7 +121,7 @@ def test_sync_vectors_embeds_what_the_index_holds(workspace, corpus_root):
 def test_sync_vectors_raises_when_vectors_are_off(tmp_path, corpus_root):
     with (
         Workspace.open(write_config(tmp_path, corpus_root, vector={"enabled": False})) as handle,
-        pytest.raises(ValueError, match="index.vector.enabled"),
+        pytest.raises(WorkspaceError, match="index.vector.enabled"),
     ):
         handle.sync_vectors(full_rebuild=False)
 
@@ -185,7 +186,7 @@ def test_recent_total_counts_past_the_limit(workspace, corpus_root):
 
 
 def test_an_unparseable_timeframe_raises(workspace):
-    with pytest.raises(ValueError, match="cannot parse timeframe"):
+    with pytest.raises(QueryError, match="cannot parse timeframe"):
         workspace.recent("whenever", entity_type=None, limit=10)
 
 

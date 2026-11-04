@@ -14,7 +14,15 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from m365_brain.atomic_json import read_json, write_json
-from m365_brain.state import CURSORS, CYCLES, EXTRACTOR_STATE, InMemoryStateStore, JsonStateStore, StateStore
+from m365_brain.state import (
+    CURSORS,
+    CYCLES,
+    EXTRACTOR_STATE,
+    InMemoryStateStore,
+    JsonStateStore,
+    StateError,
+    StateStore,
+)
 
 
 @pytest.fixture(params=["json", "memory"])
@@ -111,7 +119,7 @@ class TestJsonStateStore:
 
     def test_a_namespace_file_that_is_not_an_object_raises(self, tmp_path):
         (tmp_path / "cursors.json").write_text("[1, 2, 3]", encoding="utf-8")
-        with pytest.raises(ValueError, match="not a JSON object"):
+        with pytest.raises(StateError, match="not a JSON object"):
             JsonStateStore(tmp_path).get(CURSORS, "email")
 
     def test_unparseable_state_raises_rather_than_full_syncing(self, tmp_path):

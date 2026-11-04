@@ -21,6 +21,7 @@ from pathlib import Path
 
 from m365_brain.config.index import SqliteIndexConfig, VectorConfig
 from m365_brain.index.backends.sqlite_connect import sqlite_connection
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector.chunking import CHUNK_KEY_PREFIX
 from m365_brain.model import Chunk, PruneStats, VectorHit
 
@@ -97,7 +98,7 @@ class SqliteVecStore:
         touching the file.
         """
         if len(chunks) != len(embeddings):
-            raise ValueError(f"write_chunks got {len(chunks)} chunks and {len(embeddings)} embeddings")
+            raise VectorStoreError(f"write_chunks got {len(chunks)} chunks and {len(embeddings)} embeddings")
         now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         for start in range(0, len(chunks), self._write_batch_size):
             window = slice(start, start + self._write_batch_size)

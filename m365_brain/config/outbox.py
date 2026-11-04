@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 
 Authority = Literal["never_auto", "human_approval", "draft_only", "auto_send"]
 
@@ -69,7 +70,7 @@ class OutboxesConfig(BaseModel):
     @model_validator(mode="after")
     def _definitions_not_empty(self) -> OutboxesConfig:
         if not self.definitions:
-            raise ValueError(
+            raise ConfigError(
                 "outboxes.definitions must name at least one outbox; an outboxes section "
                 "with no outbox cannot dispatch anything"
             )

@@ -16,6 +16,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from m365_brain.index.errors import QueryError
 from m365_brain.index.fts_query import to_fts_query
 
 # -- to_fts_query ---------------------------------------------------------
@@ -116,7 +117,7 @@ def test_a_negation_with_no_left_operand_is_rejected(typed):
     Failing here with a sentence beats letting the driver report a syntax
     error against a generated string the user never typed and cannot read.
     """
-    with pytest.raises(ValueError, match="negation"):
+    with pytest.raises(QueryError, match="negation"):
         to_fts_query(typed)
 
 
@@ -165,5 +166,5 @@ def test_a_dangling_conjunction_is_dropped(typed, expected):
 
 
 def test_a_dangling_negation_still_raises_rather_than_being_dropped():
-    with pytest.raises(ValueError, match="negation"):
+    with pytest.raises(QueryError, match="negation"):
         to_fts_query("cats OR -dogs")

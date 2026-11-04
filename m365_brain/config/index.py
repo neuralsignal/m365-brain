@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 
 
 class IndexRoot(BaseModel):
@@ -123,7 +124,7 @@ class CatalogConfig(BaseModel):
         }
         if unknown:
             named = ", ".join(f"index.catalog.{key} {value!r}" for key, value in sorted(unknown.items()))
-            raise ValueError(f"{named} is not one of index.catalog.conversion_states {self.conversion_states!r}")
+            raise ConfigError(f"{named} is not one of index.catalog.conversion_states {self.conversion_states!r}")
         return self
 
 
@@ -143,7 +144,7 @@ class VectorConfig(BaseModel):
     @model_validator(mode="after")
     def _overlap_below_chunk_size(self) -> VectorConfig:
         if self.chunk_overlap >= self.chunk_size:
-            raise ValueError(
+            raise ConfigError(
                 f"index.vector.chunk_overlap ({self.chunk_overlap}) must be smaller than "
                 f"index.vector.chunk_size ({self.chunk_size}); an overlap at or above the "
                 f"chunk size never advances"
@@ -169,11 +170,11 @@ class IndexConfig(BaseModel):
     @model_validator(mode="after")
     def _roots_are_named_and_unique(self) -> IndexConfig:
         if not self.roots:
-            raise ValueError("index.roots must list at least one root; the library indexes what it is told to")
+            raise ConfigError("index.roots must list at least one root; the library indexes what it is told to")
         names = [root.name for root in self.roots]
         duplicates = sorted({name for name in names if names.count(name) > 1})
         if duplicates:
-            raise ValueError(
+            raise ConfigError(
                 f"index.roots names must be unique -- duplicated: {duplicates}. "
                 f"Entity keys are '{{root name}}/{{relative path}}', so a repeated name "
                 f"collides two different files onto one key."

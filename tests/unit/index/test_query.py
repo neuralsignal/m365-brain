@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from m365_brain.index.errors import QueryError
 from m365_brain.index.query import parse_metadata_filter, parse_timeframe, updated_since
 
 # -- to_fts_query ---------------------------------------------------------
@@ -47,7 +48,7 @@ def test_ordering_operators_carry_numbers_not_text():
 
 @pytest.mark.parametrize("expression", ["nonsense", "key!value", "score:0.5", "=value", "priority>abc"])
 def test_unparseable_expressions_raise(expression):
-    with pytest.raises(ValueError):
+    with pytest.raises(QueryError):
         parse_metadata_filter(expression)
 
 
@@ -75,7 +76,7 @@ def test_timeframes_parse(text, expected):
 
 @pytest.mark.parametrize("text", ["", "soon", "5 fortnights ago", "d7", "-3d"])
 def test_unparseable_timeframes_raise(text):
-    with pytest.raises(ValueError, match="cannot parse timeframe"):
+    with pytest.raises(QueryError, match="cannot parse timeframe"):
         parse_timeframe(text)
 
 

@@ -110,7 +110,7 @@ def converted_output_path(original_path: str, attachments_dir: str, converted_di
     try:
         position = segments.index(attachments_dir)
     except ValueError:
-        raise ValueError(
+        raise CatalogConversionError(
             f"{original_path!r} is not under a {attachments_dir!r} directory, so there is nowhere "
             f"to put its markdown; extend converted_output_path before cataloguing writes elsewhere"
         ) from None

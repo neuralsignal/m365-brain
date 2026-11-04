@@ -24,6 +24,7 @@ from collections.abc import Iterator
 
 import structlog
 
+from m365_brain.outbox.registry import UnknownOutbox
 from m365_brain.outbox.stores import IntentAlreadyClaimed, IntentNotClaimed
 from m365_brain.storage.base import StorageBackend
 from m365_brain.vault.classify import MARKDOWN_SUFFIX, PathClassification, classify_outbox_path
@@ -48,7 +49,7 @@ class FilesystemIntentStore:
 
     def put(self, outbox_name: str, uuid: str, content: str) -> None:
         if outbox_name not in self._outbox_names:
-            raise KeyError(f"no outbox named {outbox_name!r}; configured: {sorted(self._outbox_names)}")
+            raise UnknownOutbox(f"no outbox named {outbox_name!r}; configured: {sorted(self._outbox_names)}")
         self._storage.write_file(self._paths.outbox_intent(outbox_name, uuid), content)
 
     def pending(self) -> Iterator[tuple[str, str]]:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from pydantic import BaseModel, model_validator
 
 from m365_brain.config.base import SECTION_MODEL_CONFIG
+from m365_brain.config.errors import ConfigError
 from m365_brain.config.extractors import EXTRACTOR_NAMES
 
 
@@ -61,9 +62,9 @@ class VaultConfig(BaseModel):
         missing = sorted(known - configured)
         unknown = sorted(configured - known)
         if missing:
-            raise ValueError(f"vault.extractor_dirs is missing a directory name for: {missing}")
+            raise ConfigError(f"vault.extractor_dirs is missing a directory name for: {missing}")
         if unknown:
-            raise ValueError(
+            raise ConfigError(
                 f"vault.extractor_dirs names extractors this package does not implement: {unknown}. "
                 f"Known extractors: {sorted(known)}"
             )

@@ -29,6 +29,7 @@ from m365_brain.config import (
     TriageFieldsConfig,
 )
 from m365_brain.index.backends.memory import InMemoryIndexBackend
+from m365_brain.m365.extractors.errors import ExtractorError
 from m365_brain.m365.frontmatter.calendar import CalendarEventData, attendee_relations, build_calendar_frontmatter
 from m365_brain.m365.frontmatter.email import EmailData, build_email_frontmatter
 from m365_brain.m365.frontmatter.people import (
@@ -468,7 +469,7 @@ class TestComputeTiers:
             [entity("email-bad", "Bad", "email", [observation("from", "a@b.com"), observation("received_at", "soon")])],
         )
         config = tiers_config(ladder(("rest", 0.0, None)), [EMAIL_SOURCE], lookback_days=90)
-        with pytest.raises(ValueError, match="email-bad"):
+        with pytest.raises(ExtractorError, match="email-bad"):
             compute_tiers(corpus, config, NOW, PAGE_SIZE)
 
 
@@ -663,7 +664,7 @@ class TestTriage:
 
     def test_a_message_missing_a_required_observation_is_named_not_skipped(self, backend):
         corpus = loaded(backend, [entity("m-broken", "Broken", "email", [observation("folder", "Inbox")])])
-        with pytest.raises(ValueError, match="m-broken"):
+        with pytest.raises(ExtractorError, match="m-broken"):
             triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
     def test_rejected_references_skips_missing_envelope(self):
@@ -691,7 +692,7 @@ class TestTriage:
                 )
             ],
         )
-        with pytest.raises(ValueError, match=r"m-bad-date.*date.*not a.*ISO timestamp.*not-a-date"):
+        with pytest.raises(ExtractorError, match=r"m-bad-date.*date.*not a.*ISO timestamp.*not-a-date"):
             triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
     def test_a_blank_conversation_id_is_refused_rather_than_grouped(self, backend):
@@ -716,7 +717,7 @@ class TestTriage:
                 )
             ],
         )
-        with pytest.raises(ValueError, match="m-blank"):
+        with pytest.raises(ExtractorError, match="m-blank"):
             triage(corpus, InMemoryIntentStore(), TRIAGE, FIELDS, TriageRequest("7d", NOW, PAGE_SIZE))
 
 

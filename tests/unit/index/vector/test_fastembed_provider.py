@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
+from m365_brain.index.errors import VectorStoreError
 from m365_brain.index.vector import create_embedding_provider
 from m365_brain.index.vector.base import EmbeddingProvider
 from m365_brain.index.vector.fastembed_provider import FastembedProvider
@@ -76,13 +77,13 @@ def test_documents_embed_at_the_configured_batch_size(provider, index_config):
 def test_a_model_wider_than_config_is_rejected_on_the_first_batch(provider, index_config):
     """Not thousands of chunks later, inside an opaque insert error."""
     provider._model = FakeModel(index_config.vector.dimensions + 1)
-    with pytest.raises(ValueError, match="index.vector.dimensions"):
+    with pytest.raises(VectorStoreError, match="index.vector.dimensions"):
         provider.embed_documents(["a"])
 
 
 def test_a_wrong_width_query_is_rejected_too(provider, index_config):
     provider._model = FakeModel(index_config.vector.dimensions - 1)
-    with pytest.raises(ValueError, match="index.vector.dimensions"):
+    with pytest.raises(VectorStoreError, match="index.vector.dimensions"):
         provider.embed_query("a")
 
 
