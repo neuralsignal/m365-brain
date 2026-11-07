@@ -35,6 +35,14 @@ class FileProcessingContext:
 
 
 @dataclass(frozen=True)
+class FileIdentity:
+    """A file's name and extension, grouped for processing helpers."""
+
+    name: str
+    extension: str
+
+
+@dataclass(frozen=True)
 class DriveItemMetadata:
     """Common metadata extracted from a Graph API drive item."""
 

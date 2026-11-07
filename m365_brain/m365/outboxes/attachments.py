@@ -36,6 +36,15 @@ class MessageTarget:
     message_id: str
 
 
+@dataclass(frozen=True)
+class AttachmentContent:
+    """The file to attach and its inline disposition."""
+
+    file_path: Path
+    is_inline: bool
+    content_id: str | None
+
+
 def resolve_attachment(root: str, path: str) -> Path:
     """Resolve one attachment path against `outboxes.attachment_root`.
 
@@ -56,9 +65,7 @@ def attach_file(
     client: GraphClient,
     upload: UploadConfig,
     target: MessageTarget,
-    file_path: Path,
-    is_inline: bool,
-    content_id: str | None,
+    content: AttachmentContent,
 ) -> None:
     """Attach one file, choosing the inline or the session path by size.
 
@@ -66,32 +73,32 @@ def attach_file(
     raw-side threshold is config (`m365.upload.inline_attachment_max_bytes`)
     rather than a constant somebody would have to recompute.
     """
-    raw = file_path.read_bytes()
-    content_type = mimetypes.guess_type(str(file_path))[0] or FALLBACK_CONTENT_TYPE
+    raw = content.file_path.read_bytes()
+    content_type = mimetypes.guess_type(str(content.file_path))[0] or FALLBACK_CONTENT_TYPE
     endpoint = f"{target.base}/messages/{target.message_id}/attachments"
 
     if len(raw) <= upload.inline_attachment_max_bytes:
         payload: dict[str, Any] = {
             "@odata.type": FILE_ATTACHMENT_TYPE,
-            "name": file_path.name,
+            "name": content.file_path.name,
             "contentType": content_type,
             "contentBytes": base64.b64encode(raw).decode("ascii"),
-            "isInline": is_inline,
+            "isInline": content.is_inline,
         }
-        if content_id is not None:
-            payload["contentId"] = content_id
+        if content.content_id is not None:
+            payload["contentId"] = content.content_id
         client.post(endpoint, payload)
         return
 
     item: dict[str, Any] = {
         "attachmentType": "file",
-        "name": file_path.name,
+        "name": content.file_path.name,
         "size": len(raw),
         "contentType": content_type,
-        "isInline": is_inline,
+        "isInline": content.is_inline,
     }
-    if content_id is not None:
-        item["contentId"] = content_id
+    if content.content_id is not None:
+        item["contentId"] = content.content_id
     session = client.post(f"{endpoint}/createUploadSession", {"AttachmentItem": item})
     upload_in_chunks(
         session.json()["uploadUrl"],

@@ -8,7 +8,7 @@ import json
 import pytest
 
 from m365_brain.config import UploadConfig
-from m365_brain.m365.outboxes.attachments import MessageTarget, attach_file, resolve_attachment
+from m365_brain.m365.outboxes.attachments import AttachmentContent, MessageTarget, attach_file, resolve_attachment
 from m365_brain.storage.exceptions import PathTraversalError
 
 from .conftest import LARGE_ATTACHMENT_BYTES
@@ -49,7 +49,9 @@ class TestResolution:
 
 class TestInlinePath:
     def test_a_small_file_is_posted_as_base64(self, client, upload, attachment_root, recorded):
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), attachment_root / "doc.txt", False, None)
+        attach_file(
+            client, upload, MessageTarget("/me", "MSG-1"), AttachmentContent(attachment_root / "doc.txt", False, None)
+        )
 
         assert len(recorded) == 1
         body = json.loads(recorded[0].content)
@@ -62,14 +64,24 @@ class TestInlinePath:
     def test_an_inline_attachment_carries_its_content_id(self, client, upload, attachment_root, recorded):
         """Without `isInline` + `contentId`, `<img src="cid:...">` resolves to
         nothing and Outlook renders a broken-image box."""
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), attachment_root / "banner.png", True, "banner")
+        attach_file(
+            client,
+            upload,
+            MessageTarget("/me", "MSG-1"),
+            AttachmentContent(attachment_root / "banner.png", True, "banner"),
+        )
 
         body = json.loads(recorded[0].content)
         assert body["isInline"] is True
         assert body["contentId"] == "banner"
 
     def test_the_mime_type_is_sniffed_from_the_name(self, client, upload, attachment_root, recorded):
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), attachment_root / "banner.png", True, "banner")
+        attach_file(
+            client,
+            upload,
+            MessageTarget("/me", "MSG-1"),
+            AttachmentContent(attachment_root / "banner.png", True, "banner"),
+        )
 
         assert json.loads(recorded[0].content)["contentType"] == "image/png"
 
@@ -77,7 +89,7 @@ class TestInlinePath:
         blob = attachment_root / "thing.unknownext"
         blob.write_bytes(b"data")
 
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), blob, False, None)
+        attach_file(client, upload, MessageTarget("/me", "MSG-1"), AttachmentContent(blob, False, None))
 
         assert json.loads(recorded[0].content)["contentType"] == "application/octet-stream"
 
@@ -86,9 +98,7 @@ class TestInlinePath:
             client,
             upload,
             MessageTarget("/users/shared@example.com", "MSG-1"),
-            attachment_root / "doc.txt",
-            False,
-            None,
+            AttachmentContent(attachment_root / "doc.txt", False, None),
         )
 
         assert recorded[0].url.path.startswith("/v1.0/users/shared@example.com/messages/MSG-1/attachments")
@@ -96,7 +106,9 @@ class TestInlinePath:
 
 class TestSessionPath:
     def test_a_file_above_the_ceiling_opens_an_upload_session(self, client, upload, attachment_root, recorded):
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), attachment_root / "large.bin", False, None)
+        attach_file(
+            client, upload, MessageTarget("/me", "MSG-1"), AttachmentContent(attachment_root / "large.bin", False, None)
+        )
 
         assert [request.method for request in recorded] == ["POST", "PUT"]
         item = json.loads(recorded[0].content)["AttachmentItem"]
@@ -105,7 +117,12 @@ class TestSessionPath:
         assert recorded[1].headers["Content-Range"] == f"bytes 0-{len(LARGE_ATTACHMENT_BYTES) - 1}/{item['size']}"
 
     def test_an_inline_content_id_survives_onto_the_session_item(self, client, upload, attachment_root, recorded):
-        attach_file(client, upload, MessageTarget("/me", "MSG-1"), attachment_root / "large.bin", True, "poster")
+        attach_file(
+            client,
+            upload,
+            MessageTarget("/me", "MSG-1"),
+            AttachmentContent(attachment_root / "large.bin", True, "poster"),
+        )
 
         item = json.loads(recorded[0].content)["AttachmentItem"]
         assert item["isInline"] is True
@@ -116,6 +133,8 @@ class TestSessionPath:
         path -- which is exactly what an operator on a stricter tenant needs."""
         tiny = UploadConfig(inline_attachment_max_bytes=4, simple_upload_max_bytes=4096, chunk_bytes=320 * 1024)
 
-        attach_file(client, tiny, MessageTarget("/me", "MSG-1"), attachment_root / "doc.txt", False, None)
+        attach_file(
+            client, tiny, MessageTarget("/me", "MSG-1"), AttachmentContent(attachment_root / "doc.txt", False, None)
+        )
 
         assert [request.method for request in recorded] == ["POST", "PUT"]
