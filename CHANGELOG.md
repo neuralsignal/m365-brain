@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/neuralsignal/m365-brain/compare/v1.3.2...v1.3.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* bump dnspython &gt;=2.9.0 to resolve CVE-2026-114605 ([#419](https://github.com/neuralsignal/m365-brain/issues/419)) ([#420](https://github.com/neuralsignal/m365-brain/issues/420)) ([b9d5ee9](https://github.com/neuralsignal/m365-brain/commit/b9d5ee9bd82558267bf1aae7bb3277b14e213a5d))
+
 ## [1.3.2](https://github.com/neuralsignal/m365-brain/compare/v1.3.1...v1.3.2) (2026-11-07)
 
 
