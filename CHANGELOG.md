@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/neuralsignal/m365-brain/compare/v1.3.1...v1.3.2) (2026-11-07)
+
+
+### Documentation
+
+* AGENTS.md canonical, CLAUDE.md symlink ([#421](https://github.com/neuralsignal/m365-brain/issues/421)) ([82e74d7](https://github.com/neuralsignal/m365-brain/commit/82e74d7c3cdc7155478cdcb0684b66458de4cbe9))
+
 ## [1.3.1](https://github.com/neuralsignal/m365-brain/compare/v1.3.0...v1.3.1) (2026-11-02)
 
 
