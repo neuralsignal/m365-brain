@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/neuralsignal/m365-brain/compare/v1.3.3...v1.3.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* back off a failing unit instead of exiting the daemon ([#424](https://github.com/neuralsignal/m365-brain/issues/424)) ([f10ec88](https://github.com/neuralsignal/m365-brain/commit/f10ec88ea8049019041b4f073f11a053791a6af3))
+
 ## [1.3.3](https://github.com/neuralsignal/m365-brain/compare/v1.3.2...v1.3.3) (2026-11-07)
 
 
