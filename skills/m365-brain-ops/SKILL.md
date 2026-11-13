@@ -93,6 +93,6 @@ the window, the conversation-pairing, the rejection record, whether a message
 is a forward (`ops.triage.forward_prefixes`) and whether the recipient was on
 cc only.
 
-Config: `ops.triage.own_email`, `inbox_folder`, `sent_folders`, `forward_prefixes`,
+Config: `ops.triage.own_email`, `inbox_folders`, `sent_folders`, `forward_prefixes`,
 `fields.*`. Only the timeframe is an argument — see `references/config-keys.md`
 for why, and for what each of the seven field names decides.

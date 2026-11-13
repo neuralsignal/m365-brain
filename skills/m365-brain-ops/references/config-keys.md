@@ -64,7 +64,7 @@ the boundary.
 | Key | What it decides |
 |---|---|
 | `ops.triage.own_email` | the address that identifies the recipient; drives the cc-only check |
-| `ops.triage.inbox_folder` | the folder a message must be in to be considered |
+| `ops.triage.inbox_folders` | the folders a message must be in to be considered, e.g. `["Inbox", "Posteingang"]` (auto-discovery writes the locale's display name) |
 | `ops.triage.sent_folders` | the folders searched for a reply in the same conversation |
 | `ops.triage.forward_prefixes` | subject prefixes that mark a forward, e.g. `["fw:", "fwd:", "wg:"]` |
 | `ops.triage.fields.entity_type` | the entity type your messages carry |

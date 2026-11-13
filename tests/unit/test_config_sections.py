@@ -269,7 +269,7 @@ def _ops_section() -> dict:
         },
         "triage": {
             "own_email": "person@example.com",
-            "inbox_folder": "Inbox",
+            "inbox_folders": ["Inbox"],
             "sent_folders": ["SentItems"],
             "forward_prefixes": ["fw:"],
             "fields": {

@@ -165,7 +165,7 @@ def triage(
             is_cc_only=is_cc_only(message.recipients, config.own_email),
         )
         for message in messages
-        if message.folder == config.inbox_folder
+        if message.folder in config.inbox_folders
         and message.received_at >= since
         and (message.conversation_id not in last_sent or message.received_at > last_sent[message.conversation_id])
         and message.message_id not in declined
