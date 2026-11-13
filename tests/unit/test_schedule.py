@@ -13,20 +13,31 @@ from m365_brain.schedule import (
     due,
     mark_failure,
     mark_success,
+    next_attempt,
     next_wake,
     read_cursor,
     read_cursors,
     units_from_config,
+    wait_seconds,
 )
 from m365_brain.state import CURSORS, InMemoryStateStore
 
 NOW = datetime(2026, 8, 5, 12, 0, 0, tzinfo=UTC)
 
+BASE = 300
+CAP = 3600
+
 _units = st.builds(
     Unit,
     name=st.text(min_size=1, max_size=6),
     interval_seconds=st.integers(min_value=1, max_value=86_400),
+    backoff_base_seconds=st.just(BASE),
+    backoff_max_seconds=st.just(CAP),
 )
+
+
+def _unit(name: str, interval_seconds: int) -> Unit:
+    return Unit(name=name, interval_seconds=interval_seconds, backoff_base_seconds=BASE, backoff_max_seconds=CAP)
 
 
 def _cursor(last_run_at: str | None) -> dict:
@@ -39,32 +50,32 @@ def _ago(seconds: int) -> str:
 
 class TestDue:
     def test_a_unit_with_no_cursor_is_due(self):
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         assert due([unit], {}, NOW) == [unit]
 
     def test_a_cursor_with_no_last_run_is_due(self):
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         assert due([unit], {"email": _cursor(None)}, NOW) == [unit]
 
     def test_not_due_before_the_interval_elapses(self):
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         assert due([unit], {"email": _cursor(_ago(179))}, NOW) == []
 
     def test_due_exactly_at_the_interval(self):
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         assert due([unit], {"email": _cursor(_ago(180))}, NOW) == [unit]
 
     def test_due_after_the_interval(self):
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         assert due([unit], {"email": _cursor(_ago(1000))}, NOW) == [unit]
 
     def test_order_follows_the_units_not_the_cursors(self):
-        units = [Unit(name="a", interval_seconds=1), Unit(name="b", interval_seconds=1)]
+        units = [_unit("a", 1), _unit("b", 1)]
         assert [u.name for u in due(units, {"b": _cursor(_ago(9)), "a": _cursor(_ago(9))}, NOW)] == ["a", "b"]
 
     def test_a_naive_timestamp_is_read_as_utc(self):
         """Reading it as local time would skew every interval by the offset."""
-        unit = Unit(name="email", interval_seconds=180)
+        unit = _unit("email", 180)
         naive = (NOW - timedelta(seconds=200)).replace(tzinfo=None).isoformat()
         assert due([unit], {"email": _cursor(naive)}, NOW) == [unit]
 
@@ -80,13 +91,13 @@ class TestDue:
 
 class TestNextWake:
     def test_now_when_something_is_already_due(self):
-        assert next_wake([Unit(name="a", interval_seconds=60)], {}, NOW) == NOW
+        assert next_wake([_unit("a", 60)], {}, NOW) == NOW
 
     def test_now_when_there_are_no_units(self):
         assert next_wake([], {}, NOW) == NOW
 
     def test_the_earliest_of_several(self):
-        units = [Unit(name="slow", interval_seconds=3600), Unit(name="fast", interval_seconds=300)]
+        units = [_unit("slow", 3600), _unit("fast", 300)]
         cursors = {"slow": _cursor(_ago(0)), "fast": _cursor(_ago(0))}
         assert next_wake(units, cursors, NOW) == NOW + timedelta(seconds=300)
 
@@ -116,12 +127,13 @@ class TestCursors:
         cursor = read_cursor(store, "email")
         assert cursor["last_run_at"] == cursor["last_success_at"] == "2026-08-05T12:00:00Z"
         assert cursor["consecutive_failures"] == 0
+        assert cursor["consecutive_auth_failures"] == 0
         assert cursor["last_error"] is None
 
     def test_failure_advances_the_run_stamp_only(self):
         store = InMemoryStateStore()
         mark_success(store, "email", NOW - timedelta(hours=2))
-        mark_failure(store, "email", NOW, "graph 500")
+        mark_failure(store, "email", NOW, "graph 500", False)
         cursor = read_cursor(store, "email")
         assert cursor["last_run_at"] == "2026-08-05T12:00:00Z"
         assert cursor["last_success_at"] == "2026-08-05T10:00:00Z"
@@ -131,21 +143,21 @@ class TestCursors:
     def test_failures_accumulate(self):
         store = InMemoryStateStore()
         for _ in range(3):
-            mark_failure(store, "email", NOW, "boom")
+            mark_failure(store, "email", NOW, "boom", False)
         assert read_cursor(store, "email")["consecutive_failures"] == 3
 
     def test_a_success_clears_the_streak(self):
         store = InMemoryStateStore()
-        mark_failure(store, "email", NOW, "boom")
-        mark_failure(store, "email", NOW, "boom")
+        mark_failure(store, "email", NOW, "boom", False)
+        mark_failure(store, "email", NOW, "boom", False)
         mark_success(store, "email", NOW)
         assert read_cursor(store, "email")["consecutive_failures"] == 0
 
     def test_a_failure_still_stops_the_hot_loop(self):
         """The point of advancing `last_run_at` on failure."""
         store = InMemoryStateStore()
-        unit = Unit(name="email", interval_seconds=180)
-        mark_failure(store, "email", NOW, "graph 500")
+        unit = _unit("email", 180)
+        mark_failure(store, "email", NOW, "graph 500", False)
         assert due([unit], read_cursors(store, [unit]), NOW) == []
 
     def test_an_unwritten_cursor_reads_as_empty(self):
@@ -153,7 +165,7 @@ class TestCursors:
 
     def test_read_cursors_covers_every_unit(self):
         store = InMemoryStateStore()
-        units = [Unit(name="email", interval_seconds=1), Unit(name="calendar", interval_seconds=1)]
+        units = [_unit("email", 1), _unit("calendar", 1)]
         mark_success(store, "email", NOW)
         assert set(read_cursors(store, units)) == {"email", "calendar"}
 
@@ -165,7 +177,7 @@ class TestCursors:
         """
         from m365_brain.state import JsonStateStore
 
-        unit = Unit(name="sharepoint", interval_seconds=6 * 3600)
+        unit = _unit("sharepoint", 6 * 3600)
         mark_success(JsonStateStore(tmp_path), "sharepoint", NOW - timedelta(hours=1))
 
         after_restart = JsonStateStore(tmp_path)
@@ -197,3 +209,104 @@ class TestUnitsFromConfig:
     def test_unit_names_are_unique(self, runtime_config):
         names = [unit.name for unit in units_from_config(runtime_config)]
         assert len(names) == len(set(names))
+
+
+def _failing(last_run_at: str, failures: int, auth_failures: int) -> dict:
+    return {
+        "last_run_at": last_run_at,
+        "last_success_at": None,
+        "consecutive_failures": failures,
+        "consecutive_auth_failures": auth_failures,
+        "last_error": "graph 503",
+    }
+
+
+_streaks = st.integers(min_value=0, max_value=200)
+
+
+class TestWaitSeconds:
+    def test_a_healthy_unit_waits_its_interval(self):
+        assert wait_seconds(_unit("email", 600), 0) == 600
+
+    def test_the_backoff_doubles_from_the_base(self):
+        unit = _unit("email", 60)
+        assert [wait_seconds(unit, n) for n in (1, 2, 3, 4, 5)] == [BASE, BASE * 2, BASE * 4, BASE * 8, CAP]
+
+    def test_the_interval_is_the_floor(self):
+        assert wait_seconds(_unit("sharepoint", 6 * 3600), 3) == 6 * 3600
+
+    @given(unit=_units, streak=_streaks)
+    def test_never_shorter_than_the_interval(self, unit, streak):
+        assert wait_seconds(unit, streak) >= unit.interval_seconds
+
+    @given(unit=_units, streak=_streaks)
+    def test_never_longer_than_the_cap_or_the_interval(self, unit, streak):
+        assert wait_seconds(unit, streak) <= max(unit.interval_seconds, CAP)
+
+    @given(unit=_units, streak=_streaks)
+    def test_non_decreasing_in_the_streak(self, unit, streak):
+        assert wait_seconds(unit, streak + 1) >= wait_seconds(unit, streak)
+
+
+class TestBackoff:
+    def test_a_failing_unit_is_not_due_after_its_plain_interval(self):
+        unit = _unit("email", 60)
+        cursors = {"email": _failing(_ago(BASE * 4 - 1), 3, 0)}
+        assert due([unit], cursors, NOW) == []
+
+    def test_a_failing_unit_is_due_once_its_backoff_elapses(self):
+        unit = _unit("email", 60)
+        cursors = {"email": _failing(_ago(BASE * 4), 3, 0)}
+        assert due([unit], cursors, NOW) == [unit]
+
+    def test_other_units_keep_their_schedule(self):
+        """The 2026-11-13 incident: mail down, OneDrive still has to sync."""
+        email, onedrive = _unit("email", 60), _unit("onedrive", 60)
+        cursors = {"email": _failing(_ago(120), 6, 0), "onedrive": _cursor(_ago(120))}
+        assert due([email, onedrive], cursors, NOW) == [onedrive]
+
+    def test_an_auth_failure_keeps_the_plain_interval(self):
+        """Backing off after a needed login would only delay the first sync after it."""
+        unit = _unit("email", 60)
+        assert next_attempt(unit, _failing(_ago(0), 4, 1)) == NOW + timedelta(seconds=60)
+
+    def test_next_attempt_is_none_before_the_first_run(self):
+        assert next_attempt(_unit("email", 60), {}) is None
+
+    @given(unit=_units, streak=_streaks, elapsed=st.integers(0, 100_000))
+    def test_due_iff_the_backoff_has_elapsed(self, unit, streak, elapsed):
+        cursors = {unit.name: _failing(_ago(elapsed), streak, 0)}
+        assert bool(due([unit], cursors, NOW)) == (elapsed >= wait_seconds(unit, streak))
+
+
+class TestAuthStreak:
+    def test_an_auth_failure_counts_toward_the_auth_streak(self):
+        store = InMemoryStateStore()
+        mark_failure(store, "email", NOW, "login needed", True)
+        mark_failure(store, "email", NOW, "login needed", True)
+        cursor = read_cursor(store, "email")
+        assert (cursor["consecutive_failures"], cursor["consecutive_auth_failures"]) == (2, 2)
+
+    def test_a_non_auth_failure_resets_the_auth_streak_but_not_the_failure_streak(self):
+        store = InMemoryStateStore()
+        mark_failure(store, "email", NOW, "login needed", True)
+        mark_failure(store, "email", NOW, "graph 503", False)
+        cursor = read_cursor(store, "email")
+        assert (cursor["consecutive_failures"], cursor["consecutive_auth_failures"]) == (2, 0)
+
+    def test_a_success_resets_both(self):
+        store = InMemoryStateStore()
+        mark_failure(store, "email", NOW, "login needed", True)
+        mark_success(store, "email", NOW)
+        cursor = read_cursor(store, "email")
+        assert (cursor["consecutive_failures"], cursor["consecutive_auth_failures"]) == (0, 0)
+
+
+class TestBackoffFromConfig:
+    def test_every_unit_carries_the_service_backoff(self, runtime_config):
+        service = runtime_config.service
+        for unit in units_from_config(runtime_config):
+            assert (unit.backoff_base_seconds, unit.backoff_max_seconds) == (
+                service.unit_backoff_base_seconds,
+                service.unit_backoff_max_seconds,
+            )

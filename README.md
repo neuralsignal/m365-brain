@@ -70,6 +70,13 @@ m365-brain --config config.yaml run
 
 Each unit runs on its own `poll_interval_minutes`; the loop wakes every `service.continuous_poll_seconds`.
 
+A failing unit backs off on its own: after `n` consecutive failures its next attempt waits
+`service.unit_backoff_base_seconds * 2**(n-1)`, capped at `service.unit_backoff_max_seconds` and never
+shorter than its interval. Each failed cycle logs `unit.backing_off` with the unit, the streak and
+`next_attempt_at`; the other units keep their schedule, and the first success resets the streak. Only an
+auth failure that needs `auth login` stops the loop: past `service.max_consecutive_auth_failures` of them
+on one unit, `run` logs `cycle.auth_failure_ceiling_reached` and exits 1.
+
 ### Filter to some units
 
 ```bash

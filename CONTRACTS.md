@@ -41,7 +41,7 @@ Sections present today:
 | Section | Carries |
 |---|---|
 | `auth` | `client_id`, `tenant_id`, `scopes`, `token_cache_path`, optional `client_secret` |
-| `service` | `log_level`, `json_logs`, `continuous_poll_seconds`, `max_consecutive_auth_failures` |
+| `service` | `log_level`, `json_logs`, `continuous_poll_seconds`, `max_consecutive_auth_failures`, `unit_backoff_base_seconds`, `unit_backoff_max_seconds` |
 | `storage` | `backend` (`local` \| `azure_blob`) plus the matching sub-block |
 | `graph` | `max_retries`, `backoff_base_ms`, `timeout_seconds`, `max_pages`, `max_retry_after_seconds`, `error_message_max_length` |
 | `extractors` | one required block per extractor: `enabled`, `poll_interval_minutes`, and per-extractor options |
@@ -538,12 +538,23 @@ Three namespaces, and only three:
 | Namespace | Key | Value |
 |---|---|---|
 | `extractor_state` | extractor name | delta tokens and watermarks |
-| `cursors` | unit name | `last_run_at`, `last_success_at`, `consecutive_failures`, `last_error` |
+| `cursors` | unit name | `last_run_at`, `last_success_at`, `consecutive_failures`, `consecutive_auth_failures`, `last_error` |
 | `cycles` | cycle id | one-line summary of a finished cycle |
 
 `last_run_at` and `last_success_at` are separate: advancing the first on failure stops a broken
 extractor hot-looping against a dead endpoint, and holding the second back keeps the staleness
 visible.
+
+**Failure policy of the continuous loop (`m365_brain/daemon.py`).**
+
+| Failure | Counts toward | Next attempt | Daemon |
+|---|---|---|---|
+| `AuthRequiredError`, `TokenRefreshError`, `AuthProfileError` (`cycle.AUTH_FAILURES`: a login is needed) | `consecutive_failures` and `consecutive_auth_failures` | the unit's interval | exits 1 once `consecutive_auth_failures` > `service.max_consecutive_auth_failures` |
+| anything else: Graph 5xx, 429, timeouts, `AuthTransportError`, bugs | `consecutive_failures`; resets `consecutive_auth_failures` | `max(interval, min(unit_backoff_max_seconds, unit_backoff_base_seconds * 2**(n-1)))` after the failed run | keeps running; other units keep their schedule |
+
+Every failed cycle logs one `unit.backing_off` (error level) per failing unit with
+`consecutive_failures`, `consecutive_auth_failures`, `next_attempt_at` and `last_error`. A success
+resets both streaks; recovery needs no restart. `status` exits 1 while any streak is non-zero.
 
 ### Protocols
 

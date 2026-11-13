@@ -1,4 +1,4 @@
-"""Unit tests for run_forever, _exhausted_units, and _sleep_until."""
+"""Unit tests for the continuous loop: run_forever, exhausted_units, report_backoff, _sleep_until."""
 
 from __future__ import annotations
 
@@ -6,9 +6,12 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from structlog.testing import capture_logs
 
 from m365_brain.config import ConfigError
-from m365_brain.cycle import Runtime, Selection, _exhausted_units, _sleep_until, run_forever
+from m365_brain.cycle import Runtime, Selection
+from m365_brain.daemon import _sleep_until, exhausted_units, report_backoff, run_forever
+from m365_brain.schedule import Unit, mark_failure, mark_success, read_cursors
 from m365_brain.state import CURSORS, InMemoryStateStore
 
 
@@ -28,32 +31,59 @@ ONCE = Selection(names=None, resync=False, ignore_schedule=True)
 
 
 class TestExhaustedUnits:
-    def test_returns_names_exceeding_ceiling(self, runtime_config) -> None:
+    def test_returns_names_whose_auth_streak_exceeds_ceiling(self) -> None:
+        cursors = {"email": {"consecutive_auth_failures": 10}, "calendar": {"consecutive_auth_failures": 2}}
+        assert exhausted_units(cursors, ceiling=5) == ["email"]
+
+    def test_a_long_non_auth_streak_never_exhausts(self) -> None:
+        """The 2026-11-13 regression: Exchange 5xx for hours must not stop the daemon."""
+        cursors = {"email": {"consecutive_failures": 40, "consecutive_auth_failures": 0}}
+        assert exhausted_units(cursors, ceiling=5) == []
+
+    def test_a_cursor_written_before_the_auth_streak_existed_never_exhausts(self) -> None:
+        """The persisted streak that exited every restart on 2026-11-13."""
+        assert exhausted_units({"email": {"consecutive_failures": 10}}, ceiling=5) == []
+
+    def test_returns_empty_when_no_cursors(self) -> None:
+        assert exhausted_units({}, ceiling=5) == []
+
+
+NOW = datetime(2026, 11, 13, 3, 0, tzinfo=UTC)
+EMAIL = Unit(name="email", interval_seconds=600, backoff_base_seconds=300, backoff_max_seconds=3600)
+ONEDRIVE = Unit(name="onedrive", interval_seconds=600, backoff_base_seconds=300, backoff_max_seconds=3600)
+
+
+class TestReportBackoff:
+    def test_one_event_per_unit_that_failed_this_cycle(self) -> None:
         state = InMemoryStateStore()
-        state.put(CURSORS, "email", {"consecutive_failures": 10})
-        state.put(CURSORS, "calendar", {"consecutive_failures": 2})
-        rt = _minimal_runtime(runtime_config, state)
+        for _ in range(3):
+            mark_failure(state, "email", NOW, "graph 503", False)
+        mark_success(state, "onedrive", NOW)
 
-        assert _exhausted_units(rt, ONCE, ceiling=5) == ["email"]
+        with capture_logs() as logs:
+            report_backoff([EMAIL, ONEDRIVE], read_cursors(state, [EMAIL, ONEDRIVE]), NOW)
 
-    def test_returns_empty_when_all_below(self, runtime_config) -> None:
+        events = [entry for entry in logs if entry["event"] == "unit.backing_off"]
+        assert len(events) == 1
+        assert events[0]["unit"] == "email"
+        assert events[0]["consecutive_failures"] == 3
+        assert events[0]["next_attempt_at"] == (NOW + timedelta(seconds=1200)).isoformat()
+        assert events[0]["last_error"] == "graph 503"
+        assert events[0]["log_level"] == "error"
+
+    def test_silent_for_a_failure_from_an_earlier_cycle(self) -> None:
         state = InMemoryStateStore()
-        state.put(CURSORS, "email", {"consecutive_failures": 3})
-        state.put(CURSORS, "calendar", {"consecutive_failures": 1})
-        rt = _minimal_runtime(runtime_config, state)
+        mark_failure(state, "email", NOW - timedelta(minutes=10), "graph 503", False)
 
-        assert _exhausted_units(rt, ONCE, ceiling=5) == []
+        with capture_logs() as logs:
+            report_backoff([EMAIL], read_cursors(state, [EMAIL]), NOW)
 
-    def test_returns_empty_when_no_cursors(self, runtime_config) -> None:
-        state = InMemoryStateStore()
-        rt = _minimal_runtime(runtime_config, state)
-
-        assert _exhausted_units(rt, ONCE, ceiling=5) == []
+        assert not [entry for entry in logs if entry["event"] == "unit.backing_off"]
 
 
 class TestSleepUntil:
     def test_returns_immediately_when_wake_is_in_the_past(self) -> None:
-        with patch("m365_brain.cycle.time.sleep") as mock_sleep:
+        with patch("m365_brain.daemon.time.sleep") as mock_sleep:
             _sleep_until(datetime.now(UTC) - timedelta(seconds=10), 30)
             mock_sleep.assert_not_called()
 
@@ -73,8 +103,8 @@ class TestSleepUntil:
         wake = origin + timedelta(seconds=70)
 
         with (
-            patch("m365_brain.cycle.datetime", Clock),
-            patch("m365_brain.cycle.time.sleep", side_effect=advance) as mock_sleep,
+            patch("m365_brain.daemon.datetime", Clock),
+            patch("m365_brain.daemon.time.sleep", side_effect=advance) as mock_sleep,
         ):
             _sleep_until(wake, 30)
 
@@ -85,13 +115,13 @@ class TestSleepUntil:
 class TestRunForever:
     def test_delayed_start_sleeps_before_first_cycle(self, runtime_config) -> None:
         state = InMemoryStateStore()
-        state.put(CURSORS, "email", {"consecutive_failures": 10})
+        state.put(CURSORS, "email", {"consecutive_auth_failures": 10})
         rt = _minimal_runtime(runtime_config, state)
 
         with (
-            patch("m365_brain.cycle.run_once"),
-            patch("m365_brain.cycle.time.sleep") as mock_sleep,
-            patch("m365_brain.cycle._sleep_until"),
+            patch("m365_brain.daemon.run_once"),
+            patch("m365_brain.daemon.time.sleep") as mock_sleep,
+            patch("m365_brain.daemon._sleep_until"),
         ):
             result = run_forever(rt, ONCE, delay_seconds=42)
 
@@ -104,11 +134,11 @@ class TestRunForever:
 
         with (
             patch(
-                "m365_brain.cycle.run_once",
+                "m365_brain.daemon.run_once",
                 side_effect=[RuntimeError("boom"), ConfigError("stop")],
             ) as mock_run,
-            patch("m365_brain.cycle.time.sleep"),
-            patch("m365_brain.cycle._sleep_until"),
+            patch("m365_brain.daemon.time.sleep"),
+            patch("m365_brain.daemon._sleep_until"),
             pytest.raises(ConfigError, match="stop"),
         ):
             run_forever(rt, ONCE, delay_seconds=0)
@@ -117,15 +147,30 @@ class TestRunForever:
 
     def test_returns_1_when_exhausted_units_found(self, runtime_config) -> None:
         state = InMemoryStateStore()
-        state.put(CURSORS, "email", {"consecutive_failures": 10})
+        state.put(CURSORS, "email", {"consecutive_auth_failures": 10})
         rt = _minimal_runtime(runtime_config, state)
 
         with (
-            patch("m365_brain.cycle.run_once"),
-            patch("m365_brain.cycle.time.sleep"),
-            patch("m365_brain.cycle._sleep_until"),
+            patch("m365_brain.daemon.run_once"),
+            patch("m365_brain.daemon.time.sleep"),
+            patch("m365_brain.daemon._sleep_until"),
         ):
             assert run_forever(rt, ONCE, delay_seconds=0) == 1
+
+    def test_keeps_running_while_a_unit_fails_on_server_errors(self, runtime_config) -> None:
+        state = InMemoryStateStore()
+        state.put(CURSORS, "email", {"consecutive_failures": 10, "consecutive_auth_failures": 0})
+        rt = _minimal_runtime(runtime_config, state)
+
+        with (
+            patch("m365_brain.daemon.run_once", side_effect=[None, ConfigError("escape")]) as mock_run,
+            patch("m365_brain.daemon.time.sleep"),
+            patch("m365_brain.daemon._sleep_until"),
+            pytest.raises(ConfigError, match="escape"),
+        ):
+            run_forever(rt, ONCE, delay_seconds=0)
+
+        assert mock_run.call_count == 2
 
     def test_continues_looping_when_no_unit_exhausted(self, runtime_config) -> None:
         state = InMemoryStateStore()
@@ -133,11 +178,11 @@ class TestRunForever:
 
         with (
             patch(
-                "m365_brain.cycle.run_once",
+                "m365_brain.daemon.run_once",
                 side_effect=[None, ConfigError("escape")],
             ) as mock_run,
-            patch("m365_brain.cycle.time.sleep"),
-            patch("m365_brain.cycle._sleep_until"),
+            patch("m365_brain.daemon.time.sleep"),
+            patch("m365_brain.daemon._sleep_until"),
             pytest.raises(ConfigError, match="escape"),
         ):
             run_forever(rt, ONCE, delay_seconds=0)

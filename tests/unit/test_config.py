@@ -36,6 +36,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -152,6 +154,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -254,6 +258,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -351,6 +357,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -452,6 +460,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -551,6 +561,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -648,6 +660,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "azure_blob"
               azure_blob:
@@ -754,6 +768,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "local"
               local:
@@ -853,6 +869,8 @@ class TestLoadConfig:
               json_logs: false
               continuous_poll_seconds: 30
               max_consecutive_auth_failures: 5
+              unit_backoff_base_seconds: 300
+              unit_backoff_max_seconds: 3600
             storage:
               backend: "azure_blob"
               azure_blob:
@@ -948,6 +966,8 @@ _MINIMAL_CONFIG = textwrap.dedent("""\
       json_logs: false
       continuous_poll_seconds: 30
       max_consecutive_auth_failures: 5
+      unit_backoff_base_seconds: 300
+      unit_backoff_max_seconds: 3600
     storage:
       backend: "local"
       local:
