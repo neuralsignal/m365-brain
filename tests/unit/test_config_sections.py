@@ -59,6 +59,8 @@ def _legacy_sections() -> dict:
             "json_logs": False,
             "continuous_poll_seconds": 30,
             "max_consecutive_auth_failures": 5,
+            "unit_backoff_base_seconds": 300,
+            "unit_backoff_max_seconds": 3600,
         },
         "storage": {"backend": "local", "local": {"base_path": "./vault"}},
         "graph": {
@@ -418,6 +420,8 @@ class TestMissingAndUnknownKeys:
             ("outboxes", "attachment_root"),
             ("manifest", "retain_cycles"),
             ("ops", "triage"),
+            ("service", "unit_backoff_base_seconds"),
+            ("service", "unit_backoff_max_seconds"),
         ],
     )
     def test_missing_key_names_the_key(self, tmp_path, section, key):
@@ -428,6 +432,14 @@ class TestMissingAndUnknownKeys:
             load(tmp_path, payload)
 
         assert f"{section}.{key}" in str(exc.value)
+
+    @pytest.mark.parametrize(("base", "cap"), [(0, 3600), (-1, 3600), (600, 300)])
+    def test_unit_backoff_must_be_positive_and_ordered(self, tmp_path, base, cap):
+        payload = full_payload()
+        payload["service"].update(unit_backoff_base_seconds=base, unit_backoff_max_seconds=cap)
+
+        with pytest.raises(ConfigError, match="unit_backoff_base_seconds"):
+            load(tmp_path, payload)
 
     def test_missing_nested_key_names_the_full_path(self, tmp_path):
         payload = full_payload()

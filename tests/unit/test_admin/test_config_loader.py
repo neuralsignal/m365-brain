@@ -33,6 +33,8 @@ def _write_config_yaml(tmp_path, full_web_config):
             "json_logs": False,
             "continuous_poll_seconds": 30,
             "max_consecutive_auth_failures": 5,
+            "unit_backoff_base_seconds": 300,
+            "unit_backoff_max_seconds": 3600,
         },
         "storage": {
             "backend": "local",
@@ -209,6 +211,8 @@ class TestGetConfig:
                 "json_logs": False,
                 "continuous_poll_seconds": 30,
                 "max_consecutive_auth_failures": 5,
+                "unit_backoff_base_seconds": 300,
+                "unit_backoff_max_seconds": 3600,
             },
             "storage": {
                 "backend": "local",

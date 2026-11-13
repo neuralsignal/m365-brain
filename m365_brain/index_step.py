@@ -45,7 +45,7 @@ def run_index_step(index: IndexConfig, state: StateStore, now: datetime, full_re
             sync_vectors(index.vector, backend, create_embedding_provider(index), create_vector_store(index), False)
     except Exception as exc:  # noqa: BLE001 -- recorded on the manifest; hooks still fire
         log.exception("cycle.index_failed")
-        mark_failure(state, INDEX_UNIT, now, str(exc) or type(exc).__name__)
+        mark_failure(state, INDEX_UNIT, now, str(exc) or type(exc).__name__, False)
         return _outcome(roots, indexed=0, skipped=0, pruned=0, errors=1, started=started)
     finally:
         backend.close()

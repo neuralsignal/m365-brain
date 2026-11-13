@@ -1,4 +1,4 @@
-"""One cycle: extract, record, index, dispatch hooks. And the loop around it.
+"""One cycle: extract, record, index, dispatch hooks. The loop is `daemon.py`.
 
 Scheduling (when does a unit run) lives in `schedule.py` and is pure.
 Orchestration (what one cycle does) lives here and is all side effects. They
@@ -33,7 +33,6 @@ one).
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -43,7 +42,10 @@ import structlog
 from m365_brain.config import Config, ConfigError, VaultConfig, require_section
 from m365_brain.hooks import ResolvedHook, dispatch, resolve_hooks
 from m365_brain.index_step import run_index_step
+from m365_brain.m365.auth.profiles import AuthProfileError
+from m365_brain.m365.auth.token_provider import TokenRefreshError
 from m365_brain.m365.client import GraphClient
+from m365_brain.m365.errors import AuthRequiredError
 from m365_brain.manifest import (
     ChangeManifest,
     ChangeRecorder,
@@ -53,7 +55,7 @@ from m365_brain.manifest import (
     RecordingStorage,
     new_cycle_id,
 )
-from m365_brain.schedule import INDEX_UNIT, Unit, due, mark_failure, mark_success, next_wake, read_cursors
+from m365_brain.schedule import INDEX_UNIT, Unit, due, mark_failure, mark_success, read_cursors
 from m365_brain.schedule import units_from_config as _units_from_config
 from m365_brain.state import CYCLES, EXTRACTOR_STATE, StateStore
 from m365_brain.storage.base import StorageBackend
@@ -61,6 +63,11 @@ from m365_brain.sync import SyncRuntime, build_context, run_one
 from m365_brain.vault.paths import manifest_directory
 
 log = structlog.get_logger()
+
+AUTH_FAILURES = (AuthProfileError, AuthRequiredError, TokenRefreshError)
+"""Failures only a human fixes, with `auth login`: no usable token. Graph 5xx,
+429, timeouts and transport errors (`AuthTransportError` included) are not
+here -- they back the unit off and heal on their own (`daemon.py`)."""
 
 
 @dataclass(frozen=True)
@@ -162,40 +169,6 @@ def run_once(runtime: Runtime, selection: Selection) -> ChangeManifest:
     return manifest
 
 
-def run_forever(runtime: Runtime, selection: Selection, delay_seconds: int) -> int:
-    """`run_once` on a schedule until a unit's failure streak exceeds the cap.
-
-    Returns a process exit code. The broad `except Exception` is the second and
-    last one in this package: a loop that dies on an unclassified error is a
-    daemon that stops syncing silently, and the alternative -- enumerating
-    every exception eight extractors and an index can raise -- is a list that
-    is wrong the day it is written.
-    """
-    ceiling = runtime.config.service.max_consecutive_auth_failures
-    slice_seconds = runtime.config.service.continuous_poll_seconds
-    if delay_seconds:
-        log.info("cycle.delayed_start", seconds=delay_seconds)
-        time.sleep(delay_seconds)
-
-    while True:
-        try:
-            run_once(runtime, selection)
-        except ConfigError:
-            raise
-        except Exception:  # noqa: BLE001 -- see the docstring
-            log.exception("cycle.failed")
-
-        exhausted = _exhausted_units(runtime, selection, ceiling)
-        if exhausted:
-            log.error("cycle.failure_ceiling_reached", units=exhausted, ceiling=ceiling)
-            return 1
-
-        units = select_units(runtime.config, selection.names)
-        now = datetime.now(UTC)
-        wake = next_wake(units, read_cursors(runtime.state, units), now)
-        _sleep_until(wake, slice_seconds)
-
-
 def _run_extractors(runtime: Runtime, units: Sequence[Unit]) -> list[ExtractorChanges]:
     if not units:
         return []
@@ -220,7 +193,7 @@ def _run_extractor(runtime: Runtime, client: GraphClient, unit: Unit) -> Extract
     except Exception as exc:  # noqa: BLE001 -- recorded on the manifest, next unit still runs
         error = str(exc) or type(exc).__name__
         log.exception("cycle.extractor_failed", extractor=unit.name)
-        mark_failure(runtime.state, unit.name, datetime.now(UTC), error)
+        mark_failure(runtime.state, unit.name, datetime.now(UTC), error, isinstance(exc, AUTH_FAILURES))
     else:
         runtime.state.put(EXTRACTOR_STATE, unit.name, updated)
         mark_success(runtime.state, unit.name, datetime.now(UTC))
@@ -271,18 +244,3 @@ def _record_summary(runtime: Runtime, manifest: ChangeManifest) -> None:
             "failures": manifest.failures(),
         },
     )
-
-
-def _exhausted_units(runtime: Runtime, selection: Selection, ceiling: int) -> list[str]:
-    units = select_units(runtime.config, selection.names)
-    cursors = read_cursors(runtime.state, units)
-    return sorted(name for name, cursor in cursors.items() if int(cursor.get("consecutive_failures", 0)) > ceiling)
-
-
-def _sleep_until(wake: datetime, slice_seconds: int) -> None:
-    """Sleep in bounded slices so a SIGTERM is answered promptly."""
-    while True:
-        remaining = (wake - datetime.now(UTC)).total_seconds()
-        if remaining <= 0:
-            return
-        time.sleep(min(remaining, slice_seconds))

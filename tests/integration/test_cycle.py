@@ -367,3 +367,25 @@ class TestCycleHistory:
             state.put(CURSORS, "email", {})
             run_once(runtime, ONCE)
         assert len(runtime.manifests.cycle_ids()) == 3
+
+
+class TestFailureClassification:
+    """Which failures count toward the auth ceiling that stops the daemon."""
+
+    def test_a_needed_login_counts_as_an_auth_failure(self, runtime_config, state, tmp_path):
+        from m365_brain.m365.errors import AuthRequiredError
+
+        def no_token() -> str:
+            raise AuthRequiredError("no usable cached token: run `m365-brain auth login`")
+
+        (tmp_path / "vault").mkdir(exist_ok=True)
+        runtime = open_runtime(runtime_config, LocalBackend(str(tmp_path / "vault")), state, no_token)
+        run_once(runtime, _only("email"))
+        cursor = state.get(CURSORS, "email")
+        assert (cursor["consecutive_failures"], cursor["consecutive_auth_failures"]) == (1, 1)
+
+    def test_a_graph_5xx_does_not(self, runtime, state, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(url=re.compile(r".*"), status_code=503, is_reusable=True, is_optional=True)
+        run_once(runtime, _only("email"))
+        cursor = state.get(CURSORS, "email")
+        assert (cursor["consecutive_failures"], cursor["consecutive_auth_failures"]) == (1, 0)

@@ -254,6 +254,8 @@ def full_config(tmp_path):
             json_logs=False,
             continuous_poll_seconds=30,
             max_consecutive_auth_failures=5,
+            unit_backoff_base_seconds=300,
+            unit_backoff_max_seconds=3600,
         ),
         storage=StorageConfig(
             backend="local",
@@ -374,6 +376,8 @@ def full_web_config(tmp_path, web_config):
             json_logs=False,
             continuous_poll_seconds=30,
             max_consecutive_auth_failures=5,
+            unit_backoff_base_seconds=300,
+            unit_backoff_max_seconds=3600,
         ),
         storage=StorageConfig(
             backend="local",

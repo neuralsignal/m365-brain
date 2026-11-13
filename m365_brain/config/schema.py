@@ -86,6 +86,21 @@ class ServiceConfig(BaseModel):
     json_logs: bool
     continuous_poll_seconds: int
     max_consecutive_auth_failures: int
+    """Consecutive auth failures (a login is needed) on one unit before the
+    daemon exits. Every other failure backs the unit off instead."""
+    unit_backoff_base_seconds: int
+    """Wait after a unit's first consecutive non-auth failure; doubles per further one."""
+    unit_backoff_max_seconds: int
+    """Ceiling on that wait."""
+
+    @model_validator(mode="after")
+    def _backoff_is_ordered(self) -> ServiceConfig:
+        if not 0 < self.unit_backoff_base_seconds <= self.unit_backoff_max_seconds:
+            raise ValueError(
+                "service.unit_backoff_base_seconds must be > 0 and <= service.unit_backoff_max_seconds, "
+                f"got base={self.unit_backoff_base_seconds} max={self.unit_backoff_max_seconds}"
+            )
+        return self
 
 
 class LocalStorageConfig(BaseModel):

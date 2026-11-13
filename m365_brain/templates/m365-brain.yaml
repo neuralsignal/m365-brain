@@ -68,7 +68,9 @@ service:
   log_level: "INFO" # DEBUG | INFO | WARNING | ERROR | CRITICAL
   json_logs: false # true renders structured JSON; false is the console renderer
   continuous_poll_seconds: 30 # upper bound on a sleep slice, so SIGTERM is answered promptly
-  max_consecutive_auth_failures: 5
+  max_consecutive_auth_failures: 5 # consecutive auth failures (a login is needed) on one unit before the daemon exits
+  unit_backoff_base_seconds: 300 # any other failure: wait base * 2**(streak-1) before the next attempt
+  unit_backoff_max_seconds: 3600 # ... capped here; never shorter than the unit's own interval
 
 # ---------------------------------------------------------------------------
 # storage — where extracted files are written

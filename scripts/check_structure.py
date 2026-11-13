@@ -84,8 +84,9 @@ LAYERS: dict[str, int] = {
     "cycle": 7,
     "worker": 7,
     "dry_run": 7,
-    # 8 -- the facade
+    # 8 -- the facade, and the continuous loop over `cycle`
     "workspace": 8,
+    "daemon": 8,
     # 9 -- one verb group per module: option parsing, one library call,
     # formatting. Above the facade because it uses it.
     "commands": 9,

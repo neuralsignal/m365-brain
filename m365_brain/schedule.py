@@ -41,6 +41,10 @@ class Unit:
 
     name: str
     interval_seconds: int
+    backoff_base_seconds: int
+    """Wait after the first consecutive failure; doubles with each further one."""
+    backoff_max_seconds: int
+    """Ceiling on that wait. The unit's own interval is the floor."""
 
 
 def units_from_config(config: Config) -> list[Unit]:
@@ -51,18 +55,60 @@ def units_from_config(config: Config) -> list[Unit]:
     schedule is not a unit.
     """
     extractors = config.extractors
-    units = [
-        Unit(name=name, interval_seconds=getattr(extractors, name).poll_interval_minutes * SECONDS_PER_MINUTE)
+    base = config.service.unit_backoff_base_seconds
+    cap = config.service.unit_backoff_max_seconds
+    intervals = {
+        name: getattr(extractors, name).poll_interval_minutes
         for name in EXTRACTOR_NAMES
         if getattr(extractors, name).enabled
-    ]
+    }
     if config.index is not None:
-        units.append(Unit(name=INDEX_UNIT, interval_seconds=config.index.sync.interval_minutes * SECONDS_PER_MINUTE))
-    return units
+        intervals[INDEX_UNIT] = config.index.sync.interval_minutes
+    return [
+        Unit(
+            name=name, interval_seconds=minutes * SECONDS_PER_MINUTE, backoff_base_seconds=base, backoff_max_seconds=cap
+        )
+        for name, minutes in intervals.items()
+    ]
+
+
+def wait_seconds(unit: Unit, consecutive_failures: int) -> int:
+    """How long after its last run a unit is next due.
+
+    The interval while healthy. After `n` consecutive failures,
+    `base * 2**(n-1)` capped at `backoff_max_seconds`, and never shorter than
+    the interval. A unit failing on a dead endpoint backs off on its own clock;
+    every other unit keeps its schedule. The first success resets the streak,
+    so recovery needs no restart.
+    """
+    if consecutive_failures <= 0:
+        return unit.interval_seconds
+    backoff = min(unit.backoff_max_seconds, unit.backoff_base_seconds * 2 ** (consecutive_failures - 1))
+    return max(unit.interval_seconds, backoff)
+
+
+def last_run(cursor: dict) -> datetime | None:
+    """The cursor's `last_run_at` as an aware datetime. `None` before the first run."""
+    stamp = cursor.get("last_run_at")
+    return _parse(stamp) if stamp else None
+
+
+def next_attempt(unit: Unit, cursor: dict) -> datetime | None:
+    """When the unit is next due by its cursor. `None` before its first run.
+
+    A unit whose last failure was an auth failure keeps its plain interval:
+    backing it off would only delay the first sync after `auth login`.
+    """
+    ran = last_run(cursor)
+    if ran is None:
+        return None
+    auth = int(cursor.get("consecutive_auth_failures", 0)) > 0
+    streak = 0 if auth else int(cursor.get("consecutive_failures", 0))
+    return ran + timedelta(seconds=wait_seconds(unit, streak))
 
 
 def due(units: Sequence[Unit], cursors: Mapping[str, dict], now: datetime) -> list[Unit]:
-    """The units whose interval has elapsed, in the order they were given.
+    """The units whose wait has elapsed, in the order they were given.
 
     A unit with no cursor, or a cursor with no `last_run_at`, is due: never
     having run is the strongest possible case for running.
@@ -97,16 +143,26 @@ def mark_success(store: StateStore, name: str, now: datetime) -> None:
     store.put(
         CURSORS,
         name,
-        {"last_run_at": stamp, "last_success_at": stamp, "consecutive_failures": 0, "last_error": None},
+        {
+            "last_run_at": stamp,
+            "last_success_at": stamp,
+            "consecutive_failures": 0,
+            "consecutive_auth_failures": 0,
+            "last_error": None,
+        },
     )
 
 
-def mark_failure(store: StateStore, name: str, now: datetime, error: str) -> None:
+def mark_failure(store: StateStore, name: str, now: datetime, error: str, auth: bool) -> None:
     """`last_run_at` advances; `last_success_at` deliberately does not.
 
     Advancing the run stamp is what stops a broken unit from hot-looping
     against an endpoint that is down. Holding the success stamp back is what
     keeps the staleness visible in `status` instead of silently absorbed.
+
+    `auth` marks a failure only a human can fix (a login). Its own streak
+    counts those alone and resets on any other outcome: it is what stops the
+    daemon, while `consecutive_failures` only lengthens the unit's backoff.
     """
     previous = store.get(CURSORS, name)
     store.put(
@@ -116,6 +172,7 @@ def mark_failure(store: StateStore, name: str, now: datetime, error: str) -> Non
             "last_run_at": _iso(now),
             "last_success_at": previous.get("last_success_at"),
             "consecutive_failures": int(previous.get("consecutive_failures", 0)) + 1,
+            "consecutive_auth_failures": int(previous.get("consecutive_auth_failures", 0)) + 1 if auth else 0,
             "last_error": error,
         },
     )
@@ -123,10 +180,10 @@ def mark_failure(store: StateStore, name: str, now: datetime, error: str) -> Non
 
 def _elapsed(unit: Unit, cursors: Mapping[str, dict], now: datetime) -> timedelta | None:
     """`None` when the unit is due, otherwise how long until it is."""
-    stamp = cursors.get(unit.name, {}).get("last_run_at")
-    if not stamp:
+    attempt = next_attempt(unit, cursors.get(unit.name, {}))
+    if attempt is None:
         return None
-    remaining = _parse(stamp) + timedelta(seconds=unit.interval_seconds) - now
+    remaining = attempt - now
     return None if remaining <= timedelta(0) else remaining
 
 
