@@ -412,7 +412,7 @@ ops:
       # zero and read as a quiet quarter -- the defect this list already had.
   triage:
     own_email: "${M365_OWN_EMAIL}"
-    inbox_folder: "Inbox"
+    inbox_folders: ["Inbox", "Posteingang"]
     sent_folders: ["SentItems", "Gesendete Elemente"]
     forward_prefixes: ["fw:", "fwd:", "wg:"]
     # Which observation categories the messages carry each fact under. The

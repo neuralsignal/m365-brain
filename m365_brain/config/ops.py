@@ -146,7 +146,7 @@ class TriageFieldsConfig(BaseModel):
 class TriageConfig(BaseModel):
     model_config = SECTION_MODEL_CONFIG
     own_email: str
-    inbox_folder: str
+    inbox_folders: list[str]
     sent_folders: list[str]
     forward_prefixes: list[str]
     fields: TriageFieldsConfig

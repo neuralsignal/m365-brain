@@ -496,7 +496,7 @@ read what the extractor actually writes.
 
 TRIAGE = TriageConfig(
     own_email="owner@example.com",
-    inbox_folder="Inbox",
+    inbox_folders=["Inbox", "Posteingang"],
     sent_folders=["SentItems"],
     forward_prefixes=["fw:", "fwd:"],
     fields=FIELDS,
@@ -603,6 +603,8 @@ class TestTriage:
                 message("m-declined", "Ignore me", "Inbox", "conv-3", "2026-07-30T09:00:00Z", "owner@example.com"),
                 message("m-old", "Ancient", "Inbox", "conv-4", "2026-06-01T09:00:00Z", "owner@example.com"),
                 message("m-fwd", "FW: notes", "Inbox", "conv-5", "2026-07-30T09:00:00Z", "bob@example.com"),
+                message("m-de", "Frage", "Posteingang", "conv-6", "2026-07-30T09:00:00Z", "owner@example.com"),
+                message("m-other", "Note", "Archive", "conv-7", "2026-07-30T09:00:00Z", "owner@example.com"),
             ],
         )
 
@@ -619,6 +621,12 @@ class TestTriage:
 
     def test_a_message_with_no_reply_is_reported(self, corpus, store):
         assert "m-open" in self.keys(corpus, store)
+
+    def test_a_message_in_any_inbox_folder_is_reported(self, corpus, store):
+        assert "m-de" in self.keys(corpus, store)
+
+    def test_a_message_outside_the_inbox_folders_is_excluded(self, corpus, store):
+        assert "m-other" not in self.keys(corpus, store)
 
     def test_a_message_with_a_sent_sibling_in_its_conversation_is_excluded(self, corpus, store):
         assert "m-answered" not in self.keys(corpus, store)
@@ -1128,8 +1136,8 @@ class TestShippedFolderNames:
         folder for mailbox in SHIPPED["extractors"]["email"]["mailboxes"] for folder in (mailbox["folders"] or [])
     }
 
-    def test_the_inbox_folder_is_one_the_extractor_writes(self):
-        assert SHIPPED_TRIAGE.inbox_folder in self.EXTRACTED
+    def test_at_least_one_inbox_folder_is_one_the_extractor_writes(self):
+        assert set(SHIPPED_TRIAGE.inbox_folders) & self.EXTRACTED
 
     def test_at_least_one_sent_folder_is_one_the_extractor_writes(self):
         assert set(SHIPPED_TRIAGE.sent_folders) & self.EXTRACTED
