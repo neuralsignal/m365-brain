@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.5](https://github.com/neuralsignal/m365-brain/compare/v1.3.4...v1.3.5) (2026-11-13)
+
+
+### Bug Fixes
+
+* triage reads a list of inbox folders ([#426](https://github.com/neuralsignal/m365-brain/issues/426)) ([d3af749](https://github.com/neuralsignal/m365-brain/commit/d3af749d6b77c9879e1825b1fa980585a154afd0))
+
 ## [1.3.4](https://github.com/neuralsignal/m365-brain/compare/v1.3.3...v1.3.4) (2026-11-13)
 
 
