@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/neuralsignal/m365-brain/compare/v1.3.5...v1.4.0) (2026-11-18)
+
+
+### Features
+
+* review and merge Dependabot updates ([#438](https://github.com/neuralsignal/m365-brain/issues/438)) ([a8fb36d](https://github.com/neuralsignal/m365-brain/commit/a8fb36d25e965d4f6edde08202152aef9694f9bb))
+
+
+### Documentation
+
+* update factory maturity comparison ([9a39578](https://github.com/neuralsignal/m365-brain/commit/9a39578229a61650a2f1fc17ae0e389033c3bed3))
+
 ## [1.3.5](https://github.com/neuralsignal/m365-brain/compare/v1.3.4...v1.3.5) (2026-11-13)
 
 
