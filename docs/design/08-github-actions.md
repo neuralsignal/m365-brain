@@ -31,6 +31,9 @@ This also enables teams where multiple people contribute to a shared knowledge b
 
 ### Dark Factory Integration
 
+> This section records the original design. The live repository uses the pinned maintainer workflow
+> described in [FACTORY.md](https://github.com/neuralsignal/m365-brain/blob/main/FACTORY.md).
+
 The agentic-engineering-kit provides a "dark factory" — a fully autonomous CI/CD pipeline using GitHub Actions + `anthropics/claude-code-action@v1`. This package's CI/CD adopts the same patterns:
 
 **Assessment agents (scheduled):**
