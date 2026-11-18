@@ -129,35 +129,11 @@ Non-negotiable. Violating these is a bug.
   the issue) and before scope grows beyond the issue or past ~3 files.
 - Never edit files outside this repository.
 
-## Dark Factory agent context
+## Maintainer automation
 
-GitHub workflows (`.github/workflows/`) run agents that read this file for labels and standards.
-
-### Label taxonomy
-
-| Label | Purpose |
-|-------|---------|
-| `type:bug` | Bug report |
-| `type:feat` | Feature request |
-| `type:chore` | Maintenance / improvement |
-| `priority:1` | Urgent -- implement immediately |
-| `priority:2` | Normal (default) |
-| `priority:3` | Backlog |
-| `claude:implement` | Trigger Claude to implement this issue |
-| `status:triaged` | Issue has been triaged |
-| `status:in-progress` | Claude is working on this |
-| `status:pr-created` | PR created, awaiting review |
-| `status:pr-draft` | Draft PR created, CI pending |
-| `status:blocked` | Implementation blocked (see comments) |
-| `autofix:1` | First auto-fix attempt |
-| `autofix:2` | Second auto-fix attempt |
-| `autofix:3` | Third (final) auto-fix attempt |
-| `source:dep-audit` | Created by dependency audit agent |
-| `source:security-scan` | Created by security scan agent |
-| `source:code-quality` | Created by code quality agent |
-| `source:test-coverage` | Created by test coverage agent |
-| `source:docs-freshness` | Created by docs freshness agent |
-| `source:workflow-upgrade` | Created by workflow upgrade agent |
+Comment `@claude` on an issue or a same-repository PR to request help. Ask for a draft PR
+when you want an implementation. Continue in that PR's conversation to reuse its branch.
+See [FACTORY.md](FACTORY.md) for verification and rollback.
 
 ## MSAL and Graph transports
 

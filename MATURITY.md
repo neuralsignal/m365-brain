@@ -118,7 +118,7 @@ The codebase follows the workspace engineering principles well:
 | IaC (Bicep) | Storage Account + params per env | None |
 | Dev scripts | dev-setup.sh, deploy-infra.sh, teardown-dev.sh | None |
 | Multi-backend storage | Local + Azure Blob + factory | Single backend |
-| Dark factory automation | Full autonomous agent loop (8 scan/fix workflows) | None |
+| Maintainer automation | [On-demand Claude changes](FACTORY.md) | None |
 
 ## Dark Factory Activity
 
