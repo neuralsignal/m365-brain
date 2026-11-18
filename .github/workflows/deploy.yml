@@ -35,7 +35,7 @@ jobs:
       image_tag: ${{ steps.meta.outputs.tag }}
       environment: ${{ steps.meta.outputs.environment }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Determine environment and tag
         id: meta
@@ -81,7 +81,7 @@ jobs:
     needs: build-and-push
     environment: ${{ needs.build-and-push.outputs.environment }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Azure Login
         uses: azure/login@v3
