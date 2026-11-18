@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           cache: true
@@ -21,7 +21,7 @@ jobs:
   structure:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Stdlib-only by design, so they run on stock python3 with no environment
       # to set up -- a broken pixi env cannot make a guardrail silently pass.
       - name: Repository structure
@@ -34,7 +34,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           cache: true
@@ -54,7 +54,7 @@ jobs:
   test-admin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           cache: true
